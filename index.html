@@ -11,26 +11,24 @@
       padding: 0;
       user-select: none;
     }
-    body {
+    html, body {
       background: #0b0b0f;
       color: #eee;
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       overflow: hidden;
-      display: flex;
-      align-items: center;
-      justify-content: center;
       height: 100vh;
       width: 100vw;
     }
     #app-layout {
-      display: flex;
-      gap: 14px;
+      display: grid;
+      grid-template-columns: minmax(240px, 1fr) auto minmax(260px, 1fr);
+      gap: 12px;
       align-items: stretch;
-      padding: 12px;
+      width: 100vw;
+      height: 100vh;
+      padding: 10px 14px;
       background: #12121a;
-      border: 2px solid #29293a;
-      border-radius: 10px;
-      box-shadow: 0 0 60px rgba(0, 0, 0, 0.9);
+      overflow: hidden;
     }
     #game-wrapper {
       position: relative;
@@ -41,27 +39,39 @@
       border-radius: 6px;
       background: #161620;
       overflow: hidden;
+      height: 100%;
+      aspect-ratio: 1 / 1;
+      max-height: calc(100vh - 20px);
+      max-width: calc(100vw - 540px);
+      margin: 0 auto;
     }
     canvas#canvas {
       display: block;
       cursor: crosshair;
+      width: 100%;
+      height: 100%;
     }
-    /* Dedicated Right Sidebar so 0% of the square room is blocked */
-    #sidebar {
-      width: 290px;
+    /* Left & Right Sidebars utilize full widescreen aspect ratio without vertical overflow */
+    .sidebar-col {
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 8px;
       background: #171722;
       border: 1px solid #2e2e42;
       border-radius: 6px;
-      padding: 12px;
+      padding: 10px;
+      height: 100%;
+      min-height: 0;
+      overflow: hidden;
     }
     .panel-section {
       background: #1d1d2b;
       border: 1px solid #303046;
       border-radius: 6px;
-      padding: 10px 12px;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
     }
     .section-title {
       font-size: 11px;
@@ -141,8 +151,10 @@
     #items-list {
       display: flex;
       flex-wrap: wrap;
+      align-content: flex-start;
       gap: 5px;
-      max-height: 82px;
+      flex: 1;
+      min-height: 0;
       overflow-y: auto;
       font-size: 11px;
     }
@@ -157,6 +169,8 @@
     #minimap-canvas {
       display: block;
       margin: 0 auto;
+      max-width: 100%;
+      height: auto;
       background: #111118;
       border: 1px solid #34344a;
       border-radius: 4px;
@@ -177,17 +191,17 @@
       background: #3a3a54;
     }
 
-    /* Garage / Meta-Progression Modal */
+    /* Garage / Meta-Progression Modal (Full-Viewport Widescreen Workshop) */
     #garage-overlay {
-      position: absolute;
+      position: fixed;
       inset: 0;
       background: rgba(9, 9, 14, 0.92);
       display: none;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      z-index: 20;
-      padding: 18px;
+      z-index: 40;
+      padding: 12px 18px;
       text-align: center;
     }
     #garage-overlay.visible {
@@ -197,28 +211,29 @@
       background: #181824;
       border: 2px solid #3c3c52;
       border-radius: 10px;
-      padding: 20px 24px;
-      max-width: 640px;
+      padding: 14px 20px;
       width: 100%;
-      max-height: 92%;
+      max-width: 1320px;
+      max-height: calc(100vh - 24px);
+      display: flex;
+      flex-direction: column;
       overflow-y: auto;
-      box-shadow: 0 12px 40px rgba(0,0,0,0.8);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.85);
     }
     .overlay-card h1 {
-      font-size: 23px;
+      font-size: 20px;
       letter-spacing: 1.5px;
       color: #ff7b3b;
-      margin-bottom: 4px;
+      margin-bottom: 2px;
     }
     .overlay-card p.sub {
       color: #aaa;
-      font-size: 12.5px;
-      margin-bottom: 12px;
-      line-height: 1.4;
+      font-size: 12px;
+      margin-bottom: 6px;
+      line-height: 1.35;
     }
     /* ---- Garage look: roller door, concrete walls, checker floor ---- */
     .garage-card {
-      max-width: 860px !important;
       background:
         repeating-linear-gradient(0deg, rgba(255,255,255,0.03) 0 2px, transparent 2px 30px),
         repeating-linear-gradient(90deg, rgba(0,0,0,0.18) 0 2px, transparent 2px 60px),
@@ -226,47 +241,57 @@
       border: 3px solid #5b606c !important;
     }
     .garage-door {
-      height: 58px;
-      margin: -20px -24px 12px;
+      height: 40px;
+      flex-shrink: 0;
+      margin: -14px -20px 8px;
       border-radius: 7px 7px 0 0;
-      background: repeating-linear-gradient(180deg, #99a0aa 0 9px, #6a717b 9px 12px);
-      border-bottom: 5px solid #ffd60a;
+      background: repeating-linear-gradient(180deg, #99a0aa 0 8px, #6a717b 8px 11px);
+      border-bottom: 4px solid #ffd60a;
       position: relative;
-      box-shadow: inset 0 -12px 18px rgba(0,0,0,0.35);
+      box-shadow: inset 0 -10px 15px rgba(0,0,0,0.35);
     }
     .garage-door span {
       position: absolute; left: 50%; top: 50%;
       transform: translate(-50%, -50%);
       background: #15161b; color: #ffd60a;
-      padding: 4px 16px; font-weight: 800; letter-spacing: 3px; font-size: 13px;
+      padding: 3px 14px; font-weight: 800; letter-spacing: 3px; font-size: 12px;
       border: 2px solid #ffd60a; border-radius: 3px;
+    }
+    .garage-main-grid {
+      display: grid;
+      grid-template-columns: 1.05fr 1.25fr;
+      gap: 16px;
+      align-items: start;
+      text-align: left;
+      margin: 6px 0;
+      min-height: 0;
     }
     .bay {
       display: grid;
-      grid-template-columns: 215px 1fr 215px;
-      gap: 10px;
+      grid-template-columns: 175px 1fr 175px;
+      gap: 8px;
       align-items: center;
-      padding: 10px;
-      margin: 10px 0;
+      padding: 8px;
+      margin: 4px 0 8px;
       border-radius: 8px;
       border: 2px solid #444851;
       background:
         repeating-conic-gradient(#2b2d34 0% 25%, #23252b 0% 50%) 0 0 / 28px 28px;
     }
-    .slot-col { display: flex; flex-direction: column; gap: 8px; }
+    .slot-col { display: flex; flex-direction: column; gap: 6px; }
     .eq-slot {
       text-align: left; cursor: pointer;
       background: rgba(12,12,16,0.85);
       border: 2px dashed #555b66; border-radius: 6px;
-      padding: 6px 8px; min-height: 62px;
+      padding: 5px 7px; min-height: 54px;
       transition: transform .1s;
     }
     .eq-slot:hover { transform: translateY(-1px); }
-    .eq-slot .sl-label { font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase; color: #8a8fa0; }
-    .eq-slot .sl-name { font-size: 12px; font-weight: 700; margin: 2px 0; }
-    .eq-slot .sl-stats { font-size: 10.5px; color: #aeb3c2; line-height: 1.3; }
+    .eq-slot .sl-label { font-size: 9.5px; letter-spacing: 1px; text-transform: uppercase; color: #8a8fa0; }
+    .eq-slot .sl-name { font-size: 11.5px; font-weight: 700; margin: 1px 0; }
+    .eq-slot .sl-stats { font-size: 10px; color: #aeb3c2; line-height: 1.25; }
     #bike-canvas { width: 100%; height: auto; display: block; }
-    .stash { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; text-align: left; min-height: 30px; margin-bottom: 8px; }
+    .stash { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; text-align: left; min-height: 28px; max-height: 120px; overflow-y: auto; margin-bottom: 4px; }
     .stash-item {
       background: #1c1d23; border: 2px solid #555; border-radius: 5px;
       padding: 5px 7px; cursor: pointer; font-size: 11px; color: #bbb;
@@ -378,53 +403,54 @@
     .garage-columns {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 14px;
+      gap: 12px;
       text-align: left;
-      margin: 12px 0 16px;
+      margin: 0;
     }
     .garage-col-title {
-      font-size: 12px;
+      font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 1px;
       color: #7bdff2;
-      margin-bottom: 8px;
+      margin-bottom: 6px;
       font-weight: 700;
     }
     .unlock-list {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 6px;
     }
     .unlock-item {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
       background: #222232;
       border: 1px solid #393950;
-      padding: 8px 10px;
+      padding: 6px 8px;
       border-radius: 6px;
     }
     .unlock-item .info strong {
       display: block;
       color: #f0f0f5;
-      font-size: 13px;
+      font-size: 12px;
     }
     .unlock-item .info span {
-      font-size: 11px;
+      font-size: 10.5px;
       color: #999;
       display: block;
-      margin-top: 2px;
+      margin-top: 1px;
+      line-height: 1.25;
     }
     .btn {
       background: #ff6b2b;
       color: #111;
       border: none;
-      padding: 7px 12px;
+      padding: 6px 11px;
       font-weight: 700;
       border-radius: 5px;
       cursor: pointer;
-      font-size: 12px;
+      font-size: 11.5px;
       white-space: nowrap;
       transition: transform 0.1s, background 0.15s;
     }
@@ -450,13 +476,53 @@
       gap: 10px;
       justify-content: center;
       margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      flex-shrink: 0;
     }
   </style>
 </head>
 <body>
 
 <div id="app-layout">
-  <!-- Square Room Playfield Canvas (Unobstructed!) -->
+  <!-- Left Sidebar: Hull Integrity, Fuel Gauge, NOS, Currency & Floor Map -->
+  <aside class="sidebar-col" id="left-sidebar">
+    <div class="panel-section">
+      <div class="section-title">
+        <span>Hull Integrity</span>
+        <span id="hp-text" style="color:#ff4d6d;">6 / 6</span>
+      </div>
+      <canvas id="fuel-gauge" width="240" height="120" style="display:block;margin:0 auto 4px;max-width:100%;height:auto;"></canvas>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;" data-tip="<b style='color:#4cc9f0'>NOS</b><br/>Hold SHIFT while moving for +70% speed. Drains NOS; recharges when not boosting. Empty tank locks until 25%.">
+        <span style="font-size:11px;font-weight:700;color:#4cc9f0;letter-spacing:1px;">NOS</span>
+        <div style="flex:1;height:10px;background:#0e0f14;border:1px solid #3b6e86;border-radius:5px;overflow:hidden;">
+          <div id="nos-fill" style="height:100%;width:100%;background:linear-gradient(90deg,#4895ef,#4cc9f0);"></div>
+        </div>
+      </div>
+      <div class="currency-row">
+        <span>Run Coins: <strong id="coin-count" style="color:#ffd166;">0 🪙</strong></span>
+        <span>Scrap: <strong id="scrap-count" style="color:#7bdff2;">0 ⚙️</strong></span>
+      </div>
+    </div>
+
+    <div class="panel-section" style="flex:1; justify-content:space-between;">
+      <div class="section-title">
+        <span>Floor Map</span>
+        <span style="color:#7bdff2;">FLOOR <strong id="floor-num">1</strong></span>
+      </div>
+      <canvas id="minimap-canvas" width="240" height="150"></canvas>
+      <div style="font-size:10.5px; color:#888; text-align:center; margin-top:4px;">
+        <span style="color:#ffd166;">★ Mod</span> &nbsp;&bull;&nbsp;
+        <span style="color:#06d6a0;">$ Shop</span> &nbsp;&bull;&nbsp;
+        <span style="color:#ff4d6d;">☠ Boss</span>
+      </div>
+    </div>
+
+    <div id="save-status" style="font-size:10px;color:#6b7089;text-align:center;">Autosave: local storage</div>
+    <button class="sidebar-btn" id="btn-open-garage">[G] Open Garage &amp; Tuning</button>
+  </aside>
+
+  <!-- Center Square Room Playfield Canvas (Always fits 100% of vertical height!) -->
   <div id="game-wrapper">
     <canvas id="canvas" width="720" height="720"></canvas>
 
@@ -474,37 +540,46 @@
       </div>
     </div>
 
-    <!-- Garage / Meta-Progression / Run Over Modal -->
+    <!-- Garage / Meta-Progression / Run Over Modal (Widescreen Layout) -->
     <div id="garage-overlay">
       <div class="overlay-card garage-card">
         <div class="garage-door"><span>GARAGE BAY 01</span></div>
-        <h1 id="modal-title">MOTO-GARAGE &amp; WORKSHOP</h1>
-        <p class="sub" id="modal-subtitle">
-          Earn <strong>Scrap (⚙️)</strong> from enemies &amp; bosses to permanently unlock weapons and chassis upgrades.<br/>
-          Collect <strong>Coins (🪙)</strong> during a run to buy upgrades in <strong>Shop Rooms ($)</strong>!
-        </p>
-        <div style="font-size:14px; color:#ffd166; font-weight:700; margin-bottom:4px;">
-          Banked Scrap: <span id="modal-scrap">0</span> ⚙️
-        </div>
-
-        <div class="garage-col-title" style="text-align:left;">Bike Equipment (boss loot) - click a slot to remove a part</div>
-        <div class="bay">
-          <div class="slot-col" id="slots-left"></div>
-          <canvas id="bike-canvas" width="300" height="190"></canvas>
-          <div class="slot-col" id="slots-right"></div>
-        </div>
-        <div id="eq-totals" style="font-size:12px;color:#7bdff2;margin-bottom:8px;"></div>
-        <div class="garage-col-title" style="text-align:left;">Parts Stash - click to install, right-click to sell for scrap</div>
-        <div class="stash" id="stash-list"></div>
-
-        <div class="garage-columns">
-          <div>
-            <div class="garage-col-title">Permanent Arsenal Unlocks</div>
-            <div class="unlock-list" id="unlock-list"></div>
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:4px;">
+          <div style="text-align:left;">
+            <h1 id="modal-title" style="margin:0;">MOTO-GARAGE &amp; WORKSHOP</h1>
+            <p class="sub" id="modal-subtitle" style="margin:0;">
+              Earn <strong>Scrap (⚙️)</strong> from enemies &amp; bosses to permanently unlock weapons and chassis upgrades. Collect <strong>Coins (🪙)</strong> for <strong>Shop Rooms ($)</strong>!
+            </p>
           </div>
+          <div style="font-size:15px; color:#ffd166; font-weight:700; background:rgba(0,0,0,0.45); padding:6px 14px; border-radius:6px; border:1px solid #ffd16655;">
+            Banked Scrap: <span id="modal-scrap">0</span> ⚙️
+          </div>
+        </div>
+
+        <div class="garage-main-grid">
+          <!-- Left Workshop Column: Bike Lift, 6 Equipment Slots & Stash -->
           <div>
-            <div class="garage-col-title">Permanent Bike Tuning</div>
-            <div class="unlock-list" id="meta-upgrade-list"></div>
+            <div class="garage-col-title">Bike Equipment (boss loot) - click a slot to remove a part</div>
+            <div class="bay">
+              <div class="slot-col" id="slots-left"></div>
+              <canvas id="bike-canvas" width="300" height="190"></canvas>
+              <div class="slot-col" id="slots-right"></div>
+            </div>
+            <div id="eq-totals" style="font-size:11.5px;color:#7bdff2;margin-bottom:6px;"></div>
+            <div class="garage-col-title">Parts Stash - click to install, right-click to sell for scrap</div>
+            <div class="stash" id="stash-list"></div>
+          </div>
+
+          <!-- Right Workshop Column: Permanent Arsenal Unlocks (6 Weapons) & Bike Tuning -->
+          <div class="garage-columns">
+            <div>
+              <div class="garage-col-title">Permanent Arsenal Unlocks</div>
+              <div class="unlock-list" id="unlock-list"></div>
+            </div>
+            <div>
+              <div class="garage-col-title">Permanent Bike Tuning</div>
+              <div class="unlock-list" id="meta-upgrade-list"></div>
+            </div>
           </div>
         </div>
 
@@ -517,43 +592,12 @@
     </div>
   </div>
 
-  <!-- Dedicated Sidebar (Never blocks the square room!) -->
-  <aside id="sidebar">
-    <div class="panel-section">
-      <div class="section-title">
-        <span>Hull Integrity</span>
-        <span id="hp-text" style="color:#ff4d6d;">6 / 6</span>
-      </div>
-      <canvas id="fuel-gauge" width="240" height="120" style="display:block;margin:0 auto 6px;"></canvas>
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;" data-tip="<b style='color:#4cc9f0'>NOS</b><br/>Hold SHIFT while moving for +70% speed. Drains NOS; recharges when not boosting. Empty tank locks until 25%.">
-        <span style="font-size:11px;font-weight:700;color:#4cc9f0;letter-spacing:1px;">NOS</span>
-        <div style="flex:1;height:10px;background:#0e0f14;border:1px solid #3b6e86;border-radius:5px;overflow:hidden;">
-          <div id="nos-fill" style="height:100%;width:100%;background:linear-gradient(90deg,#4895ef,#4cc9f0);"></div>
-        </div>
-      </div>
-      <div class="currency-row">
-        <span>Run Coins: <strong id="coin-count" style="color:#ffd166;">0 🪙</strong></span>
-        <span>Scrap: <strong id="scrap-count" style="color:#7bdff2;">0 ⚙️</strong></span>
-      </div>
-    </div>
-
-    <div class="panel-section">
-      <div class="section-title">
-        <span>Floor Map</span>
-        <span style="color:#7bdff2;">FLOOR <strong id="floor-num">1</strong></span>
-      </div>
-      <canvas id="minimap-canvas" width="240" height="145"></canvas>
-      <div style="font-size:10px; color:#888; text-align:center; margin-top:5px;">
-        <span style="color:#ffd166;">★ Mod</span> &nbsp;&bull;&nbsp;
-        <span style="color:#06d6a0;">$ Shop</span> &nbsp;&bull;&nbsp;
-        <span style="color:#ff4d6d;">☠ Boss</span>
-      </div>
-    </div>
-
+  <!-- Right Sidebar: 7-Weapon Arsenal, Bike Stats & Installed Run Mods -->
+  <aside class="sidebar-col" id="right-sidebar">
     <div class="panel-section">
       <div class="section-title">
         <span>Arsenal</span>
-        <span style="font-size:10px; color:#777;">[1-4] or Scroll</span>
+        <span style="font-size:10px; color:#777;">[1-7] or Scroll</span>
       </div>
       <div class="weapon-list" id="weapon-bar"></div>
     </div>
@@ -563,15 +607,12 @@
       <div class="stats-grid" id="stats-grid"></div>
     </div>
 
-    <div class="panel-section" style="flex:1; display:flex; flex-direction:column;">
+    <div class="panel-section" style="flex:1; display:flex; flex-direction:column; min-height:0;">
       <div class="section-title">Installed Run Mods</div>
       <div id="items-list">
         <span style="color:#666; font-size:11px;">None yet — visit ★ or $ rooms!</span>
       </div>
     </div>
-
-    <div id="save-status" style="font-size:10px;color:#6b7089;text-align:center;">Autosave: local storage</div>
-    <button class="sidebar-btn" id="btn-open-garage">[G] Open Garage &amp; Tuning</button>
   </aside>
 </div>
 
@@ -635,9 +676,42 @@
       baseDmg: 36,
       projSpeed: 410,
       color: '#f72585'
+    },
+    shotgun: {
+      id: 'shotgun',
+      key: '5',
+      name: 'Sawed-Off Shotgun',
+      desc: '6-pellet buckshot cone. Devastating close-range burst & knockback.',
+      cost: 70,
+      cooldown: 0.56,
+      baseDmg: 5.2,
+      projSpeed: 560,
+      color: '#ffbe0b'
+    },
+    railgun: {
+      id: 'railgun',
+      key: '6',
+      name: 'Plasma Railgun',
+      desc: 'Hyper-velocity electromagnetic slug that pierces all enemies in a line.',
+      cost: 120,
+      cooldown: 0.80,
+      baseDmg: 35,
+      projSpeed: 980,
+      color: '#00f5d4'
+    },
+    arc_coil: {
+      id: 'arc_coil',
+      key: '7',
+      name: 'Arc Tesla Coil',
+      desc: 'High-voltage lightning orb that chains arcs to up to 3 nearby enemies.',
+      cost: 165,
+      cooldown: 0.40,
+      baseDmg: 15,
+      projSpeed: 520,
+      color: '#c77dff'
     }
   };
-  const UNLOCKABLE_IDS = ['machine_gun', 'flamethrower', 'grenade_launcher'];
+  const UNLOCKABLE_IDS = ['machine_gun', 'shotgun', 'flamethrower', 'railgun', 'grenade_launcher', 'arc_coil'];
 
   // --- PERMANENT GARAGE STAT UPGRADES ---
   const META_UPGRADES = {
@@ -883,8 +957,11 @@
     scrap: 0,
     unlocked: {
       machine_gun: false,
+      shotgun: false,
       flamethrower: false,
-      grenade_launcher: false
+      railgun: false,
+      grenade_launcher: false,
+      arc_coil: false
     },
     ranks: {
       dmg: 0,
@@ -1024,6 +1101,9 @@
     if (k === '2') selectWeapon('machine_gun');
     if (k === '3') selectWeapon('flamethrower');
     if (k === '4') selectWeapon('grenade_launcher');
+    if (k === '5') selectWeapon('shotgun');
+    if (k === '6') selectWeapon('railgun');
+    if (k === '7') selectWeapon('arc_coil');
     if (k === 'g' || k === 'escape') {
       toggleGarage();
     }
@@ -1423,6 +1503,7 @@
   let grenades = [];
   let enemyBombs = [];
   let particles = [];
+  let beamEffects = []; // Railgun beams & Arc Tesla Coil chain lightning arcs
 
   function clearRoomProjectiles() {
     bullets = [];
@@ -1430,6 +1511,7 @@
     grenades = [];
     enemyBombs = [];
     particles = [];
+    beamEffects = [];
   }
 
   function getCurrentRoom() {
@@ -1536,6 +1618,67 @@
         });
         screenShake = Math.max(screenShake, 2.5);
         spawnMuzzleParticles(mx, my, baseAngle, w.color, 6);
+      } else if (player.weapon === 'shotgun') {
+        // Sawed-Off Shotgun: 6 buckshot pellets in a tight cone with knockback
+        const pellets = 6;
+        for (let p = 0; p < pellets; p++) {
+          const spread = (p / (pellets - 1) - 0.5) * 0.34 + (Math.random() - 0.5) * 0.06;
+          const ang = baseAngle + spread;
+          const spd = (w.projSpeed + (Math.random() - 0.5) * 70) * player.projSpeedMult;
+          bullets.push({
+            x: mx, y: my,
+            vx: Math.cos(ang) * spd,
+            vy: Math.sin(ang) * spd,
+            radius: 4.5,
+            dmg: w.baseDmg * player.dmgMult,
+            knockback: 11,
+            pierceLeft: player.pierce,
+            bounceLeft: player.bounce,
+            hitIds: new Set(),
+            color: w.color,
+            life: 0.46
+          });
+        }
+        screenShake = Math.max(screenShake, 3.2);
+        spawnMuzzleParticles(mx, my, baseAngle, w.color, 8);
+      } else if (player.weapon === 'railgun') {
+        // Plasma Railgun: hyper-velocity slug that pierces all enemies and leaves a glowing ion trail
+        const ang = baseAngle;
+        const spd = w.projSpeed * player.projSpeedMult;
+        bullets.push({
+          x: mx, y: my,
+          vx: Math.cos(ang) * spd,
+          vy: Math.sin(ang) * spd,
+          radius: 6.5,
+          dmg: w.baseDmg * player.dmgMult,
+          isRail: true,
+          pierceLeft: 99,
+          bounceLeft: player.bounce,
+          hitIds: new Set(),
+          color: w.color,
+          life: 0.85
+        });
+        screenShake = Math.max(screenShake, 4);
+        spawnMuzzleParticles(mx, my, ang, w.color, 10);
+      } else if (player.weapon === 'arc_coil') {
+        // Arc Tesla Coil: high-voltage orb that chains lightning to up to 3 nearby enemies on hit
+        const ang = baseAngle + (Math.random() - 0.5) * 0.06;
+        const spd = w.projSpeed * player.projSpeedMult;
+        bullets.push({
+          x: mx, y: my,
+          vx: Math.cos(ang) * spd,
+          vy: Math.sin(ang) * spd,
+          radius: 6,
+          dmg: w.baseDmg * player.dmgMult,
+          isArc: true,
+          pierceLeft: player.pierce,
+          bounceLeft: player.bounce,
+          hitIds: new Set(),
+          color: w.color,
+          life: 1.0
+        });
+        screenShake = Math.max(screenShake, 1.8);
+        spawnMuzzleParticles(mx, my, ang, w.color, 5);
       }
     }
   }
@@ -1720,11 +1863,22 @@
     // 3. Update Player Bullets
     for (let i = bullets.length - 1; i >= 0; i--) {
       const b = bullets[i];
+      const prevX = b.x, prevY = b.y;
       b.x += b.vx * dt;
       b.y += b.vy * dt;
       b.life -= dt;
       if (b.isFlame) {
         b.radius = 6 + (1 - b.life / b.maxLife) * (b.maxRadius - 6);
+      }
+      if (b.isRail) {
+        beamEffects.push({
+          x1: prevX, y1: prevY,
+          x2: b.x, y2: b.y,
+          color: '#00f5d4',
+          width: 4,
+          life: 0.22,
+          maxLife: 0.22
+        });
       }
 
       if (b.life <= 0) {
@@ -1800,6 +1954,35 @@
             addFloatingText(en.x, en.y - en.radius - 12, 'CRIT!', '#4cc9f0');
           }
           damageEnemy(en, dmg, false);
+
+          // Shotgun knockback
+          if (b.knockback) {
+            const bSpd = Math.hypot(b.vx, b.vy) || 1;
+            en.x += (b.vx / bSpd) * b.knockback;
+            en.y += (b.vy / bSpd) * b.knockback;
+          }
+
+          // Arc Tesla Coil: chain lightning to up to 3 nearby enemies
+          if (b.isArc) {
+            const chainTargets = room.enemies
+              .filter(other => other.id !== en.id && other.hp > 0 && Math.hypot(other.x - en.x, other.y - en.y) <= 155)
+              .slice(0, 3);
+            let fromX = en.x, fromY = en.y;
+            for (const ct of chainTargets) {
+              damageEnemy(ct, dmg * 0.65, false);
+              beamEffects.push({
+                x1: fromX, y1: fromY,
+                x2: ct.x, y2: ct.y,
+                color: '#c77dff',
+                isLightning: true,
+                width: 2.5,
+                life: 0.24,
+                maxLife: 0.24
+              });
+              fromX = ct.x;
+              fromY = ct.y;
+            }
+          }
 
           if (b.isFlame) {
             en.burnTimer = 2.4;
@@ -2006,7 +2189,11 @@
       return;
     }
 
-    // 8. Particles & Floating Text
+    // 8. Particles, Beams & Floating Text
+    for (let i = beamEffects.length - 1; i >= 0; i--) {
+      beamEffects[i].life -= dt;
+      if (beamEffects[i].life <= 0) beamEffects.splice(i, 1);
+    }
     for (let i = particles.length - 1; i >= 0; i--) {
       const pt = particles[i];
       pt.x += pt.vx * dt;
@@ -2667,8 +2854,32 @@
     // 6. Player Motorcycle
     drawMotorcycle();
 
-    // 7. Projectiles & Bombs
-    // 7. Projectiles & Bombs with Bloom Glow
+    // 7. Projectiles, Beams & Bombs with Bloom Glow
+    for (const bm of beamEffects) {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, bm.life / bm.maxLife);
+      ctx.strokeStyle = bm.color;
+      ctx.shadowColor = bm.color;
+      ctx.shadowBlur = 10;
+      ctx.lineWidth = bm.width;
+      ctx.beginPath();
+      if (bm.isLightning) {
+        ctx.moveTo(bm.x1, bm.y1);
+        const steps = 4;
+        for (let s = 1; s < steps; s++) {
+          const t = s / steps;
+          const jx = bm.x1 + (bm.x2 - bm.x1) * t + (Math.random() - 0.5) * 18;
+          const jy = bm.y1 + (bm.y2 - bm.y1) * t + (Math.random() - 0.5) * 18;
+          ctx.lineTo(jx, jy);
+        }
+        ctx.lineTo(bm.x2, bm.y2);
+      } else {
+        ctx.moveTo(bm.x1, bm.y1);
+        ctx.lineTo(bm.x2, bm.y2);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
     for (const b of bullets) {
       ctx.save();
       ctx.fillStyle = b.color;
@@ -3488,7 +3699,14 @@
   document.getElementById('btn-reset-save').onclick = () => {
     saveState = {
       scrap: 0,
-      unlocked: { machine_gun: false, flamethrower: false, grenade_launcher: false },
+      unlocked: {
+        machine_gun: false,
+        shotgun: false,
+        flamethrower: false,
+        railgun: false,
+        grenade_launcher: false,
+        arc_coil: false
+      },
       ranks: { dmg: 0, fireRate: 0, speed: 0, maxHp: 0 },
       equipped: {},
       stash: []
@@ -3597,19 +3815,16 @@
   }
 
   function fitAll() {
-    const side = document.getElementById('sidebar');
-    const card = document.querySelector('.garage-card');
-    let size = Math.max(480, innerHeight - 60);
-    let z = Math.max(1, Math.min(2.6, size / 720));
-    size = Math.max(480, Math.min(size, innerWidth - 340 * z - 60));
-    z = Math.max(1, Math.min(2.6, size / 720));
-    size = Math.floor(size);
+    const wrapper = document.getElementById('game-wrapper');
+    const availH = Math.max(320, window.innerHeight - 24);
+    const availW = Math.max(320, window.innerWidth - 540);
+    const size = Math.floor(Math.min(availH, availW));
+    wrapper.style.width = size + 'px';
+    wrapper.style.height = size + 'px';
     fitCanvas(canvas, size, size);
-    fitCanvas(miniCanvas, 240, 145);
-    fitCanvas(document.getElementById('fuel-gauge'), 240, 120);
-    fitCanvas(document.getElementById('bike-canvas'), 300, 190);
-    side.style.zoom = z;
-    if (card) card.style.zoom = Math.max(1, size / 760);
+    fitCanvas(miniCanvas, 220, 135);
+    fitCanvas(document.getElementById('fuel-gauge'), 220, 110);
+    fitCanvas(document.getElementById('bike-canvas'), 260, 165);
     updateHUD();
     drawGarageBike();
   }
