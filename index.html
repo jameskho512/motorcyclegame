@@ -519,7 +519,10 @@
     </div>
 
     <div id="save-status" style="font-size:10px;color:#6b7089;text-align:center;">Autosave: local storage</div>
-    <button class="sidebar-btn" id="btn-open-garage">[G] Open Garage &amp; Tuning</button>
+    <div style="display:flex; gap:6px;">
+      <button class="sidebar-btn" id="btn-open-garage" style="flex:1;">[G] Garage &amp; Tuning</button>
+      <button class="sidebar-btn" id="btn-toggle-sound" style="padding:8px 10px;" title="Toggle Game Audio [M]">🔊 [M]</button>
+    </div>
   </aside>
 
   <!-- Center Square Room Playfield Canvas (Always fits 100% of vertical height!) -->
@@ -628,6 +631,262 @@
   const H = 720;  // 720
   const WALL = 58;          // Wall thickness on all 4 sides
   const DOOR_HALF = 42;     // Half-width of doorway opening
+
+  // --- PROCEDURAL WEB AUDIO SOUND SYNTHESIZER ---
+  const SFX = (() => {
+    let actx = null;
+    let masterGain = null;
+    let noiseBuffer = null;
+    let engOsc1 = null, engOsc2 = null, engGain = null, engFilter = null;
+    let muted = localStorage.getItem('moto_rogue_muted') === '1';
+    let lastFlameSfx = 0;
+    let lastHitSfx = 0;
+
+    function init() {
+      if (actx) {
+        if (actx.state === 'suspended') actx.resume();
+        return true;
+      }
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return false;
+      actx = new AC();
+      masterGain = actx.createGain();
+      masterGain.gain.value = muted ? 0 : 0.38;
+      masterGain.connect(actx.destination);
+
+      // White noise buffer for gunshots, flamethrower, explosions
+      const len = actx.sampleRate * 1.5;
+      noiseBuffer = actx.createBuffer(1, len, actx.sampleRate);
+      const data = noiseBuffer.getChannelData(0);
+      for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+
+      // Continuous twin-cylinder motorcycle engine hum
+      engOsc1 = actx.createOscillator();
+      engOsc2 = actx.createOscillator();
+      engFilter = actx.createBiquadFilter();
+      engGain = actx.createGain();
+
+      engOsc1.type = 'sawtooth';
+      engOsc2.type = 'triangle';
+      engOsc1.frequency.value = 46;
+      engOsc2.frequency.value = 92;
+
+      engFilter.type = 'lowpass';
+      engFilter.frequency.value = 180;
+      engGain.gain.value = 0.0001;
+
+      engOsc1.connect(engFilter);
+      engOsc2.connect(engFilter);
+      engFilter.connect(engGain);
+      engGain.connect(masterGain);
+
+      engOsc1.start();
+      engOsc2.start();
+      return true;
+    }
+
+    function updateMuteButton() {
+      const btn = document.getElementById('btn-toggle-sound');
+      if (btn) {
+        btn.textContent = muted ? '🔇 [M]' : '🔊 [M]';
+        btn.style.color = muted ? '#888' : '#7bdff2';
+      }
+    }
+
+    function toggleMute() {
+      muted = !muted;
+      try { localStorage.setItem('moto_rogue_muted', muted ? '1' : '0'); } catch (e) {}
+      if (!actx) init();
+      if (masterGain && actx) {
+        masterGain.gain.setTargetAtTime(muted ? 0 : 0.38, actx.currentTime, 0.02);
+      }
+      updateMuteButton();
+      if (!muted) uiClick();
+    }
+
+    function playTone(freqStart, freqEnd, dur, type = 'sine', vol = 0.25, delay = 0) {
+      if (muted || !init()) return;
+      const t0 = actx.currentTime + delay;
+      const osc = actx.createOscillator();
+      const g = actx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(Math.max(20, freqStart), t0);
+      if (freqEnd !== freqStart) {
+        osc.frequency.exponentialRampToValueAtTime(Math.max(20, freqEnd), t0 + dur);
+      }
+      g.gain.setValueAtTime(vol, t0);
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+      osc.connect(g);
+      g.connect(masterGain);
+      osc.start(t0);
+      osc.stop(t0 + dur + 0.01);
+    }
+
+    function playNoise(dur, filterFreq = 1200, filterType = 'bandpass', vol = 0.25, q = 1.0) {
+      if (muted || !init() || !noiseBuffer) return;
+      const t0 = actx.currentTime;
+      const src = actx.createBufferSource();
+      src.buffer = noiseBuffer;
+      const flt = actx.createBiquadFilter();
+      flt.type = filterType;
+      flt.frequency.setValueAtTime(filterFreq, t0);
+      flt.Q.value = q;
+      const g = actx.createGain();
+      g.gain.setValueAtTime(vol, t0);
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+      src.connect(flt);
+      flt.connect(g);
+      g.connect(masterGain);
+      src.start(t0, Math.random() * 0.5, dur + 0.02);
+    }
+
+    function shoot(weaponId) {
+      if (muted || !init()) return;
+      if (weaponId === 'pistol') {
+        playTone(520, 130, 0.09, 'triangle', 0.28);
+        playNoise(0.06, 1800, 'bandpass', 0.22, 1.2);
+      } else if (weaponId === 'machine_gun') {
+        const jitter = 0.94 + Math.random() * 0.12;
+        playTone(620 * jitter, 155, 0.065, 'sawtooth', 0.20);
+        playNoise(0.045, 2200, 'highpass', 0.16, 1.0);
+      } else if (weaponId === 'flamethrower') {
+        const now = performance.now();
+        if (now - lastFlameSfx < 65) return;
+        lastFlameSfx = now;
+        playNoise(0.14, 480 + Math.random() * 180, 'bandpass', 0.22, 0.7);
+      } else if (weaponId === 'grenade_launcher') {
+        playTone(195, 58, 0.18, 'sine', 0.38);
+        playNoise(0.11, 520, 'lowpass', 0.24, 1.5);
+      } else if (weaponId === 'shotgun') {
+        playTone(240, 48, 0.16, 'sawtooth', 0.36);
+        playNoise(0.15, 1100, 'lowpass', 0.38, 0.8);
+      } else if (weaponId === 'railgun') {
+        playTone(1480, 170, 0.24, 'sawtooth', 0.30);
+        playTone(2200, 420, 0.18, 'sine', 0.22);
+        playNoise(0.12, 3200, 'bandpass', 0.18, 2.0);
+      } else if (weaponId === 'arc_coil') {
+        playTone(780, 320, 0.13, 'sawtooth', 0.24);
+        playTone(1120, 1680, 0.09, 'square', 0.14);
+        playNoise(0.08, 3800, 'highpass', 0.18, 2.5);
+      }
+    }
+
+    function arcChain() {
+      playTone(1350, 480, 0.09, 'square', 0.15);
+      playNoise(0.06, 4200, 'bandpass', 0.14, 3.0);
+    }
+
+    function explosion() {
+      playTone(115, 28, 0.38, 'sawtooth', 0.44);
+      playNoise(0.42, 380, 'lowpass', 0.48, 0.9);
+    }
+
+    function hit(isCrit = false) {
+      const now = performance.now();
+      if (!isCrit && now - lastHitSfx < 45) return;
+      lastHitSfx = now;
+      if (isCrit) {
+        playTone(980, 1520, 0.09, 'triangle', 0.26);
+        playTone(620, 310, 0.07, 'sine', 0.20);
+      } else {
+        playTone(210, 95, 0.045, 'triangle', 0.14);
+      }
+    }
+
+    function enemyKill(isBoss = false) {
+      if (isBoss) {
+        explosion();
+        playTone(261.6, 523.2, 0.22, 'triangle', 0.28, 0.08);
+        playTone(329.6, 659.2, 0.25, 'triangle', 0.28, 0.18);
+        playTone(392.0, 784.0, 0.35, 'triangle', 0.32, 0.28);
+      } else {
+        playTone(310, 110, 0.08, 'sine', 0.18);
+        playNoise(0.06, 900, 'bandpass', 0.14, 1.2);
+      }
+    }
+
+    function playerHurt() {
+      playTone(185, 55, 0.26, 'sawtooth', 0.38);
+      playNoise(0.18, 650, 'lowpass', 0.32, 1.4);
+    }
+
+    function gameOverSound() {
+      playTone(240, 160, 0.22, 'sawtooth', 0.30, 0.0);
+      playTone(180, 115, 0.24, 'sawtooth', 0.30, 0.18);
+      playTone(130, 52,  0.48, 'sawtooth', 0.35, 0.36);
+    }
+
+    function pickupFuel() {
+      playTone(380, 580, 0.09, 'sine', 0.22, 0.0);
+      playTone(580, 780, 0.12, 'sine', 0.24, 0.07);
+    }
+
+    function pickupItem() {
+      playTone(523.25, 659.25, 0.09, 'triangle', 0.22, 0.0);
+      playTone(659.25, 783.99, 0.10, 'triangle', 0.22, 0.07);
+      playTone(783.99, 1046.5, 0.18, 'triangle', 0.25, 0.14);
+    }
+
+    function pickupLoot(rarityIdx = 0) {
+      const base = 440 + rarityIdx * 90;
+      playTone(base, base * 1.25, 0.10, 'triangle', 0.24, 0.0);
+      playTone(base * 1.25, base * 1.5, 0.12, 'triangle', 0.26, 0.08);
+      playTone(base * 1.5, base * 2.0, 0.22, 'triangle', 0.28, 0.16);
+    }
+
+    function shopBuy() {
+      playTone(587.3, 880, 0.09, 'triangle', 0.25, 0.0);
+      playTone(880, 1174.6, 0.16, 'triangle', 0.28, 0.08);
+    }
+
+    function shopError() {
+      playTone(160, 120, 0.10, 'sawtooth', 0.22, 0.0);
+      playTone(135, 95,  0.14, 'sawtooth', 0.22, 0.11);
+    }
+
+    function roomClear() {
+      playTone(440, 440, 0.12, 'triangle', 0.20, 0.0);
+      playTone(554.37, 554.37, 0.12, 'triangle', 0.20, 0.09);
+      playTone(659.25, 659.25, 0.24, 'triangle', 0.24, 0.18);
+    }
+
+    function doorTransition() {
+      playTone(220, 340, 0.09, 'sine', 0.15);
+    }
+
+    function nextFloor() {
+      playTone(420, 140, 0.32, 'sine', 0.26, 0.0);
+      playTone(560, 210, 0.32, 'triangle', 0.22, 0.06);
+    }
+
+    function uiClick() {
+      playTone(720, 480, 0.035, 'triangle', 0.14);
+    }
+
+    function updateEngine(speedRatio, isBoosting, paused) {
+      if (!actx || !engGain) return;
+      const now = actx.currentTime;
+      if (muted || paused) {
+        engGain.gain.setTargetAtTime(0.0001, now, 0.06);
+        return;
+      }
+      const f1 = 44 + speedRatio * 56 + (isBoosting ? 36 : 0);
+      const f2 = f1 * (isBoosting ? 2.5 : 2.0);
+      engOsc1.frequency.setTargetAtTime(f1, now, 0.05);
+      engOsc2.frequency.setTargetAtTime(f2, now, 0.05);
+      engFilter.frequency.setTargetAtTime(160 + speedRatio * 240 + (isBoosting ? 260 : 0), now, 0.05);
+      const targetVol = 0.025 + speedRatio * 0.055 + (isBoosting ? 0.045 : 0);
+      engGain.gain.setTargetAtTime(targetVol, now, 0.06);
+    }
+
+    setTimeout(updateMuteButton, 0);
+
+    return {
+      init, toggleMute, shoot, arcChain, explosion, hit, enemyKill,
+      playerHurt, gameOverSound, pickupFuel, pickupItem, pickupLoot,
+      shopBuy, shopError, roomClear, doorTransition, nextFloor, uiClick, updateEngine
+    };
+  })();
 
   // --- BALANCED WEAPON DEFINITIONS ---
   // If no special weapon is unlocked, player starts with pistol.
@@ -1007,9 +1266,11 @@
 
   function openShopConfirm(itemPickup, title, desc, cost) {
     if (player.coins < cost) {
+      SFX.shopError();
       addFloatingText(player.x, player.y - 25, `NEED ${cost} COINS!`, '#ff4d6d');
       return;
     }
+    SFX.uiClick();
     pendingShopPurchase = itemPickup;
     document.getElementById('shop-modal-name').textContent = title;
     document.getElementById('shop-modal-desc').textContent = desc;
@@ -1032,12 +1293,14 @@
     if (idx === -1) { closeShopConfirm(); return; }
 
     if (player.coins < p.cost) {
+      SFX.shopError();
       addFloatingText(player.x, player.y - 25, 'NOT ENOUGH COINS!', '#ff4d6d');
       closeShopConfirm();
       return;
     }
 
     player.coins -= p.cost;
+    SFX.shopBuy();
 
     if (p.type === 'shop_heart') {
       player.hp = Math.min(player.maxHp, player.hp + 2);
@@ -1064,7 +1327,8 @@
   }
 
   document.getElementById('btn-confirm-buy').onclick = executeShopPurchase;
-  document.getElementById('btn-cancel-buy').onclick = closeShopConfirm;
+  document.getElementById('btn-cancel-buy').onclick = () => { SFX.uiClick(); closeShopConfirm(); };
+  document.getElementById('btn-toggle-sound').onclick = () => SFX.toggleMute();
 
   function isWeaponAvailable(id) {
     return id === 'pistol' || saveState.unlocked[id] || player.runWeapons[id];
@@ -1083,8 +1347,13 @@
   const mouse = { x: W / 2, y: H / 2, down: false };
 
   window.addEventListener('keydown', e => {
+    SFX.init();
     const k = e.key.toLowerCase();
     keys[k] = true;
+    if (k === 'm') {
+      SFX.toggleMute();
+      return;
+    }
     if (document.getElementById('shop-confirm-overlay').classList.contains('visible')) {
       if (k === 'e' || k === 'enter' || k === ' ') {
         e.preventDefault();
@@ -1093,6 +1362,7 @@
       }
       if (k === 'escape') {
         e.preventDefault();
+        SFX.uiClick();
         closeShopConfirm();
         return;
       }
@@ -1126,6 +1396,7 @@
     mouse.y = (e.clientY - rect.top) * (H / rect.height);
   });
   canvas.addEventListener('mousedown', e => {
+    SFX.init();
     if (e.button === 0) mouse.down = true;
   });
   window.addEventListener('mouseup', e => {
@@ -1203,6 +1474,7 @@
 
   function selectWeapon(id) {
     if (!isWeaponAvailable(id)) return;
+    if (player.weapon !== id) SFX.uiClick();
     player.weapon = id;
     updateHUD();
   }
@@ -1540,6 +1812,7 @@
   function fireWeapon() {
     const w = WEAPONS[player.weapon];
     player.fireTimer = w.cooldown / (player.fireRateMult * (1 + 0.15 * (player.itemStacks.nitro_syringe || 0)));
+    SFX.shoot(player.weapon);
 
     const mx = player.x + Math.cos(player.aimAngle) * 20;
     const my = player.y + Math.sin(player.aimAngle) * 20;
@@ -1702,6 +1975,7 @@
   function triggerExplosion(x, y, radius, dmg) {
     const room = getCurrentRoom();
     screenShake = Math.max(screenShake, 8);
+    SFX.explosion();
 
     particles.push({
       x, y, vx: 0, vy: 0,
@@ -1758,6 +2032,7 @@
 
   function update(dt) {
     if (gameOver || document.getElementById('garage-overlay').classList.contains('visible') || document.getElementById('shop-confirm-overlay').classList.contains('visible')) {
+      SFX.updateEngine(0, false, true);
       return;
     }
 
@@ -1846,6 +2121,7 @@
 
     player.x += player.vx * dt;
     player.y += player.vy * dt;
+    SFX.updateEngine(Math.min(1.5, Math.hypot(player.vx, player.vy) / player.baseSpeed), boosting, false);
 
     for (const ob of room.obstacles) {
       resolveCircleAABB(player, ob.x, ob.y, ob.size, ob.size);
@@ -1949,10 +2225,13 @@
           const crowbar = player.itemStacks.tire_iron || 0;
           if (crowbar > 0 && en.hp > en.maxHp * 0.9) dmg *= 1 + 0.3 * crowbar;
           const crit = player.itemStacks.chrome_lens || 0;
+          let isCrit = false;
           if (crit > 0 && !b.isFlame && Math.random() < Math.min(0.8, 0.1 * crit)) {
             dmg *= 2;
+            isCrit = true;
             addFloatingText(en.x, en.y - en.radius - 12, 'CRIT!', '#4cc9f0');
           }
+          SFX.hit(isCrit);
           damageEnemy(en, dmg, false);
 
           // Shotgun knockback
@@ -1967,6 +2246,7 @@
             const chainTargets = room.enemies
               .filter(other => other.id !== en.id && other.hp > 0 && Math.hypot(other.x - en.x, other.y - en.y) <= 155)
               .slice(0, 3);
+            if (chainTargets.length > 0) SFX.arcChain();
             let fromX = en.x, fromY = en.y;
             for (const ct of chainTargets) {
               damageEnemy(ct, dmg * 0.65, false);
@@ -2095,6 +2375,7 @@
     if (!room.cleared && room.enemies.length === 0) {
       room.cleared = true;
       room.hazards = [];
+      SFX.roomClear();
       // Balanced Room Clear Reward: +2 Coins & +1 Scrap
       player.coins += 2;
       saveState.scrap += 1;
@@ -2138,6 +2419,7 @@
       if (Math.hypot(player.x - p.x, player.y - p.y) < player.radius + p.radius) {
         if (p.type === 'loot') {
           const R = RARITY[p.item.rarity];
+          SFX.pickupLoot(p.item.rarity);
           addLoot(p.item);
           const equippedNow = saveState.equipped[p.item.slot] === p.item;
           addFloatingText(p.x, p.y - 24, `${R.name.toUpperCase()}: ${p.item.name}`, R.color);
@@ -2145,11 +2427,13 @@
           room.pickups.splice(i, 1);
           updateHUD();
         } else if (p.type === 'item_drop') {
+          SFX.pickupItem();
           giveDropItem(p.itemId);
           room.pickups.splice(i, 1);
           updateHUD();
         } else if (p.type === 'heart') {
           if (player.hp < player.maxHp) {
+            SFX.pickupFuel();
             player.hp = Math.min(player.maxHp, player.hp + 1);
             addFloatingText(p.x, p.y, '+1 FUEL', '#ffd166');
             room.pickups.splice(i, 1);
@@ -2166,6 +2450,7 @@
             }
           } else {
             // Free mod pedestal in treasure or boss room
+            SFX.pickupItem();
             p.mod.apply(player);
             player.items.push(p.mod.name);
             addFloatingText(p.x, p.y - 12, `${p.mod.name.toUpperCase()}!`, '#ffd166');
@@ -2183,6 +2468,7 @@
 
     // Trapdoor to Next Floor
     if (room.trapdoor && Math.hypot(player.x - W / 2, player.y - (H / 2 - 45)) < player.radius + 24) {
+      SFX.nextFloor();
       floorNum++;
       addFloatingText(W / 2, H / 2, `DESCENDING TO FLOOR ${floorNum}...`, '#7bdff2');
       startNewRun(true);
@@ -2210,6 +2496,7 @@
   }
 
   function handleEnemyDeath(room, en, index) {
+    SFX.enemyKill(en.type === 'boss');
     spawnMuzzleParticles(en.x, en.y, 0, en.color, 12);
 
     // Splitter spawns 2 fast mini-swarmers on death!
@@ -2467,11 +2754,13 @@
     player.hp -= dmg;
     player.invuln = 1.05;
     screenShake = 9;
+    SFX.playerHurt();
     addFloatingText(player.x, player.y - 20, `-${dmg} HP`, '#ff4d6d');
     updateHUD();
 
     if (player.hp <= 0) {
       gameOver = true;
+      SFX.gameOverSound();
       clearRunSave();
       openGarage(true);
     }
@@ -2515,6 +2804,7 @@
   }
 
   function transitionRoom(dx, dy, newX, newY) {
+    SFX.doorTransition();
     curRoomX += dx;
     curRoomY += dy;
     const nextRoom = getCurrentRoom();
@@ -3585,6 +3875,7 @@
   }
 
   function toggleGarage() {
+    SFX.uiClick();
     const overlay = document.getElementById('garage-overlay');
     if (overlay.classList.contains('visible')) {
       if (gameOver) startNewRun(false);
@@ -3629,6 +3920,7 @@
           if (saveState.scrap >= w.cost) {
             saveState.scrap -= w.cost;
             saveState.unlocked[id] = true;
+            SFX.shopBuy();
             writeSave();
             selectWeapon(id);
             renderGarageLists();
@@ -3668,6 +3960,7 @@
           if (saveState.scrap >= cost) {
             saveState.scrap -= cost;
             saveState.ranks[up.id] = rank + 1;
+            SFX.shopBuy();
             writeSave();
             // Apply immediate bonus to current run too
             if (up.id === 'dmg') player.dmgMult += 0.10;
