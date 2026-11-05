@@ -216,6 +216,63 @@
       margin-bottom: 12px;
       line-height: 1.4;
     }
+    /* ---- Garage look: roller door, concrete walls, checker floor ---- */
+    .garage-card {
+      max-width: 860px !important;
+      background:
+        repeating-linear-gradient(0deg, rgba(255,255,255,0.03) 0 2px, transparent 2px 30px),
+        repeating-linear-gradient(90deg, rgba(0,0,0,0.18) 0 2px, transparent 2px 60px),
+        linear-gradient(#34373f, #24262c 45%, #191a1f);
+      border: 3px solid #5b606c !important;
+    }
+    .garage-door {
+      height: 58px;
+      margin: -20px -24px 12px;
+      border-radius: 7px 7px 0 0;
+      background: repeating-linear-gradient(180deg, #99a0aa 0 9px, #6a717b 9px 12px);
+      border-bottom: 5px solid #ffd60a;
+      position: relative;
+      box-shadow: inset 0 -12px 18px rgba(0,0,0,0.35);
+    }
+    .garage-door span {
+      position: absolute; left: 50%; top: 50%;
+      transform: translate(-50%, -50%);
+      background: #15161b; color: #ffd60a;
+      padding: 4px 16px; font-weight: 800; letter-spacing: 3px; font-size: 13px;
+      border: 2px solid #ffd60a; border-radius: 3px;
+    }
+    .bay {
+      display: grid;
+      grid-template-columns: 215px 1fr 215px;
+      gap: 10px;
+      align-items: center;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 8px;
+      border: 2px solid #444851;
+      background:
+        repeating-conic-gradient(#2b2d34 0% 25%, #23252b 0% 50%) 0 0 / 28px 28px;
+    }
+    .slot-col { display: flex; flex-direction: column; gap: 8px; }
+    .eq-slot {
+      text-align: left; cursor: pointer;
+      background: rgba(12,12,16,0.85);
+      border: 2px dashed #555b66; border-radius: 6px;
+      padding: 6px 8px; min-height: 62px;
+      transition: transform .1s;
+    }
+    .eq-slot:hover { transform: translateY(-1px); }
+    .eq-slot .sl-label { font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase; color: #8a8fa0; }
+    .eq-slot .sl-name { font-size: 12px; font-weight: 700; margin: 2px 0; }
+    .eq-slot .sl-stats { font-size: 10.5px; color: #aeb3c2; line-height: 1.3; }
+    #bike-canvas { width: 100%; height: auto; display: block; }
+    .stash { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; text-align: left; min-height: 30px; margin-bottom: 8px; }
+    .stash-item {
+      background: #1c1d23; border: 2px solid #555; border-radius: 5px;
+      padding: 5px 7px; cursor: pointer; font-size: 11px; color: #bbb;
+    }
+    .stash-item b { display: block; font-size: 11.5px; }
+    .stash-item:hover { background: #272932; }
     .garage-columns {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -303,7 +360,8 @@
 
     <!-- Garage / Meta-Progression / Run Over Modal -->
     <div id="garage-overlay">
-      <div class="overlay-card">
+      <div class="overlay-card garage-card">
+        <div class="garage-door"><span>GARAGE BAY 01</span></div>
         <h1 id="modal-title">MOTO-GARAGE &amp; WORKSHOP</h1>
         <p class="sub" id="modal-subtitle">
           Earn <strong>Scrap (⚙️)</strong> from enemies &amp; bosses to permanently unlock weapons and chassis upgrades.<br/>
@@ -312,6 +370,16 @@
         <div style="font-size:14px; color:#ffd166; font-weight:700; margin-bottom:4px;">
           Banked Scrap: <span id="modal-scrap">0</span> ⚙️
         </div>
+
+        <div class="garage-col-title" style="text-align:left;">Bike Equipment (boss loot) - click a slot to remove a part</div>
+        <div class="bay">
+          <div class="slot-col" id="slots-left"></div>
+          <canvas id="bike-canvas" width="300" height="190"></canvas>
+          <div class="slot-col" id="slots-right"></div>
+        </div>
+        <div id="eq-totals" style="font-size:12px;color:#7bdff2;margin-bottom:8px;"></div>
+        <div class="garage-col-title" style="text-align:left;">Parts Stash - click to install, right-click to sell for scrap</div>
+        <div class="stash" id="stash-list"></div>
 
         <div class="garage-columns">
           <div>
@@ -568,6 +636,124 @@
     addFloatingText(player.x, player.y - 28, `${it.name.toUpperCase()} x${player.itemStacks[id]}`, it.color);
   }
 
+  // --- BIKE EQUIPMENT (6 slots) & RARITY LOOT ---
+  const EQUIP_SLOTS = [
+    { id: 'tires',       label: 'Tires',       stat: 'speed'   },
+    { id: 'engine',      label: 'Engine',      stat: 'dmg'     },
+    { id: 'handlebars',  label: 'Handlebars',  stat: 'fireRate'},
+    { id: 'exhaust',     label: 'Exhaust',     stat: 'blast'   },
+    { id: 'frame',       label: 'Frame',       stat: 'hp'      },
+    { id: 'tank',        label: 'Fuel Tank',   stat: 'siphon'  }
+  ];
+  const RARITY = [
+    { id: 'common',    name: 'Common',    color: '#c9ced8', mult: 1.0, sell: 3 },
+    { id: 'magic',     name: 'Magic',     color: '#4895ef', mult: 1.8, sell: 8 },
+    { id: 'rare',      name: 'Rare',      color: '#ffd166', mult: 2.8, sell: 18 },
+    { id: 'legendary', name: 'Legendary', color: '#ff6b2b', mult: 4.2, sell: 40 }
+  ];
+  const STAT_BASE = { dmg: 0.06, fireRate: 0.05, speed: 0.05, blast: 0.08, hp: 1, siphon: 0.03 };
+  const STAT_LABELS = { dmg: 'Damage', fireRate: 'Fire Rate', speed: 'Speed', blast: 'Blast/Burn', hp: 'Max Fuel', siphon: 'Siphon' };
+  const LOOT_PREFIX = [
+    ['Stock', 'Worn', 'Standard'],
+    ['Tuned', 'Sport', 'Reinforced'],
+    ['Racing', 'Hyper', 'Carbon'],
+    ['Hellfire', 'Apex Predator', 'Mad Max', 'Valhalla']
+  ];
+  const MAX_STASH = 18;
+
+  function rollRarity(floor) {
+    const w = [Math.max(20, 55 - floor * 5), 30, 12 + floor * 2, 3 + floor * 1.5];
+    let r = Math.random() * w.reduce((a, b) => a + b, 0);
+    for (let i = 0; i < w.length; i++) { r -= w[i]; if (r <= 0) return i; }
+    return 0;
+  }
+
+  function genLoot(floor, forcedRarity) {
+    const r = forcedRarity !== undefined ? forcedRarity : rollRarity(floor);
+    const R = RARITY[r];
+    const slot = EQUIP_SLOTS[Math.floor(Math.random() * EQUIP_SLOTS.length)];
+    const scale = R.mult * (1 + 0.08 * (floor - 1));
+    const stats = {};
+    const addStat = (k, f) => {
+      let v = STAT_BASE[k] * scale * f;
+      v = k === 'hp' ? Math.max(1, Math.round(v)) : Math.round(v * 1000) / 1000;
+      stats[k] = (stats[k] || 0) + v;
+    };
+    addStat(slot.stat, 1);
+    const others = Object.keys(STAT_BASE).filter(k => k !== slot.stat).sort(() => Math.random() - 0.5);
+    const extra = [0, 0, 1, 2][r];
+    for (let i = 0; i < extra; i++) addStat(others[i], 0.6);
+    const pre = LOOT_PREFIX[r][Math.floor(Math.random() * LOOT_PREFIX[r].length)];
+    return { slot: slot.id, rarity: r, name: `${pre} ${slot.label}`, stats };
+  }
+
+  function itemScore(it) {
+    return Object.keys(it.stats).reduce((a, k) => a + it.stats[k] / STAT_BASE[k], 0);
+  }
+
+  function fmtStat(k, v) {
+    return k === 'hp' ? `+${v} ${STAT_LABELS[k]}` : `+${Math.round(v * 100)}% ${STAT_LABELS[k]}`;
+  }
+
+  function applyItemStats(it, sign) {
+    const s = it.stats;
+    if (s.dmg) player.dmgMult += sign * s.dmg;
+    if (s.fireRate) player.fireRateMult += sign * s.fireRate;
+    if (s.speed) player.speedMult += sign * s.speed;
+    if (s.blast) player.blastMult += sign * s.blast;
+    if (s.siphon) player.vampChance = Math.max(0, player.vampChance + sign * s.siphon);
+    if (s.hp) {
+      player.maxHp = Math.max(1, player.maxHp + sign * s.hp);
+      player.hp = Math.max(1, Math.min(player.maxHp, player.hp + (sign > 0 ? s.hp : 0)));
+    }
+  }
+
+  function equipItem(item) {
+    const idx = saveState.stash.indexOf(item);
+    if (idx >= 0) saveState.stash.splice(idx, 1);
+    const old = saveState.equipped[item.slot];
+    if (old) { applyItemStats(old, -1); saveState.stash.push(old); }
+    saveState.equipped[item.slot] = item;
+    applyItemStats(item, 1);
+    writeSave();
+    updateHUD();
+  }
+
+  function unequipSlot(slotId) {
+    const it = saveState.equipped[slotId];
+    if (!it) return;
+    applyItemStats(it, -1);
+    delete saveState.equipped[slotId];
+    saveState.stash.push(it);
+    writeSave();
+    updateHUD();
+  }
+
+  function sellItem(item) {
+    const idx = saveState.stash.indexOf(item);
+    if (idx < 0) return;
+    saveState.stash.splice(idx, 1);
+    saveState.scrap += RARITY[item.rarity].sell;
+    writeSave();
+    updateHUD();
+  }
+
+  function addLoot(item) {
+    const cur = saveState.equipped[item.slot];
+    if (!cur || itemScore(item) > itemScore(cur)) {
+      equipItem(item);
+    } else {
+      saveState.stash.push(item);
+    }
+    while (saveState.stash.length > MAX_STASH) {
+      // Auto-sell the weakest part when the stash is full
+      let worst = saveState.stash[0];
+      saveState.stash.forEach(s => { if (itemScore(s) < itemScore(worst)) worst = s; });
+      sellItem(worst);
+    }
+    writeSave();
+  }
+
   // --- PERSISTENT META STATE ---
   let saveState = {
     scrap: 0,
@@ -581,7 +767,9 @@
       fireRate: 0,
       speed: 0,
       maxHp: 0
-    }
+    },
+    equipped: {},
+    stash: []
   };
 
   function loadSave() {
@@ -590,6 +778,8 @@
       if (raw) {
         const parsed = JSON.parse(raw);
         saveState.scrap = parsed.scrap || 0;
+        saveState.equipped = parsed.equipped || {};
+        saveState.stash = parsed.stash || [];
         if (parsed.unlocked) {
           UNLOCKABLE_IDS.forEach(id => {
             saveState.unlocked[id] = !!parsed.unlocked[id];
@@ -715,6 +905,8 @@
     player.multiShot = 1;
     player.vampChance = 0;
     player.maxHp = 6 + saveState.ranks.maxHp;
+    player.hp = player.maxHp;
+    Object.values(saveState.equipped).forEach(it => applyItemStats(it, 1));
     player.hp = player.maxHp;
     player.coins = 0;
     player.runWeapons = {};
@@ -1523,7 +1715,15 @@
     for (let i = room.pickups.length - 1; i >= 0; i--) {
       const p = room.pickups[i];
       if (Math.hypot(player.x - p.x, player.y - p.y) < player.radius + p.radius) {
-        if (p.type === 'item_drop') {
+        if (p.type === 'loot') {
+          const R = RARITY[p.item.rarity];
+          addLoot(p.item);
+          const equippedNow = saveState.equipped[p.item.slot] === p.item;
+          addFloatingText(p.x, p.y - 24, `${R.name.toUpperCase()}: ${p.item.name}`, R.color);
+          addFloatingText(p.x, p.y - 8, equippedNow ? 'EQUIPPED' : 'SENT TO GARAGE STASH', '#fff');
+          room.pickups.splice(i, 1);
+          updateHUD();
+        } else if (p.type === 'item_drop') {
           giveDropItem(p.itemId);
           room.pickups.splice(i, 1);
           updateHUD();
@@ -1633,6 +1833,14 @@
       writeSave();
       addFloatingText(en.x, en.y - 10, `+${bossCoins} 🪙  +${bossScrap} ⚙️`, '#ffd166');
       room.pickups.push({ x: en.x, y: en.y, type: 'heart', radius: 13 });
+      // Boss loot: Common / Magic / Rare / Legendary equipment part
+      room.pickups.push({
+        x: Math.max(WALL + 40, Math.min(W - WALL - 40, en.x + 70)),
+        y: en.y,
+        type: 'loot',
+        item: genLoot(floorNum),
+        radius: 20
+      });
     } else if (en.type !== 'mini_swarmer') {
       if (Math.random() < 0.65) {
         const c = en.isElite ? 3 : 1;
@@ -2060,7 +2268,24 @@
     for (const p of room.pickups) {
       ctx.save();
       ctx.textAlign = 'center';
-      if (p.type === 'item_drop') {
+      if (p.type === 'loot') {
+        // Rarity-colored glowing loot crate
+        const R = RARITY[p.item.rarity];
+        const t = performance.now() / 300;
+        ctx.save();
+        ctx.shadowColor = R.color;
+        ctx.shadowBlur = 14 + Math.sin(t) * 6;
+        ctx.fillStyle = '#23252e';
+        ctx.strokeStyle = R.color;
+        ctx.lineWidth = 3;
+        ctx.fillRect(p.x - 17, p.y - 13, 34, 26);
+        ctx.strokeRect(p.x - 17, p.y - 13, 34, 26);
+        ctx.restore();
+        ctx.fillStyle = R.color;
+        ctx.fillRect(p.x - 17, p.y - 3, 34, 4);
+        ctx.font = 'bold 11px sans-serif';
+        ctx.fillText(`${R.name} ${p.item.name}`, p.x, p.y - 22);
+      } else if (p.type === 'item_drop') {
         // Mechanic's toolbox crate
         const it = DROP_ITEMS[p.itemId];
         const bob = Math.sin(performance.now() / 250) * 2;
@@ -2229,6 +2454,188 @@
     drawMinimap();
   }
 
+  // Road-raging muscle car boss (drawn top-down, already translated to boss position)
+  function drawBossCar(en) {
+    const t = performance.now() / 1000;
+    const raging = en.aiTimer < 0.4;
+    const shake = raging ? 1.8 : 0.6;
+    ctx.rotate(en.angle);
+    ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+    const body = en.burnTimer > 0 ? '#ff6b2b' : en.color;
+
+    // Wheels
+    ctx.fillStyle = '#0a0a0c';
+    [[-28, -29], [24, -29], [-28, 23], [24, 23]].forEach(([wx, wy]) => ctx.fillRect(wx, wy, 18, 8));
+
+    // Body
+    ctx.fillStyle = body;
+    ctx.strokeStyle = '#111';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.roundRect(-46, -23, 92, 46, 10);
+    ctx.fill();
+    ctx.stroke();
+
+    // Racing stripes
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    ctx.fillRect(-44, -6, 88, 4);
+    ctx.fillRect(-44, 2, 88, 4);
+
+    // Windshield / roof / rear window
+    ctx.fillStyle = '#1b2530';
+    ctx.fillRect(4, -17, 14, 34);
+    ctx.fillRect(-34, -16, 10, 32);
+    ctx.fillStyle = body;
+    ctx.fillRect(-22, -15, 26, 30);
+    ctx.strokeRect(-22, -15, 26, 30);
+
+    // Angry driver silhouette with fist out the window
+    ctx.fillStyle = '#f1c27d';
+    ctx.beginPath();
+    ctx.arc(-9, 0, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillRect(-4, -22 - Math.sin(t * 20) * (raging ? 3 : 0.5), 8, 6);
+
+    // Hood scoop
+    ctx.fillStyle = '#111';
+    ctx.fillRect(22, -7, 16, 14);
+
+    // Spiked bumper
+    ctx.fillStyle = '#c9ced8';
+    for (let i = -3; i <= 3; i++) {
+      ctx.beginPath();
+      ctx.moveTo(46, i * 6 - 3);
+      ctx.lineTo(56, i * 6);
+      ctx.lineTo(46, i * 6 + 3);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Angry headlights with slanted brows
+    ctx.fillStyle = raging ? '#ff4d6d' : '#fff3b0';
+    ctx.beginPath(); ctx.arc(43, -15, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(43, 15, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#111';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(38, -23); ctx.lineTo(48, -11); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(38, 23); ctx.lineTo(48, 11); ctx.stroke();
+
+    // Taillights
+    ctx.fillStyle = '#ff1744';
+    ctx.fillRect(-47, -20, 3, 7);
+    ctx.fillRect(-47, 13, 3, 7);
+
+    // Exhaust flames out the back
+    const fl = 8 + Math.random() * 10 + (raging ? 8 : 0);
+    ctx.fillStyle = Math.random() < 0.5 ? '#ff9f1c' : '#ff5400';
+    ctx.beginPath(); ctx.moveTo(-47, -9); ctx.lineTo(-47 - fl, -7); ctx.lineTo(-47, -4); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-47, 9); ctx.lineTo(-47 - fl, 7); ctx.lineTo(-47, 4); ctx.fill();
+
+    // Rage steam puffs
+    if (raging) {
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      for (let i = 0; i < 3; i++) {
+        ctx.beginPath();
+        ctx.arc(10 + i * 8, -28 - Math.random() * 8, 3 + Math.random() * 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  // --- GARAGE EQUIPMENT UI ---
+  function drawGarageBike() {
+    const c = document.getElementById('bike-canvas');
+    const g = c.getContext('2d');
+    g.clearRect(0, 0, c.width, c.height);
+    const colOf = id => saveState.equipped[id] ? RARITY[saveState.equipped[id].rarity].color : '#5b606c';
+    const glow = id => { const it = saveState.equipped[id]; g.shadowColor = it ? RARITY[it.rarity].color : 'transparent'; g.shadowBlur = it && it.rarity >= 2 ? 14 : 0; };
+
+    // Lift platform
+    g.fillStyle = '#3a3d46'; g.fillRect(20, 168, 260, 10);
+    g.fillStyle = '#ffd60a';
+    for (let x = 20; x < 280; x += 26) g.fillRect(x, 168, 13, 10);
+
+    g.lineCap = 'round';
+    // Frame
+    g.save(); glow('frame');
+    g.strokeStyle = colOf('frame'); g.lineWidth = 7;
+    g.beginPath(); g.moveTo(70, 130); g.lineTo(140, 95); g.lineTo(205, 70); g.lineTo(232, 130); g.moveTo(140, 95); g.lineTo(110, 70); g.lineTo(70, 130);
+    g.stroke(); g.restore();
+    // Tires
+    g.save(); glow('tires');
+    g.strokeStyle = colOf('tires'); g.lineWidth = 9;
+    [[70, 130], [232, 130]].forEach(([x, y]) => { g.beginPath(); g.arc(x, y, 34, 0, Math.PI * 2); g.stroke(); });
+    g.restore();
+    g.fillStyle = '#999';
+    [[70, 130], [232, 130]].forEach(([x, y]) => { g.beginPath(); g.arc(x, y, 7, 0, Math.PI * 2); g.fill(); });
+    // Engine
+    g.save(); glow('engine');
+    g.fillStyle = colOf('engine'); g.fillRect(118, 98, 50, 36);
+    g.fillStyle = '#111'; for (let i = 0; i < 4; i++) g.fillRect(122 + i * 11, 100, 6, 8);
+    g.restore();
+    // Fuel tank
+    g.save(); glow('tank');
+    g.fillStyle = colOf('tank');
+    g.beginPath(); g.ellipse(150, 82, 32, 14, -0.15, 0, Math.PI * 2); g.fill();
+    g.restore();
+    // Handlebars
+    g.save(); glow('handlebars');
+    g.strokeStyle = colOf('handlebars'); g.lineWidth = 6;
+    g.beginPath(); g.moveTo(205, 70); g.lineTo(198, 42); g.lineTo(178, 36); g.stroke();
+    g.restore();
+    // Exhaust
+    g.save(); glow('exhaust');
+    g.strokeStyle = colOf('exhaust'); g.lineWidth = 8;
+    g.beginPath(); g.moveTo(125, 128); g.lineTo(90, 140); g.lineTo(34, 142); g.stroke();
+    g.restore();
+    // Seat
+    g.fillStyle = '#16161a'; g.fillRect(84, 66, 46, 9);
+  }
+
+  function renderEquipment() {
+    const slotHTML = s => {
+      const it = saveState.equipped[s.id];
+      if (!it) {
+        return `<div class="eq-slot" data-slot="${s.id}"><div class="sl-label">${s.label}</div><div class="sl-name" style="color:#666;">- empty -</div><div class="sl-stats">Boss loot drops here</div></div>`;
+      }
+      const R = RARITY[it.rarity];
+      const stats = Object.keys(it.stats).map(k => fmtStat(k, it.stats[k])).join('<br/>');
+      return `<div class="eq-slot" data-slot="${s.id}" style="border:2px solid ${R.color};box-shadow:0 0 ${it.rarity * 4}px ${R.color}55;"><div class="sl-label">${s.label} - ${R.name}</div><div class="sl-name" style="color:${R.color};">${it.name}</div><div class="sl-stats">${stats}</div></div>`;
+    };
+    document.getElementById('slots-left').innerHTML = EQUIP_SLOTS.slice(0, 3).map(slotHTML).join('');
+    document.getElementById('slots-right').innerHTML = EQUIP_SLOTS.slice(3).map(slotHTML).join('');
+    document.querySelectorAll('.eq-slot').forEach(el => {
+      el.onclick = () => { unequipSlot(el.dataset.slot); renderGarageLists(); };
+    });
+
+    // Totals from equipment
+    const tot = {};
+    Object.values(saveState.equipped).forEach(it => Object.keys(it.stats).forEach(k => { tot[k] = (tot[k] || 0) + it.stats[k]; }));
+    const keys = Object.keys(tot);
+    document.getElementById('eq-totals').textContent = keys.length
+      ? 'Equipment bonus: ' + keys.map(k => fmtStat(k, Math.round(tot[k] * 1000) / 1000)).join('  |  ')
+      : 'No equipment installed - defeat bosses to find parts.';
+
+    // Stash
+    const sl = document.getElementById('stash-list');
+    sl.innerHTML = '';
+    if (saveState.stash.length === 0) {
+      sl.innerHTML = '<span style="color:#666;font-size:11px;">Stash empty.</span>';
+    }
+    saveState.stash.forEach(it => {
+      const R = RARITY[it.rarity];
+      const slotLabel = EQUIP_SLOTS.find(s => s.id === it.slot).label;
+      const el = document.createElement('div');
+      el.className = 'stash-item';
+      el.style.borderColor = R.color;
+      el.innerHTML = `<b style="color:${R.color}">${it.name}</b>${R.name} ${slotLabel}<br/>${Object.keys(it.stats).map(k => fmtStat(k, it.stats[k])).join(', ')}<br/><span style="color:#ffd166">Sell: ${R.sell} scrap</span>`;
+      el.onclick = () => { equipItem(it); renderGarageLists(); };
+      el.oncontextmenu = ev => { ev.preventDefault(); sellItem(it); renderGarageLists(); };
+      sl.appendChild(el);
+    });
+    drawGarageBike();
+  }
+
   function drawEnemy(en) {
     ctx.save();
     ctx.translate(en.x, en.y);
@@ -2244,6 +2651,21 @@
       ctx.lineTo(Math.cos(en.angle) * 260, Math.sin(en.angle) * 260);
       ctx.stroke();
       ctx.restore();
+    }
+
+    if (en.type === 'boss') {
+      drawBossCar(en);
+      ctx.restore();
+      const bw = 90;
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.fillRect(en.x - bw / 2, en.y - 52, bw, 6);
+      ctx.fillStyle = '#ef233c';
+      ctx.fillRect(en.x - bw / 2, en.y - 52, bw * Math.max(0, en.hp / en.maxHp), 6);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(en.name, en.x, en.y - 58);
+      return;
     }
 
     ctx.fillStyle = en.burnTimer > 0 ? '#ff6b2b' : en.color;
@@ -2585,6 +3007,8 @@
   function renderGarageLists() {
     document.getElementById('modal-scrap').textContent = saveState.scrap;
 
+    renderEquipment();
+
     // 1. Permanent Weapon Unlocks
     const wList = document.getElementById('unlock-list');
     wList.innerHTML = '';
@@ -2686,7 +3110,9 @@
     saveState = {
       scrap: 0,
       unlocked: { machine_gun: false, flamethrower: false, grenade_launcher: false },
-      ranks: { dmg: 0, fireRate: 0, speed: 0, maxHp: 0 }
+      ranks: { dmg: 0, fireRate: 0, speed: 0, maxHp: 0 },
+      equipped: {},
+      stash: []
     };
     writeSave();
     startNewRun(false);
