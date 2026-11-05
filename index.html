@@ -340,7 +340,7 @@
         <span>Hull Integrity</span>
         <span id="hp-text" style="color:#ff4d6d;">6 / 6</span>
       </div>
-      <div class="hp-bar-row" id="hp-display"></div>
+      <canvas id="fuel-gauge" width="240" height="120" style="display:block;margin:0 auto 6px;"></canvas>
       <div class="currency-row">
         <span>Run Coins: <strong id="coin-count" style="color:#ffd166;">0 🪙</strong></span>
         <span>Scrap: <strong id="scrap-count" style="color:#7bdff2;">0 ⚙️</strong></span>
@@ -550,6 +550,24 @@
     }
   ];
 
+  // --- RISK OF RAIN 2-STYLE STACKING DROP ITEMS (motorcycle-themed) ---
+  // Dropped by enemies in toolbox crates; each pickup stacks.
+  const DROP_ITEMS = {
+    nitro_syringe: { id: 'nitro_syringe', name: 'Nitro Syringe', desc: '+15% fire rate per stack', color: '#ff9f1c', icon: 'N' },      // Soldier's Syringe
+    tire_iron:     { id: 'tire_iron',     name: 'Tire Iron',     desc: '+30% dmg to enemies above 90% HP', color: '#adb5bd', icon: 'T' }, // Crowbar
+    chrome_lens:   { id: 'chrome_lens',   name: 'Chrome Lens',   desc: '+10% crit chance (2x dmg)', color: '#4cc9f0', icon: 'C' },       // Lens-Maker's Glasses
+    gasoline:      { id: 'gasoline',      name: 'Spilled Gasoline', desc: 'Kills explode in flames', color: '#ff5400', icon: 'G' },     // Gasoline
+    racing_slicks: { id: 'racing_slicks', name: 'Racing Slicks', desc: '+10% bike speed per stack', color: '#06d6a0', icon: 'S' },       // Paul's Goat Hoof
+    oil_infusion:  { id: 'oil_infusion',  name: 'Oil Infusion',  desc: 'Every 15 kills: +1 max fuel', color: '#9d4edd', icon: 'O' }      // Infusion
+  };
+  const DROP_ITEM_IDS = Object.keys(DROP_ITEMS);
+
+  function giveDropItem(id) {
+    const it = DROP_ITEMS[id];
+    player.itemStacks[id] = (player.itemStacks[id] || 0) + 1;
+    addFloatingText(player.x, player.y - 28, `${it.name.toUpperCase()} x${player.itemStacks[id]}`, it.color);
+  }
+
   // --- PERSISTENT META STATE ---
   let saveState = {
     scrap: 0,
@@ -681,7 +699,9 @@
     bounce: 0,
     multiShot: 1,
     vampChance: 0,
-    items: []
+    items: [],
+    itemStacks: {},
+    killCount: 0
   };
 
   function resetPlayerStatsForRun() {
@@ -699,6 +719,8 @@
     player.coins = 0;
     player.runWeapons = {};
     player.items = [];
+    player.itemStacks = {};
+    player.killCount = 0;
     player.weapon = getStartingWeapon();
   }
 
@@ -1037,7 +1059,7 @@
   // --- BALANCED WEAPON FIRING ---
   function fireWeapon() {
     const w = WEAPONS[player.weapon];
-    player.fireTimer = w.cooldown / player.fireRateMult;
+    player.fireTimer = w.cooldown / (player.fireRateMult * (1 + 0.15 * (player.itemStacks.nitro_syringe || 0)));
 
     const mx = player.x + Math.cos(player.aimAngle) * 20;
     const my = player.y + Math.sin(player.aimAngle) * 20;
@@ -1211,7 +1233,7 @@
     if (keys['a'] || keys['arrowleft']) ix -= 1;
     if (keys['d'] || keys['arrowright']) ix += 1;
 
-    const effSpeed = player.baseSpeed * player.speedMult;
+    const effSpeed = player.baseSpeed * player.speedMult * (1 + 0.10 * (player.itemStacks.racing_slicks || 0));
     if (ix !== 0 || iy !== 0) {
       const len = Math.hypot(ix, iy);
       ix /= len;
@@ -1339,6 +1361,13 @@
           let dmg = b.dmg;
           if (en.type === 'brute' && !b.isFlame) {
             dmg *= 0.65;
+          }
+          const crowbar = player.itemStacks.tire_iron || 0;
+          if (crowbar > 0 && en.hp > en.maxHp * 0.9) dmg *= 1 + 0.3 * crowbar;
+          const crit = player.itemStacks.chrome_lens || 0;
+          if (crit > 0 && !b.isFlame && Math.random() < Math.min(0.8, 0.1 * crit)) {
+            dmg *= 2;
+            addFloatingText(en.x, en.y - en.radius - 12, 'CRIT!', '#4cc9f0');
           }
           damageEnemy(en, dmg, false);
 
@@ -1494,10 +1523,14 @@
     for (let i = room.pickups.length - 1; i >= 0; i--) {
       const p = room.pickups[i];
       if (Math.hypot(player.x - p.x, player.y - p.y) < player.radius + p.radius) {
-        if (p.type === 'heart') {
+        if (p.type === 'item_drop') {
+          giveDropItem(p.itemId);
+          room.pickups.splice(i, 1);
+          updateHUD();
+        } else if (p.type === 'heart') {
           if (player.hp < player.maxHp) {
             player.hp = Math.min(player.maxHp, player.hp + 1);
-            addFloatingText(p.x, p.y, '+1 HP', '#ff4d6d');
+            addFloatingText(p.x, p.y, '+1 FUEL', '#ffd166');
             room.pickups.splice(i, 1);
             updateHUD();
           }
@@ -1563,6 +1596,24 @@
     if (en.type === 'splitter') {
       room.enemies.push(createEnemy('mini_swarmer', en.x - 14, en.y, floorNum, false));
       room.enemies.push(createEnemy('mini_swarmer', en.x + 14, en.y, floorNum, false));
+    }
+
+    // --- Drop-item effects ---
+    const gas = player.itemStacks.gasoline || 0;
+    if (gas > 0) {
+      triggerExplosion(en.x, en.y, 50 + 14 * gas, 10 + 8 * gas);
+    }
+    player.killCount++;
+    const inf = player.itemStacks.oil_infusion || 0;
+    if (inf > 0 && player.killCount % 15 === 0 && player.maxHp < 20) {
+      player.maxHp += inf;
+      player.hp = Math.min(player.maxHp, player.hp + inf);
+      addFloatingText(player.x, player.y - 18, `+${inf} MAX FUEL`, '#9d4edd');
+    }
+    // Item toolbox drop: bosses guaranteed, elites 30%, others 4%
+    if (en.type === 'boss' || (en.type !== 'mini_swarmer' && Math.random() < (en.isElite ? 0.30 : 0.04))) {
+      const id = DROP_ITEM_IDS[Math.floor(Math.random() * DROP_ITEM_IDS.length)];
+      room.pickups.push({ x: en.x, y: en.y + (en.type === 'boss' ? -40 : 0), type: 'item_drop', itemId: id, radius: 16 });
     }
 
     // Vampiric Siphon mod check
@@ -2009,14 +2060,34 @@
     for (const p of room.pickups) {
       ctx.save();
       ctx.textAlign = 'center';
-      if (p.type === 'heart' || p.type === 'shop_heart') {
-        ctx.fillStyle = '#ff4d6d';
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 12, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#fff';
+      if (p.type === 'item_drop') {
+        // Mechanic's toolbox crate
+        const it = DROP_ITEMS[p.itemId];
+        const bob = Math.sin(performance.now() / 250) * 2;
+        ctx.fillStyle = '#3a3d4d';
+        ctx.strokeStyle = it.color;
+        ctx.lineWidth = 2.5;
+        ctx.fillRect(p.x - 15, p.y - 10 + bob, 30, 20);
+        ctx.strokeRect(p.x - 15, p.y - 10 + bob, 30, 20);
+        ctx.strokeRect(p.x - 6, p.y - 15 + bob, 12, 5);
+        ctx.fillStyle = it.color;
+        ctx.font = 'bold 13px sans-serif';
+        ctx.fillText(it.icon, p.x, p.y + 5 + bob);
         ctx.font = 'bold 10px sans-serif';
-        ctx.fillText('+HP', p.x, p.y + 4);
+        ctx.fillText(it.name, p.x, p.y - 22 + bob);
+      } else if (p.type === 'heart' || p.type === 'shop_heart') {
+        // Red jerry-can (gasoline can)
+        ctx.fillStyle = '#d62828';
+        ctx.strokeStyle = '#ffd166';
+        ctx.lineWidth = 2;
+        ctx.fillRect(p.x - 10, p.y - 11, 20, 24);
+        ctx.strokeRect(p.x - 10, p.y - 11, 20, 24);
+        ctx.fillStyle = '#ffd166';
+        ctx.fillRect(p.x - 10, p.y - 15, 8, 5); // spout
+        ctx.fillRect(p.x + 1, p.y - 15, 9, 4);  // handle
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.fillText('⛽', p.x, p.y + 6);
         if (p.cost) {
           ctx.fillStyle = '#ffd166';
           ctx.font = 'bold 12px sans-serif';
@@ -2370,17 +2441,7 @@
   // --- SIDEBAR HUD & GARAGE UI ---
   function updateHUD() {
     document.getElementById('hp-text').textContent = `${player.hp} / ${player.maxHp}`;
-    const hpEl = document.getElementById('hp-display');
-    hpEl.innerHTML = '';
-    for (let i = 0; i < player.maxHp; i++) {
-      const pip = document.createElement('div');
-      pip.style.width = '18px';
-      pip.style.height = '11px';
-      pip.style.borderRadius = '2px';
-      pip.style.background = i < player.hp ? '#ff4d6d' : '#2b2b3a';
-      pip.style.border = '1px solid #ff758f';
-      hpEl.appendChild(pip);
-    }
+    drawFuelGauge();
 
     document.getElementById('coin-count').textContent = `${player.coins} 🪙`;
     document.getElementById('scrap-count').textContent = `${saveState.scrap} ⚙️`;
@@ -2415,11 +2476,90 @@
 
     // Installed Run Mods
     const itemsEl = document.getElementById('items-list');
-    if (player.items.length === 0) {
-      itemsEl.innerHTML = '<span style="color:#666; font-size:11px;">None yet — visit ★ or $ rooms!</span>';
-    } else {
-      itemsEl.innerHTML = player.items.map(name => `<span class="item-badge">${name}</span>`).join('');
+    const stackBadges = Object.keys(player.itemStacks).map(id => {
+      const it = DROP_ITEMS[id];
+      return `<span class="item-badge" style="color:${it.color}" title="${it.desc}">${it.name} x${player.itemStacks[id]}</span>`;
+    });
+    const modBadges = player.items.map(name => `<span class="item-badge">${name}</span>`);
+    const all = stackBadges.concat(modBadges);
+    itemsEl.innerHTML = all.length === 0
+      ? '<span style="color:#666; font-size:11px;">None yet — kill enemies for toolbox drops!</span>'
+      : all.join('');
+  }
+
+  // Fuel gauge: semicircular dial, E (empty) -> F (full), needle tracks HP
+  function drawFuelGauge() {
+    const gc = document.getElementById('fuel-gauge');
+    const g = gc.getContext('2d');
+    const cw = gc.width, ch = gc.height;
+    const cx = cw / 2, cy = ch - 14, r = 92;
+    const frac = Math.max(0, Math.min(1, player.hp / player.maxHp));
+    g.clearRect(0, 0, cw, ch);
+
+    // Bezel & face
+    g.beginPath();
+    g.arc(cx, cy, r + 8, Math.PI, 0);
+    g.closePath();
+    g.fillStyle = '#2a2b36';
+    g.fill();
+    g.strokeStyle = '#adb5bd';
+    g.lineWidth = 3;
+    g.stroke();
+    g.beginPath();
+    g.arc(cx, cy, r, Math.PI, 0);
+    g.closePath();
+    g.fillStyle = '#0e0f14';
+    g.fill();
+
+    // Colored arc (red low -> amber -> green)
+    const grad = g.createLinearGradient(cx - r, 0, cx + r, 0);
+    grad.addColorStop(0, '#e63946');
+    grad.addColorStop(0.35, '#ff9f1c');
+    grad.addColorStop(1, '#06d6a0');
+    g.beginPath();
+    g.arc(cx, cy, r - 10, Math.PI, Math.PI + Math.PI * frac);
+    g.strokeStyle = grad;
+    g.lineWidth = 8;
+    g.stroke();
+
+    // Tick marks (one per max HP)
+    g.strokeStyle = '#cfd3dc';
+    g.lineWidth = 2;
+    for (let i = 0; i <= player.maxHp; i++) {
+      const a = Math.PI + (i / player.maxHp) * Math.PI;
+      const major = i === 0 || i === player.maxHp || i * 2 === player.maxHp;
+      const r1 = r - (major ? 24 : 20), r2 = r - 14;
+      g.beginPath();
+      g.moveTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
+      g.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2);
+      g.stroke();
     }
+
+    // Labels
+    g.fillStyle = '#e63946';
+    g.font = 'bold 16px sans-serif';
+    g.textAlign = 'center';
+    g.fillText('E', cx - r + 26, cy - 8);
+    g.fillStyle = '#06d6a0';
+    g.fillText('F', cx + r - 26, cy - 8);
+    g.fillStyle = '#ffd166';
+    g.font = '15px sans-serif';
+    g.fillText('⛽', cx, cy - 48);
+
+    // Needle (wobbles when low)
+    const low = frac <= 0.34;
+    const wob = low ? Math.sin(performance.now() / 70) * 0.03 : 0;
+    const na = Math.PI + frac * Math.PI + wob;
+    g.strokeStyle = low ? '#ff4d6d' : '#ff6b2b';
+    g.lineWidth = 3;
+    g.beginPath();
+    g.moveTo(cx, cy);
+    g.lineTo(cx + Math.cos(na) * (r - 16), cy + Math.sin(na) * (r - 16));
+    g.stroke();
+    g.fillStyle = '#adb5bd';
+    g.beginPath();
+    g.arc(cx, cy, 6, 0, Math.PI * 2);
+    g.fill();
   }
 
   function openGarage(isDead = false) {
