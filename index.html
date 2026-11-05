@@ -273,6 +273,13 @@
     }
     .stash-item b { display: block; font-size: 11.5px; }
     .stash-item:hover { background: #272932; }
+    /* Hover tooltip */
+    #tooltip {
+      position: fixed; display: none; pointer-events: none; z-index: 1000;
+      background: #10101a; color: #e6e8f0; border: 1px solid #ffd166;
+      border-radius: 6px; padding: 7px 10px; font-size: 12.5px; line-height: 1.4;
+      max-width: 270px; box-shadow: 0 6px 20px rgba(0,0,0,0.7);
+    }
     .garage-columns {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -409,6 +416,12 @@
         <span id="hp-text" style="color:#ff4d6d;">6 / 6</span>
       </div>
       <canvas id="fuel-gauge" width="240" height="120" style="display:block;margin:0 auto 6px;"></canvas>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;" data-tip="<b style='color:#4cc9f0'>NOS</b><br/>Hold SHIFT while moving for +70% speed. Drains NOS; recharges when not boosting. Empty tank locks until 25%.">
+        <span style="font-size:11px;font-weight:700;color:#4cc9f0;letter-spacing:1px;">NOS</span>
+        <div style="flex:1;height:10px;background:#0e0f14;border:1px solid #3b6e86;border-radius:5px;overflow:hidden;">
+          <div id="nos-fill" style="height:100%;width:100%;background:linear-gradient(90deg,#4895ef,#4cc9f0);"></div>
+        </div>
+      </div>
       <div class="currency-row">
         <span>Run Coins: <strong id="coin-count" style="color:#ffd166;">0 🪙</strong></span>
         <span>Scrap: <strong id="scrap-count" style="color:#7bdff2;">0 ⚙️</strong></span>
@@ -448,10 +461,12 @@
       </div>
     </div>
 
+    <div id="save-status" style="font-size:10px;color:#6b7089;text-align:center;">Autosave: local storage</div>
     <button class="sidebar-btn" id="btn-open-garage">[G] Open Garage &amp; Tuning</button>
   </aside>
 </div>
 
+<div id="tooltip"></div>
 <script>
 (() => {
   const canvas = document.getElementById('canvas');
@@ -459,8 +474,8 @@
   const miniCanvas = document.getElementById('minimap-canvas');
   const miniCtx = miniCanvas.getContext('2d');
 
-  const W = canvas.width;   // 720 — square room canvas
-  const H = canvas.height;  // 720
+  const W = 720;   // 720 — square room canvas
+  const H = 720;  // 720
   const WALL = 58;          // Wall thickness on all 4 sides
   const DOOR_HALF = 42;     // Half-width of doorway opening
 
@@ -891,7 +906,11 @@
     vampChance: 0,
     items: [],
     itemStacks: {},
-    killCount: 0
+    killCount: 0,
+    nos: 100,
+    nosMax: 100,
+    nosLock: false,
+    nosDelay: 0
   };
 
   function resetPlayerStatsForRun() {
@@ -913,6 +932,8 @@
     player.items = [];
     player.itemStacks = {};
     player.killCount = 0;
+    player.nos = player.nosMax;
+    player.nosLock = false;
     player.weapon = getStartingWeapon();
   }
 
@@ -1246,6 +1267,7 @@
     clearRoomProjectiles();
     generateDungeon(floorNum);
     updateHUD();
+    saveRun();
   }
 
   // --- BALANCED WEAPON FIRING ---
@@ -1425,7 +1447,39 @@
     if (keys['a'] || keys['arrowleft']) ix -= 1;
     if (keys['d'] || keys['arrowright']) ix += 1;
 
-    const effSpeed = player.baseSpeed * player.speedMult * (1 + 0.10 * (player.itemStacks.racing_slicks || 0));
+    // NOS boost: hold SHIFT while moving. Drains NOS; recharges after a short delay.
+    let boosting = false;
+    const moving = (ix !== 0 || iy !== 0);
+    if (keys['shift'] && moving && player.nos > 0 && !player.nosLock) {
+      boosting = true;
+      player.nos = Math.max(0, player.nos - 35 * dt);
+      player.nosDelay = 0.7;
+      if (player.nos <= 0) player.nosLock = true;
+    } else {
+      player.nosDelay -= dt;
+      if (player.nosDelay <= 0) player.nos = Math.min(player.nosMax, player.nos + 16 * dt);
+      if (player.nosLock && player.nos >= 25) player.nosLock = false;
+    }
+    const nosFill = document.getElementById('nos-fill');
+    if (nosFill) {
+      nosFill.style.width = (player.nos / player.nosMax * 100) + '%';
+      nosFill.style.background = player.nosLock ? '#e63946' : (boosting ? 'linear-gradient(90deg,#4cc9f0,#fff)' : 'linear-gradient(90deg,#4895ef,#4cc9f0)');
+    }
+    if (boosting) {
+      screenShake = Math.max(screenShake, 1);
+      for (let k = 0; k < 2; k++) {
+        particles.push({
+          x: player.x - Math.cos(player.bikeAngle) * 22,
+          y: player.y - Math.sin(player.bikeAngle) * 22,
+          vx: -Math.cos(player.bikeAngle) * 140 + (Math.random() - 0.5) * 50,
+          vy: -Math.sin(player.bikeAngle) * 140 + (Math.random() - 0.5) * 50,
+          radius: 3 + Math.random() * 3,
+          color: Math.random() < 0.5 ? '#4cc9f0' : '#e0fbfc',
+          life: 0.3, maxLife: 0.3
+        });
+      }
+    }
+    const effSpeed = player.baseSpeed * player.speedMult * (1 + 0.10 * (player.itemStacks.racing_slicks || 0)) * (boosting ? 1.7 : 1);
     if (ix !== 0 || iy !== 0) {
       const len = Math.hypot(ix, iy);
       ix /= len;
@@ -2052,6 +2106,7 @@
 
     if (player.hp <= 0) {
       gameOver = true;
+      clearRunSave();
       openGarage(true);
     }
   }
@@ -2098,6 +2153,7 @@
     curRoomY += dy;
     const nextRoom = getCurrentRoom();
     nextRoom.visited = true;
+    saveRun();
     player.x = newX;
     player.y = newY;
     clearRoomProjectiles();
@@ -2131,6 +2187,10 @@
 
   // --- RENDERING ---
   function draw() {
+    // HiDPI / 4K: logical 720x720 space scaled to the real backing-store size
+    const S = canvas.width / W;
+    ctx.setTransform(S, 0, 0, S, 0, 0);
+    ctx.imageSmoothingEnabled = true;
     ctx.save();
     if (screenShake > 0) {
       ctx.translate((Math.random() - 0.5) * screenShake, (Math.random() - 0.5) * screenShake);
@@ -2178,7 +2238,7 @@
       ctx.fillStyle = 'rgba(255,255,255,0.14)';
       ctx.font = 'bold 15px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(`FLOOR ${floorNum} // WASD TO DRIVE, MOUSE TO AIM & FIRE`, W / 2, H / 2 - 120);
+      ctx.fillText(`FLOOR ${floorNum} // WASD DRIVE, SHIFT NOS BOOST, MOUSE AIM & FIRE`, W / 2, H / 2 - 120);
       ctx.font = '13px sans-serif';
       ctx.fillText('VISIT ★ MOD ROOMS & $ SHOPS FOR UPGRADES • [G] FOR PERMANENT GARAGE', W / 2, H / 2 + 135);
       ctx.restore();
@@ -2546,7 +2606,8 @@
   function drawGarageBike() {
     const c = document.getElementById('bike-canvas');
     const g = c.getContext('2d');
-    g.clearRect(0, 0, c.width, c.height);
+    g.setTransform(c.width / (c._lw || 300), 0, 0, c.height / (c._lh || 190), 0, 0);
+    g.clearRect(0, 0, c._lw || 300, c._lh || 190);
     const colOf = id => saveState.equipped[id] ? RARITY[saveState.equipped[id].rarity].color : '#5b606c';
     const glow = id => { const it = saveState.equipped[id]; g.shadowColor = it ? RARITY[it.rarity].color : 'transparent'; g.shadowBlur = it && it.rarity >= 2 ? 14 : 0; };
 
@@ -2824,8 +2885,9 @@
   }
 
   function drawMinimap() {
-    const mw = miniCanvas.width;
-    const mh = miniCanvas.height;
+    const mw = miniCanvas._lw || 240;
+    const mh = miniCanvas._lh || 145;
+    { const sc = miniCanvas.width / mw; miniCtx.setTransform(sc, 0, 0, sc, 0, 0); }
     miniCtx.clearRect(0, 0, mw, mh);
 
     const cell = 18;
@@ -2882,6 +2944,7 @@
         <span>${avail ? 'READY' : `🔒 ${w.cost}⚙️`}</span>
       `;
       if (avail) slot.onclick = () => selectWeapon(w.id);
+      slot.dataset.tip = `<b style="color:${w.color}">${w.name}</b><br/>${w.desc}<br/>Damage ${w.baseDmg} | Cooldown ${w.cooldown}s`;
       bar.appendChild(slot);
     });
 
@@ -2900,9 +2963,13 @@
     const itemsEl = document.getElementById('items-list');
     const stackBadges = Object.keys(player.itemStacks).map(id => {
       const it = DROP_ITEMS[id];
-      return `<span class="item-badge" style="color:${it.color}" title="${it.desc}">${it.name} x${player.itemStacks[id]}</span>`;
+      const n = player.itemStacks[id];
+      return `<span class="item-badge" style="color:${it.color}" data-tip="<b style='color:${it.color}'>${it.name} x${n}</b><br/>${it.desc}<br/><i>Stacks with duplicates</i>">${it.name} x${n}</span>`;
     });
-    const modBadges = player.items.map(name => `<span class="item-badge">${name}</span>`);
+    const modBadges = player.items.map(name => {
+      const m = RUN_MOD_POOL.find(x => x.name === name);
+      return `<span class="item-badge" data-tip="<b style='color:#ffd166'>${name}</b><br/>${m ? m.desc : ''}">${name}</span>`;
+    });
     const all = stackBadges.concat(modBadges);
     itemsEl.innerHTML = all.length === 0
       ? '<span style="color:#666; font-size:11px;">None yet — kill enemies for toolbox drops!</span>'
@@ -2913,7 +2980,8 @@
   function drawFuelGauge() {
     const gc = document.getElementById('fuel-gauge');
     const g = gc.getContext('2d');
-    const cw = gc.width, ch = gc.height;
+    const cw = gc._lw || 240, ch = gc._lh || 120;
+    g.setTransform(gc.width / cw, 0, 0, gc.height / ch, 0, 0);
     const cx = cw / 2, cy = ch - 14, r = 92;
     const frac = Math.max(0, Math.min(1, player.hp / player.maxHp));
     g.clearRect(0, 0, cw, ch);
@@ -3119,16 +3187,136 @@
     renderGarageLists();
   };
 
+  // --- LOCAL SAVING: run checkpoint (permanent progress is saved via writeSave) ---
+  const RUN_KEY = 'moto_rogue_run_v1';
+  const RUN_FIELDS = ['hp', 'maxHp', 'coins', 'dmgMult', 'fireRateMult', 'speedMult', 'projSpeedMult', 'blastMult',
+    'pierce', 'bounce', 'multiShot', 'vampChance', 'killCount', 'weapon', 'nos'];
+  let autosaveT = 0;
+
+  function saveRun() {
+    if (gameOver) return;
+    try {
+      const o = { floorNum, items: player.items, itemStacks: player.itemStacks, runWeapons: player.runWeapons };
+      RUN_FIELDS.forEach(k => { o[k] = player[k]; });
+      localStorage.setItem(RUN_KEY, JSON.stringify(o));
+      const st = document.getElementById('save-status');
+      if (st) st.textContent = 'Autosaved ' + new Date().toLocaleTimeString();
+    } catch (e) {}
+  }
+
+  function clearRunSave() {
+    try { localStorage.removeItem(RUN_KEY); } catch (e) {}
+  }
+
+  function loadRun() {
+    try {
+      const raw = localStorage.getItem(RUN_KEY);
+      if (!raw) return false;
+      const o = JSON.parse(raw);
+      if (!o || !(o.hp > 0)) return false;
+      floorNum = o.floorNum || 1;
+      RUN_FIELDS.forEach(k => { if (o[k] !== undefined) player[k] = o[k]; });
+      player.items = o.items || [];
+      player.itemStacks = o.itemStacks || {};
+      player.runWeapons = o.runWeapons || {};
+      if (!isWeaponAvailable(player.weapon)) player.weapon = getStartingWeapon();
+      return true;
+    } catch (e) { return false; }
+  }
+
+  window.addEventListener('beforeunload', () => { saveRun(); writeSave(); });
+
+  // --- HOVER TOOLTIPS (sidebar mods/weapons + pickups in the room) ---
+  const tipEl = document.getElementById('tooltip');
+  function showTip(html, e) {
+    tipEl.innerHTML = html;
+    tipEl.style.display = 'block';
+    const r = tipEl.getBoundingClientRect();
+    let x = e.clientX + 16, y = e.clientY + 16;
+    if (x + r.width > innerWidth - 6) x = e.clientX - r.width - 12;
+    if (y + r.height > innerHeight - 6) y = e.clientY - r.height - 12;
+    tipEl.style.left = Math.max(4, x) + 'px';
+    tipEl.style.top = Math.max(4, y) + 'px';
+  }
+  function hideTip() { tipEl.style.display = 'none'; }
+
+  function pickupTip(p) {
+    if (p.type === 'mod_pedestal') {
+      return `<b style="color:#ffd166">${p.mod.name}</b><br/>${p.mod.desc}<br/>${p.cost > 0 ? 'Cost: ' + p.cost + ' coins' : '<span style="color:#06d6a0">Free</span>'}`;
+    }
+    if (p.type === 'loot') {
+      const R = RARITY[p.item.rarity];
+      return `<b style="color:${R.color}">${R.name} ${p.item.name}</b><br/>` + Object.keys(p.item.stats).map(k => fmtStat(k, p.item.stats[k])).join('<br/>');
+    }
+    if (p.type === 'item_drop') {
+      const it = DROP_ITEMS[p.itemId];
+      return `<b style="color:${it.color}">${it.name}</b><br/>${it.desc}`;
+    }
+    if (p.type === 'run_weapon') {
+      const w = WEAPONS[p.weaponId];
+      return `<b style="color:${w.color}">${w.name} (this run)</b><br/>${w.desc}<br/>Cost: ${p.cost} coins`;
+    }
+    if (p.type === 'shop_heart') return `<b>Hull Repair</b><br/>Restores 2 fuel<br/>Cost: ${p.cost} coins`;
+    if (p.type === 'heart') return '<b>Gas Can</b><br/>Restores 1 fuel';
+    return null;
+  }
+
+  document.addEventListener('mousemove', e => {
+    const t = e.target.closest ? e.target.closest('[data-tip]') : null;
+    if (t) { showTip(t.dataset.tip, e); return; }
+    if (e.target === canvas && !document.getElementById('garage-overlay').classList.contains('visible')) {
+      const room = getCurrentRoom();
+      if (room) {
+        const p = room.pickups.find(pk => Math.hypot(pk.x - mouse.x, pk.y - mouse.y) < 34);
+        const html = p ? pickupTip(p) : null;
+        if (html) { showTip(html, e); return; }
+      }
+    }
+    hideTip();
+  });
+
+  // --- HiDPI / 4K: render at the real device resolution and scale UI up on big screens ---
+  function fitCanvas(c, cssW, cssH) {
+    if (!c._lw) { c._lw = c.width; c._lh = c.height; }
+    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    c.style.width = cssW + 'px';
+    c.style.height = cssH + 'px';
+    c.width = Math.round(cssW * dpr);
+    c.height = Math.round(cssH * dpr);
+  }
+
+  function fitAll() {
+    const side = document.getElementById('sidebar');
+    const card = document.querySelector('.garage-card');
+    let size = Math.max(480, innerHeight - 60);
+    let z = Math.max(1, Math.min(2.6, size / 720));
+    size = Math.max(480, Math.min(size, innerWidth - 340 * z - 60));
+    z = Math.max(1, Math.min(2.6, size / 720));
+    size = Math.floor(size);
+    fitCanvas(canvas, size, size);
+    fitCanvas(miniCanvas, 240, 145);
+    fitCanvas(document.getElementById('fuel-gauge'), 240, 120);
+    fitCanvas(document.getElementById('bike-canvas'), 300, 190);
+    side.style.zoom = z;
+    if (card) card.style.zoom = Math.max(1, size / 760);
+    updateHUD();
+    drawGarageBike();
+  }
+  window.addEventListener('resize', fitAll);
+
   // --- MAIN LOOP ---
   function loop(now) {
     const dt = Math.min(0.05, (now - lastTime) / 1000);
     lastTime = now;
     update(dt);
+    autosaveT += dt;
+    if (autosaveT > 5) { autosaveT = 0; saveRun(); }
     draw();
     requestAnimationFrame(loop);
   }
 
-  startNewRun(false);
+  fitAll();
+  startNewRun(loadRun());
   requestAnimationFrame(loop);
 })();
 </script>
