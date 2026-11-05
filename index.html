@@ -280,6 +280,101 @@
       border-radius: 6px; padding: 7px 10px; font-size: 12.5px; line-height: 1.4;
       max-width: 270px; box-shadow: 0 6px 20px rgba(0,0,0,0.7);
     }
+    /* Shop Confirmation Modal */
+    #shop-confirm-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(10, 11, 16, 0.88);
+      backdrop-filter: blur(5px);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+      padding: 16px;
+    }
+    #shop-confirm-overlay.visible {
+      display: flex;
+    }
+    .shop-confirm-card {
+      background: linear-gradient(145deg, #1f212d, #14151f);
+      border: 2px solid #06d6a0;
+      border-radius: 12px;
+      padding: 22px 28px;
+      max-width: 440px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 0 35px rgba(6, 214, 160, 0.25), 0 15px 40px rgba(0,0,0,0.9);
+      animation: popIn 0.18s ease-out;
+    }
+    @keyframes popIn {
+      0% { transform: scale(0.92); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .shop-confirm-title {
+      font-size: 18px;
+      font-weight: 800;
+      color: #06d6a0;
+      letter-spacing: 1.5px;
+      margin-bottom: 8px;
+    }
+    .shop-item-name {
+      font-size: 20px;
+      font-weight: 800;
+      color: #fff;
+      margin: 8px 0 4px;
+    }
+    .shop-item-desc {
+      font-size: 13px;
+      color: #aeb4c6;
+      margin-bottom: 14px;
+    }
+    .shop-item-cost {
+      font-size: 16px;
+      color: #ffd166;
+      font-weight: 700;
+      background: rgba(0,0,0,0.4);
+      padding: 6px 14px;
+      border-radius: 6px;
+      display: inline-block;
+      margin-bottom: 18px;
+      border: 1px solid #4a4530;
+    }
+    .shop-btn-row {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+    }
+    .btn-buy {
+      background: #06d6a0;
+      color: #0d1217;
+      font-weight: 800;
+      font-size: 14px;
+      padding: 9px 22px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      box-shadow: 0 0 14px rgba(6, 214, 160, 0.4);
+      transition: all 0.15s;
+    }
+    .btn-buy:hover {
+      background: #20f5be;
+      transform: translateY(-2px);
+    }
+    .btn-cancel {
+      background: #2a2c3a;
+      color: #d1d4e0;
+      font-weight: 700;
+      font-size: 14px;
+      padding: 9px 18px;
+      border: 1px solid #484b60;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-cancel:hover {
+      background: #37394c;
+    }
     .garage-columns {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -364,6 +459,20 @@
   <!-- Square Room Playfield Canvas (Unobstructed!) -->
   <div id="game-wrapper">
     <canvas id="canvas" width="720" height="720"></canvas>
+
+    <!-- Shop Purchase Confirmation Overlay -->
+    <div id="shop-confirm-overlay">
+      <div class="shop-confirm-card">
+        <div class="shop-confirm-title">★ ARMORY &amp; SUPPLY PURCHASE ★</div>
+        <div class="shop-item-name" id="shop-modal-name">Item Name</div>
+        <div class="shop-item-desc" id="shop-modal-desc">Item Description</div>
+        <div class="shop-item-cost" id="shop-modal-cost">Cost: 15 Coins</div>
+        <div class="shop-btn-row">
+          <button class="btn-buy" id="btn-confirm-buy">[E] Confirm Purchase</button>
+          <button class="btn-cancel" id="btn-cancel-buy">[ESC] Cancel</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Garage / Meta-Progression / Run Over Modal -->
     <div id="garage-overlay">
@@ -817,6 +926,69 @@
 
   loadSave();
 
+  let pendingShopPurchase = null;
+
+  function openShopConfirm(itemPickup, title, desc, cost) {
+    if (player.coins < cost) {
+      addFloatingText(player.x, player.y - 25, `NEED ${cost} COINS!`, '#ff4d6d');
+      return;
+    }
+    pendingShopPurchase = itemPickup;
+    document.getElementById('shop-modal-name').textContent = title;
+    document.getElementById('shop-modal-desc').textContent = desc;
+    document.getElementById('shop-modal-cost').textContent = `Cost: ${cost} Coins (You have: ${player.coins} 🪙)`;
+    document.getElementById('shop-confirm-overlay').classList.add('visible');
+  }
+
+  function closeShopConfirm() {
+    pendingShopPurchase = null;
+    document.getElementById('shop-confirm-overlay').classList.remove('visible');
+  }
+
+  function executeShopPurchase() {
+    if (!pendingShopPurchase) return;
+    const p = pendingShopPurchase;
+    const room = getCurrentRoom();
+    if (!room) { closeShopConfirm(); return; }
+
+    const idx = room.pickups.indexOf(p);
+    if (idx === -1) { closeShopConfirm(); return; }
+
+    if (player.coins < p.cost) {
+      addFloatingText(player.x, player.y - 25, 'NOT ENOUGH COINS!', '#ff4d6d');
+      closeShopConfirm();
+      return;
+    }
+
+    player.coins -= p.cost;
+
+    if (p.type === 'shop_heart') {
+      player.hp = Math.min(player.maxHp, player.hp + 2);
+      addFloatingText(p.x, p.y, 'REPAIRED +2 HP!', '#ff4d6d');
+    } else if (p.type === 'mod_pedestal') {
+      p.mod.apply(player);
+      player.items.push(p.mod.name);
+      addFloatingText(p.x, p.y - 12, `${p.mod.name.toUpperCase()}!`, '#ffd166');
+      addFloatingText(p.x, p.y + 8, p.mod.desc, '#7bdff2');
+    } else if (p.type === 'run_weapon') {
+      player.runWeapons[p.weaponId] = true;
+      player.weapon = p.weaponId;
+      addFloatingText(p.x, p.y - 10, `EQUIPPED ${WEAPONS[p.weaponId].name.toUpperCase()}!`, '#06d6a0');
+    }
+
+    // Purchase effect sparks
+    spawnMuzzleParticles(p.x, p.y, -Math.PI / 2, '#06d6a0', 16);
+    screenShake = Math.max(screenShake, 3);
+
+    room.pickups.splice(idx, 1);
+    closeShopConfirm();
+    updateHUD();
+    saveRun();
+  }
+
+  document.getElementById('btn-confirm-buy').onclick = executeShopPurchase;
+  document.getElementById('btn-cancel-buy').onclick = closeShopConfirm;
+
   function isWeaponAvailable(id) {
     return id === 'pistol' || saveState.unlocked[id] || player.runWeapons[id];
   }
@@ -836,6 +1008,18 @@
   window.addEventListener('keydown', e => {
     const k = e.key.toLowerCase();
     keys[k] = true;
+    if (document.getElementById('shop-confirm-overlay').classList.contains('visible')) {
+      if (k === 'e' || k === 'enter' || k === ' ') {
+        e.preventDefault();
+        executeShopPurchase();
+        return;
+      }
+      if (k === 'escape') {
+        e.preventDefault();
+        closeShopConfirm();
+        return;
+      }
+    }
     if (k === '1') selectWeapon('pistol');
     if (k === '2') selectWeapon('machine_gun');
     if (k === '3') selectWeapon('flamethrower');
@@ -1430,7 +1614,7 @@
   let lastTime = performance.now();
 
   function update(dt) {
-    if (gameOver || document.getElementById('garage-overlay').classList.contains('visible')) {
+    if (gameOver || document.getElementById('garage-overlay').classList.contains('visible') || document.getElementById('shop-confirm-overlay').classList.contains('visible')) {
       return;
     }
 
@@ -1789,16 +1973,16 @@
             updateHUD();
           }
         } else if (p.type === 'shop_heart') {
-          if (player.hp < player.maxHp && player.coins >= p.cost) {
-            player.coins -= p.cost;
-            player.hp = Math.min(player.maxHp, player.hp + 2);
-            addFloatingText(p.x, p.y, 'REPAIRED +2 HP!', '#ff4d6d');
-            room.pickups.splice(i, 1);
-            updateHUD();
+          if (!pendingShopPurchase) {
+            openShopConfirm(p, 'Hull Repair Kit', 'Restores +2 Hull / Fuel Integrity', p.cost);
           }
         } else if (p.type === 'mod_pedestal') {
-          if (player.coins >= p.cost) {
-            player.coins -= p.cost;
+          if (p.cost > 0) {
+            if (!pendingShopPurchase) {
+              openShopConfirm(p, p.mod.name, p.mod.desc, p.cost);
+            }
+          } else {
+            // Free mod pedestal in treasure or boss room
             p.mod.apply(player);
             player.items.push(p.mod.name);
             addFloatingText(p.x, p.y - 12, `${p.mod.name.toUpperCase()}!`, '#ffd166');
@@ -1807,13 +1991,8 @@
             updateHUD();
           }
         } else if (p.type === 'run_weapon') {
-          if (player.coins >= p.cost) {
-            player.coins -= p.cost;
-            player.runWeapons[p.weaponId] = true;
-            player.weapon = p.weaponId;
-            addFloatingText(p.x, p.y - 10, `EQUIPPED ${WEAPONS[p.weaponId].name.toUpperCase()}!`, '#06d6a0');
-            room.pickups.splice(i, 1);
-            updateHUD();
+          if (!pendingShopPurchase) {
+            openShopConfirm(p, `${WEAPONS[p.weaponId].name} (Single-Run Armory Rental)`, WEAPONS[p.weaponId].desc, p.cost);
           }
         }
       }
@@ -2202,21 +2381,31 @@
       return;
     }
 
-    // 1. Square Room Floor & Grid
-    ctx.fillStyle = '#1b1b26';
+    // 1. Square Room Floor & Grid with ambient lighting & grit
+    ctx.fillStyle = '#0e0f16';
     ctx.fillRect(0, 0, W, H);
 
-    const floorColors = {
-      start: '#20212d',
-      combat: '#20212d',
-      treasure: '#25222c',
-      shop: '#1d2828',
-      boss: '#281920'
+    const floorTheme = {
+      start:    { base: '#1b1d28', dark: '#12141c', grid: 'rgba(255,255,255,0.035)', glow: 'rgba(123,223,242,0.04)' },
+      combat:   { base: '#1c1c27', dark: '#13131c', grid: 'rgba(255,255,255,0.032)', glow: 'rgba(0,187,249,0.03)' },
+      treasure: { base: '#231f2c', dark: '#16131c', grid: 'rgba(255,209,102,0.04)', glow: 'rgba(255,209,102,0.08)' },
+      shop:     { base: '#162323', dark: '#0e1818', grid: 'rgba(6,214,160,0.04)',  glow: 'rgba(6,214,160,0.08)' },
+      boss:     { base: '#24141c', dark: '#180b12', grid: 'rgba(230,57,70,0.045)', glow: 'rgba(230,57,70,0.09)' }
     };
-    ctx.fillStyle = floorColors[room.type] || '#20212d';
+    const ft = floorTheme[room.type] || floorTheme.combat;
+
+    ctx.fillStyle = ft.base;
     ctx.fillRect(WALL, WALL, W - WALL * 2, H - WALL * 2);
 
-    ctx.strokeStyle = 'rgba(255,255,255,0.035)';
+    // Subtle radial light dropoff from center of the room
+    const roomGrad = ctx.createRadialGradient(W / 2, H / 2, 80, W / 2, H / 2, W / 2);
+    roomGrad.addColorStop(0, ft.glow);
+    roomGrad.addColorStop(0.85, 'rgba(0,0,0,0.15)');
+    roomGrad.addColorStop(1, 'rgba(0,0,0,0.5)');
+    ctx.fillStyle = roomGrad;
+    ctx.fillRect(WALL, WALL, W - WALL * 2, H - WALL * 2);
+
+    ctx.strokeStyle = ft.grid;
     ctx.lineWidth = 1;
     const tile = (W - WALL * 2) / 12;
     for (let x = WALL; x <= W - WALL + 1; x += tile) {
@@ -2269,16 +2458,33 @@
       ctx.restore();
     }
 
-    // 2. Walls & Doors
-    ctx.fillStyle = '#12121a';
+    // 2. Heavy Industrial Walls with 3D Depth bevel & Corner Braces
+    ctx.fillStyle = '#0d0d14';
     ctx.fillRect(0, 0, W, WALL);
     ctx.fillRect(0, H - WALL, W, WALL);
     ctx.fillRect(0, 0, WALL, H);
     ctx.fillRect(W - WALL, 0, WALL, H);
 
-    ctx.strokeStyle = '#38384c';
+    // Wall inner shadow / ambient occlusion
+    const wallOcclusion = ctx.createLinearGradient(0, WALL, 0, WALL + 24);
+    wallOcclusion.addColorStop(0, 'rgba(0,0,0,0.6)');
+    wallOcclusion.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = wallOcclusion;
+    ctx.fillRect(WALL, WALL, W - WALL * 2, 24);
+
+    // Wall frame border with metallic highlight
+    ctx.strokeStyle = '#323546';
     ctx.lineWidth = 4;
     ctx.strokeRect(WALL, WALL, W - WALL * 2, H - WALL * 2);
+
+    // Corner rivet plates
+    const rivetSize = 14;
+    ctx.fillStyle = '#3a3d52';
+    [[WALL - 2, WALL - 2], [W - WALL - rivetSize + 2, WALL - 2], [WALL - 2, H - WALL - rivetSize + 2], [W - WALL - rivetSize + 2, H - WALL - rivetSize + 2]].forEach(([rx, ry]) => {
+      ctx.fillRect(rx, ry, rivetSize, rivetSize);
+      ctx.strokeStyle = '#1b1c26';
+      ctx.strokeRect(rx, ry, rivetSize, rivetSize);
+    });
 
     drawDoor(room, 'N', W / 2, WALL / 2, DOOR_HALF * 2, WALL);
     drawDoor(room, 'S', W / 2, H - WALL / 2, DOOR_HALF * 2, WALL);
@@ -2287,37 +2493,69 @@
 
     if (room.trapdoor) {
       const tx = W / 2, ty = H / 2 - 45;
-      ctx.fillStyle = '#09090d';
+      const tPulse = 1 + Math.sin(performance.now() / 200) * 0.08;
+      ctx.save();
+      ctx.shadowColor = '#7bdff2';
+      ctx.shadowBlur = 16;
+      ctx.fillStyle = '#06070a';
       ctx.beginPath();
-      ctx.arc(tx, ty, 26, 0, Math.PI * 2);
+      ctx.arc(tx, ty, 26 * tPulse, 0, Math.PI * 2);
       ctx.fill();
       ctx.lineWidth = 3;
       ctx.strokeStyle = '#7bdff2';
       ctx.stroke();
+      ctx.restore();
       ctx.fillStyle = '#7bdff2';
       ctx.font = 'bold 11px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(`TO FLOOR ${floorNum + 1}`, tx, ty + 40);
+      ctx.fillText(`TO FLOOR ${floorNum + 1} ⬇`, tx, ty + 42);
     }
 
-    // 3. Obstacles
+    // 3. Obstacles with Soft Shadows & Material Texture
     for (const ob of room.obstacles) {
       const hs = ob.size / 2;
+      // Drop Shadow
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.beginPath();
+      ctx.ellipse(ob.x, ob.y + hs - 2, hs + 4, hs * 0.42, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
       if (ob.type === 'rock') {
-        ctx.fillStyle = '#343646';
-        ctx.strokeStyle = '#4f5269';
+        const rGrad = ctx.createLinearGradient(ob.x - hs, ob.y - hs, ob.x + hs, ob.y + hs);
+        rGrad.addColorStop(0, '#4b4e63');
+        rGrad.addColorStop(1, '#272936');
+        ctx.fillStyle = rGrad;
+        ctx.strokeStyle = '#686c87';
         ctx.lineWidth = 2;
-        ctx.fillRect(ob.x - hs, ob.y - hs, ob.size, ob.size);
-        ctx.strokeRect(ob.x - hs, ob.y - hs, ob.size, ob.size);
+        ctx.beginPath();
+        ctx.roundRect(ob.x - hs, ob.y - hs, ob.size, ob.size, 5);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.strokeStyle = '#1a1b24';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(ob.x - hs + 8, ob.y - hs + 10);
+        ctx.lineTo(ob.x + 2, ob.y + 2);
+        ctx.lineTo(ob.x + hs - 7, ob.y + hs - 6);
+        ctx.stroke();
       } else {
-        ctx.fillStyle = '#b5382a';
-        ctx.strokeStyle = '#ff9f1c';
-        ctx.lineWidth = 2;
+        // High-contrast TNT Explosive Barrel
+        const bGrad = ctx.createRadialGradient(ob.x - 4, ob.y - 4, 3, ob.x, ob.y, hs);
+        bGrad.addColorStop(0, '#e63946');
+        bGrad.addColorStop(0.7, '#a7232e');
+        bGrad.addColorStop(1, '#561016');
+        ctx.fillStyle = bGrad;
+        ctx.strokeStyle = '#ffd166';
+        ctx.lineWidth = 2.5;
         ctx.beginPath();
         ctx.arc(ob.x, ob.y, hs, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
-        ctx.fillStyle = '#ff9f1c';
+
+        ctx.fillStyle = '#ffd166';
         ctx.font = 'bold 11px sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText('TNT', ob.x, ob.y + 4);
@@ -2430,20 +2668,39 @@
     drawMotorcycle();
 
     // 7. Projectiles & Bombs
+    // 7. Projectiles & Bombs with Bloom Glow
     for (const b of bullets) {
+      ctx.save();
       ctx.fillStyle = b.color;
-      ctx.globalAlpha = b.isFlame ? Math.max(0.18, b.life / b.maxLife) : 1;
+      ctx.globalAlpha = b.isFlame ? Math.max(0.2, b.life / b.maxLife) : 1;
+      ctx.shadowColor = b.color;
+      ctx.shadowBlur = b.isFlame ? 10 : 8;
       ctx.beginPath();
       ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
       ctx.fill();
+      // Core highlight for non-flame bullets
+      if (!b.isFlame) {
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.radius * 0.45, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
     }
-    ctx.globalAlpha = 1;
 
     for (const eb of enemyBullets) {
+      ctx.save();
       ctx.fillStyle = eb.color;
+      ctx.shadowColor = eb.color;
+      ctx.shadowBlur = 9;
       ctx.beginPath();
       ctx.arc(eb.x, eb.y, eb.radius, 0, Math.PI * 2);
       ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(eb.x, eb.y, eb.radius * 0.45, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     }
 
     for (const g of grenades) {
@@ -2811,76 +3068,130 @@
       ctx.globalAlpha = 0.45;
     }
 
+    // Bike Underglow Neon Shadow
+    const wColor = WEAPONS[player.weapon].color;
+    ctx.save();
+    ctx.shadowColor = wColor;
+    ctx.shadowBlur = 12;
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 18, 12, player.bikeAngle, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
     ctx.save();
     ctx.rotate(player.bikeAngle);
 
-    // Headlight beam
-    const grad = ctx.createLinearGradient(15, 0, 110, 0);
-    grad.addColorStop(0, 'rgba(255, 240, 180, 0.20)');
-    grad.addColorStop(1, 'rgba(255, 240, 180, 0)');
+    // Realistic volumetric headlight beam with inner hotspot
+    const grad = ctx.createLinearGradient(15, 0, 140, 0);
+    grad.addColorStop(0, 'rgba(255, 250, 220, 0.45)');
+    grad.addColorStop(0.3, 'rgba(255, 235, 170, 0.18)');
+    grad.addColorStop(1, 'rgba(255, 220, 140, 0)');
     ctx.fillStyle = grad;
     ctx.beginPath();
     ctx.moveTo(15, 0);
-    ctx.lineTo(110, -34);
-    ctx.lineTo(110, 34);
+    ctx.lineTo(140, -42);
+    ctx.lineTo(140, 42);
     ctx.closePath();
     ctx.fill();
 
-    // Tires
-    ctx.fillStyle = '#0b0b0e';
-    ctx.strokeStyle = '#444';
+    // Tires with deep tread rim styling
+    ctx.fillStyle = '#08080a';
+    ctx.strokeStyle = '#383a45';
     ctx.lineWidth = 1.5;
-    ctx.fillRect(-21, -6, 12, 12);
-    ctx.strokeRect(-21, -6, 12, 12);
-    ctx.fillRect(9, -5, 12, 10);
-    ctx.strokeRect(9, -5, 12, 10);
-
-    // Exhaust pipes
-    ctx.fillStyle = '#adb5bd';
-    ctx.fillRect(-19, -9, 13, 3);
-    ctx.fillRect(-19, 6, 13, 3);
-
-    // Bike body
-    ctx.fillStyle = '#ff5400';
+    // Rear Tire
     ctx.beginPath();
-    ctx.roundRect(-13, -7, 26, 14, 5);
+    ctx.roundRect(-23, -6.5, 14, 13, 2);
+    ctx.fill();
+    ctx.stroke();
+    // Front Tire
+    ctx.beginPath();
+    ctx.roundRect(8, -5.5, 13, 11, 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Chrome twin exhaust pipes with heated gradient tip
+    const exGrad = ctx.createLinearGradient(-22, 0, -6, 0);
+    exGrad.addColorStop(0, '#535661');
+    exGrad.addColorStop(0.7, '#c2c6d4');
+    exGrad.addColorStop(1, '#ff9f1c');
+    ctx.fillStyle = exGrad;
+    ctx.fillRect(-21, -9.5, 15, 3.2);
+    ctx.fillRect(-21, 6.3, 15, 3.2);
+
+    // Motorcycle chassis / sculpted fairing
+    const bGrad = ctx.createLinearGradient(-15, -7, 15, 7);
+    bGrad.addColorStop(0, '#d84200');
+    bGrad.addColorStop(0.5, '#ff5c00');
+    bGrad.addColorStop(1, '#ff8533');
+    ctx.fillStyle = bGrad;
+    ctx.beginPath();
+    ctx.roundRect(-14, -7.5, 28, 15, 5);
     ctx.fill();
     ctx.strokeStyle = '#ffd166';
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    // Handlebars
+    // Tank Racing Stripe
+    ctx.fillStyle = '#11131c';
+    ctx.fillRect(-12, -2.5, 24, 5);
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(-12, -0.5, 24, 1.2);
+
+    // Chrome Handlebars & Bar-end Mirrors
     ctx.strokeStyle = '#dee2e6';
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.moveTo(6, -12);
-    ctx.lineTo(9, 0);
-    ctx.lineTo(6, 12);
+    ctx.moveTo(6, -13);
+    ctx.lineTo(9.5, 0);
+    ctx.lineTo(6, 13);
     ctx.stroke();
+
+    // Headlight lens fixture
+    ctx.fillStyle = '#fffce6';
+    ctx.beginPath();
+    ctx.arc(14, 0, 3.5, 0, Math.PI * 2);
+    ctx.fill();
 
     ctx.restore();
 
     // Swivel Turret / Rider aimed at Cursor
+    ctx.save();
     ctx.rotate(player.aimAngle);
-    const wColor = WEAPONS[player.weapon].color;
 
-    ctx.fillStyle = '#2b2d42';
+    // Heavy Turret Carriage & Muzzle Brake
+    ctx.fillStyle = '#1a1c26';
     ctx.strokeStyle = wColor;
     ctx.lineWidth = 2;
-    ctx.fillRect(0, -4, 22, 8);
-    ctx.strokeRect(0, -4, 22, 8);
-
-    ctx.fillStyle = '#212529';
     ctx.beginPath();
-    ctx.arc(0, 0, 8.5, 0, Math.PI * 2);
+    ctx.roundRect(2, -4, 22, 8, 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Muzzle cap highlight
+    ctx.fillStyle = wColor;
+    ctx.fillRect(21, -4.5, 3.5, 9);
+
+    // Rider Helmet Dome with dynamic specular shine
+    const hGrad = ctx.createRadialGradient(-2, -2, 1, 0, 0, 9);
+    hGrad.addColorStop(0, '#383d4d');
+    hGrad.addColorStop(0.7, '#1b1d28');
+    hGrad.addColorStop(1, '#0c0d12');
+    ctx.fillStyle = hGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, 9, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = wColor;
     ctx.lineWidth = 2;
     ctx.stroke();
 
+    // Aerodynamic Visor with Neon Reflection
     ctx.fillStyle = wColor;
-    ctx.fillRect(2.5, -4.5, 5, 9);
+    ctx.beginPath();
+    ctx.roundRect(2.5, -5, 5.5, 10, 2);
+    ctx.fill();
 
+    ctx.restore();
     ctx.restore();
   }
 
