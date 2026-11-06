@@ -17,15 +17,23 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   PlayerState,
-  Room
+  Room,
+  EquipmentItem,
+  EquipSlot
 } from '@/types/game';
 
 import { WEAPONS, isWeaponEvolved } from '@/data/weapons';
 import { RUN_MOD_POOL, KISS_CURSE_MOD_POOL, getActiveDuoSynergies } from '@/data/upgrades';
 import {
+  LEGENDARY_SLOT_PASSIVES,
+  getEquippedSetBonus
+} from '@/data/equipment';
+import { buildRunPostMortemSummary } from '@/ui/garage';
+import {
   createDefaultPlayerState,
   createDefaultMetaSave,
-  resetPlayerStatsForRun
+  resetPlayerStatsForRun,
+  applyMetaStats
 } from '@/core/state';
 
 import {
@@ -606,6 +614,286 @@ describe('Tier 3: Cross-Feature Combinations & Synergies', () => {
       glassCannon.apply(p2);
       expect(p2.dmgMult).toBeCloseTo(1.65);
       expect(p2.maxHp).toBe(4);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Combination 15: Weapon Mastery + 6-Slot Legendary Set Bonus + Slot Passives + Duo Synergies
+  // --------------------------------------------------------------------------
+  describe('Combination 15: Weapon Mastery + 6-Slot Legendary Set Bonus + Slot Passives + Duo Synergies', () => {
+    it('simultaneously stacks Weapon Mastery (+15% DMG at 100 kills), 6-piece Legendary Set Bonus (+27% DMG, +18% SPD), all 6 Legendary Slot Passives, and active Duo Synergies', () => {
+      // 1. Weapon Mastery via applyMetaStats with 100 kills
+      const meta = createDefaultMetaSave();
+      meta.weaponKills = { flamethrower: 100 };
+      meta.ranks = { dmg: 0, fireRate: 0, speed: 0, maxHp: 0 };
+      player.weapon = 'flamethrower';
+
+      applyMetaStats(player, meta);
+      // Base dmgMult is 1.0; with 100 kills -> +15% DMG mastery bonus
+      expect(player.dmgMult).toBeCloseTo(1.15, 2);
+
+      // 2. 6-slot Legendary Bike Equipment Loadout & Set Bonus calculation
+      const legendaryEquipped: Partial<Record<EquipSlot, EquipmentItem>> = {
+        tires: {
+          slot: 'tires',
+          rarity: 3,
+          name: 'Apex Drift Racing Slicks',
+          stats: { speed: 0.15 }
+        },
+        engine: {
+          slot: 'engine',
+          rarity: 3,
+          name: 'Twin-Turbocharged Valhalla V8',
+          stats: { dmg: 0.20 }
+        },
+        handlebars: {
+          slot: 'handlebars',
+          rarity: 3,
+          name: 'Gyro-Stabilized Titanium Bars',
+          stats: { fireRate: 0.15 }
+        },
+        exhaust: {
+          slot: 'exhaust',
+          rarity: 3,
+          name: 'Plasma Afterburner Dual Pipes',
+          stats: { blast: 0.20 }
+        },
+        frame: {
+          slot: 'frame',
+          rarity: 3,
+          name: 'Reactive Aegis Carbon Frame',
+          stats: { hp: 2 }
+        },
+        tank: {
+          slot: 'tank',
+          rarity: 3,
+          name: 'Overheal Siphon Cell Tank',
+          stats: { siphon: 0.10 }
+        }
+      };
+      meta.equipped = legendaryEquipped;
+
+      const setBonus = getEquippedSetBonus(meta.equipped);
+      expect(setBonus.rareCount).toBe(6);
+      expect(setBonus.legendaryCount).toBe(6);
+      // 4pc Rare (+12% dmg, +8% spd) + 3pc Legendary (+15% dmg, +10% spd) = +27% dmg, +18% spd
+      expect(setBonus.dmgBonus).toBeCloseTo(0.27, 2);
+      expect(setBonus.speedBonus).toBeCloseTo(0.18, 2);
+      expect(setBonus.label).toContain('4pc Rare Tuning (+12% Dmg, +8% Spd)');
+      expect(setBonus.label).toContain('3pc Valhalla Set (+15% Dmg, +10% Spd)');
+
+      // 3. Verify all 6 slots activate their unique Legendary Slot Passives
+      const slots: EquipSlot[] = ['tires', 'engine', 'handlebars', 'exhaust', 'frame', 'tank'];
+      const expectedTitles: Record<EquipSlot, string> = {
+        tires: 'APEX DRIFT TURBO',
+        engine: 'TWIN-CAM OVERCLOCK',
+        handlebars: 'GYRO STABILIZER',
+        exhaust: 'PLASMA AFTERBURNER',
+        frame: 'REACTIVE AEGIS',
+        tank: 'OVERHEAL CONVERTER'
+      };
+
+      for (const slot of slots) {
+        const passive = LEGENDARY_SLOT_PASSIVES[slot];
+        expect(passive).toBeDefined();
+        expect(passive.title).toBe(expectedTitles[slot]);
+        expect(passive.desc.length).toBeGreaterThan(10);
+      }
+
+      // 4. Stacking equipped part stats & set bonus onto player
+      player.dmgMult = Number((player.dmgMult + setBonus.dmgBonus + (legendaryEquipped.engine?.stats.dmg || 0)).toFixed(2));
+      // 1.15 (mastery) + 0.27 (6pc set) + 0.20 (engine) = 1.62
+      expect(player.dmgMult).toBeCloseTo(1.62, 2);
+
+      player.speedMult = Number((player.speedMult + setBonus.speedBonus + (legendaryEquipped.tires?.stats.speed || 0)).toFixed(2));
+      // 1.0 (base) + 0.18 (6pc set) + 0.15 (tires) = 1.33
+      expect(player.speedMult).toBeCloseTo(1.33, 2);
+
+      // 5. Active Duo Synergies activation
+      player.items.push('Cryo-Jacketed Shells', 'Thermobaric Mix');
+      player.itemStacks = {
+        tesla_capacitor: 1,
+        titanium_spikes: 1,
+        adrenaline_injector: 1
+      };
+      const activeDuos = getActiveDuoSynergies(player);
+      const duoIds = activeDuos.map(d => d.id);
+      expect(duoIds).toContain('thermal_shock');
+      expect(duoIds).toContain('superconductor');
+      expect(duoIds).toContain('juggernaut_overdrive');
+
+      // 6. Combat Verification: simultaneous weapon mastery + set bonus + duo synergy execution
+      const combatState = createCombatState();
+      const targetEnemy = createEnemy('swarmer', 300, 300, 1);
+      targetEnemy.hp = 1000;
+      targetEnemy.maxHp = 1000;
+      (targetEnemy as any).slowTimer = 3.0; // Pre-chilled target
+
+      const combatRoom: Room = {
+        x: 0,
+        y: 0,
+        type: 'combat',
+        cleared: false,
+        visited: true,
+        doors: { N: false, S: false, E: false, W: false },
+        obstacles: [],
+        enemies: [targetEnemy],
+        pickups: [],
+        hazards: [],
+        skids: [],
+        trapdoor: false
+      };
+
+      player.fireTimer = 0;
+      fireWeapon({
+        player,
+        target: { x: 300, y: 300 },
+        state: combatState
+      });
+
+      expect(combatState.bullets).toHaveLength(1);
+      combatState.bullets[0].x = 300;
+      combatState.bullets[0].y = 300;
+
+      updatePlayerBullets(0.016, combatState.bullets, combatRoom, player, combatState);
+
+      // Base flamethrower dmg = 3.2
+      // Scaled by combined dmgMult (1.62) & evolution (1.45) = 7.5168
+      // Chilled enemy bonus (+15% from Cryo-Jacketed Shells) = 7.5168 * 1.15 = 8.64432
+      // Thermal Shock Duo Synergy (+35% shatter damage against chilled targets) = 8.64432 * 1.35 = 11.669832
+      const dmgDealt = 1000 - targetEnemy.hp;
+      expect(dmgDealt).toBeCloseTo(3.2 * 1.62 * 1.45 * 1.15 * 1.35, 1);
+
+      // Duo Synergy Thermal Shock triggered concurrently
+      expect(combatState.damageNumbers.some(d => d.text === 'THERMAL SHOCK!')).toBe(true);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Combination 16: Post-Mortem Run Grade Calculation Across Grades C, B, A, and S
+  // --------------------------------------------------------------------------
+  describe('Combination 16: Post-Mortem Run Grade Calculation Across Grades C, B, A, and S', () => {
+    it('evaluates Grade C (Rookie Wipeout) for Floor 1 with < 8 kills', () => {
+      const p = createDefaultPlayerState();
+      p.weapon = 'pistol';
+      p.killCount = 0;
+
+      const summary0 = buildRunPostMortemSummary(1, p);
+      expect(summary0.rankGrade).toBe('C');
+      expect(summary0.headline).toBe('ROOKIE WIPEOUT');
+      expect(summary0.statsLine).toContain('FLOOR 1');
+      expect(summary0.statsLine).toContain('0 KILLS');
+      expect(summary0.statsLine).toContain('PISTOL');
+      expect(summary0.statsLine).toContain('GRADE C');
+
+      // At 7 kills on Floor 1, still Grade C
+      p.killCount = 7;
+      const summary7 = buildRunPostMortemSummary(1, p);
+      expect(summary7.rankGrade).toBe('C');
+      expect(summary7.headline).toBe('ROOKIE WIPEOUT');
+      expect(summary7.statsLine).toContain('FLOOR 1');
+      expect(summary7.statsLine).toContain('7 KILLS');
+      expect(summary7.statsLine).toContain('GRADE C');
+
+      // Clamps invalid/negative floor and kills to safe defaults (Floor 1, 0 kills)
+      const pNegative = createDefaultPlayerState();
+      pNegative.killCount = -10;
+      const summaryNeg = buildRunPostMortemSummary(-5, pNegative);
+      expect(summaryNeg.rankGrade).toBe('C');
+      expect(summaryNeg.headline).toBe('ROOKIE WIPEOUT');
+      expect(summaryNeg.statsLine).toContain('FLOOR 1');
+      expect(summaryNeg.statsLine).toContain('0 KILLS');
+      expect(summaryNeg.statsLine).toContain('GRADE C');
+    });
+
+    it('evaluates Grade B (Highway Contender) for Floor 2 or kills >= 8 (under Floor 3 / 20 kills)', () => {
+      const p = createDefaultPlayerState();
+      p.weapon = 'shotgun';
+
+      // Reaching Floor 2 qualifies for Grade B even with 0 kills
+      p.killCount = 0;
+      const summaryF2 = buildRunPostMortemSummary(2, p);
+      expect(summaryF2.rankGrade).toBe('B');
+      expect(summaryF2.headline).toBe('HIGHWAY CONTENDER');
+      expect(summaryF2.statsLine).toContain('FLOOR 2');
+      expect(summaryF2.statsLine).toContain('0 KILLS');
+      expect(summaryF2.statsLine).toContain('GRADE B');
+
+      // On Floor 1, reaching 8 kills qualifies for Grade B
+      p.killCount = 8;
+      const summaryK8 = buildRunPostMortemSummary(1, p);
+      expect(summaryK8.rankGrade).toBe('B');
+      expect(summaryK8.headline).toBe('HIGHWAY CONTENDER');
+      expect(summaryK8.statsLine).toContain('FLOOR 1');
+      expect(summaryK8.statsLine).toContain('8 KILLS');
+      expect(summaryK8.statsLine).toContain('GRADE B');
+
+      // On Floor 2 with 19 kills, still Grade B (threshold for A is Floor 3 or 20 kills)
+      p.killCount = 19;
+      const summaryK19 = buildRunPostMortemSummary(2, p);
+      expect(summaryK19.rankGrade).toBe('B');
+      expect(summaryK19.headline).toBe('HIGHWAY CONTENDER');
+      expect(summaryK19.statsLine).toContain('GRADE B');
+    });
+
+    it('evaluates Grade A (High-Octane Veteran) for Floor 3 or kills >= 20 (under Floor 5 / 40 kills)', () => {
+      const p = createDefaultPlayerState();
+      p.weapon = 'railgun';
+
+      // Reaching Floor 3 qualifies for Grade A even with low kills
+      p.killCount = 4;
+      const summaryF3 = buildRunPostMortemSummary(3, p);
+      expect(summaryF3.rankGrade).toBe('A');
+      expect(summaryF3.headline).toBe('HIGH-OCTANE VETERAN');
+      expect(summaryF3.statsLine).toContain('FLOOR 3');
+      expect(summaryF3.statsLine).toContain('4 KILLS');
+      expect(summaryF3.statsLine).toContain('GRADE A');
+
+      // On Floor 1 or 2, achieving 20 kills qualifies for Grade A
+      p.killCount = 20;
+      const summaryK20 = buildRunPostMortemSummary(1, p);
+      expect(summaryK20.rankGrade).toBe('A');
+      expect(summaryK20.headline).toBe('HIGH-OCTANE VETERAN');
+      expect(summaryK20.statsLine).toContain('GRADE A');
+
+      // On Floor 4 with 39 kills, still Grade A (threshold for S is Floor 5 or 40 kills)
+      p.killCount = 39;
+      const summaryF4 = buildRunPostMortemSummary(4, p);
+      expect(summaryF4.rankGrade).toBe('A');
+      expect(summaryF4.headline).toBe('HIGH-OCTANE VETERAN');
+      expect(summaryF4.statsLine).toContain('FLOOR 4');
+      expect(summaryF4.statsLine).toContain('GRADE A');
+    });
+
+    it('evaluates Grade S (Valhalla Outlaw Legend) for Floor >= 5 or kills >= 40', () => {
+      const p = createDefaultPlayerState();
+      p.weapon = 'arc_coil';
+
+      // Reaching Floor 5 qualifies for Grade S even with low kills
+      p.killCount = 12;
+      const summaryF5 = buildRunPostMortemSummary(5, p);
+      expect(summaryF5.rankGrade).toBe('S');
+      expect(summaryF5.headline).toBe('VALHALLA OUTLAW LEGEND');
+      expect(summaryF5.statsLine).toContain('FLOOR 5');
+      expect(summaryF5.statsLine).toContain('12 KILLS');
+      expect(summaryF5.statsLine).toContain('GRADE S');
+
+      // On early floors (e.g. Floor 2), achieving 40 kills qualifies for Grade S
+      p.killCount = 40;
+      const summaryK40 = buildRunPostMortemSummary(2, p);
+      expect(summaryK40.rankGrade).toBe('S');
+      expect(summaryK40.headline).toBe('VALHALLA OUTLAW LEGEND');
+      expect(summaryK40.statsLine).toContain('40 KILLS');
+      expect(summaryK40.statsLine).toContain('GRADE S');
+
+      // Deep run: Floor 6 with 150 kills -> S Grade Legend
+      p.killCount = 150;
+      const summaryF6 = buildRunPostMortemSummary(6, p);
+      expect(summaryF6.rankGrade).toBe('S');
+      expect(summaryF6.headline).toBe('VALHALLA OUTLAW LEGEND');
+      expect(summaryF6.statsLine).toContain('FLOOR 6');
+      expect(summaryF6.statsLine).toContain('150 KILLS');
+      expect(summaryF6.statsLine).toContain('GRADE S');
     });
   });
 });

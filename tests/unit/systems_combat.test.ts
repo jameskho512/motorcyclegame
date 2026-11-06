@@ -32,7 +32,9 @@ import {
   updateEnemyCollisions,
   triggerExplosion,
   handleEnemyDeath,
-  calcOverkillBonus
+  calcOverkillBonus,
+  formatDummyHitTelemetry,
+  updateCombatPipeline
 } from '../../src/systems/combat';
 import { WEAPONS } from '../../src/data/weapons';
 import type {
@@ -1102,6 +1104,85 @@ describe('Systems: Combat — Overkill & Execution Bonus', () => {
     expect(player.styleScore).toBe(20);
     const overkillBanner = state.damageNumbers.find(d => d.text === '💀 OVERKILL!');
     expect(overkillBanner).toBeUndefined();
+  });
+
+  describe('Sanctuary Target Range Ballistics Telemetry & Dummy Tracking', () => {
+    it('formatDummyHitTelemetry formats normal and crit hit telemetry strings with rounded damage', () => {
+      expect(formatDummyHitTelemetry(10)).toBe('🎯 HIT 10');
+      expect(formatDummyHitTelemetry(24.6, false)).toBe('🎯 HIT 25');
+      expect(formatDummyHitTelemetry(42, true)).toBe('🎯 CRIT 42!');
+      expect(formatDummyHitTelemetry(0)).toBe('🎯 HIT 1');
+      expect(formatDummyHitTelemetry(-5)).toBe('🎯 HIT 1');
+    });
+
+    it('updateCombatPipeline tracks dummyHits and dummyTotalDmg on training dummy and emits cumulative banner every 5th hit', () => {
+      const room = createMockRoom();
+      const dummy = createMockEnemy({
+        id: 999,
+        x: 300,
+        y: 300,
+        radius: 20,
+        hp: 1000,
+        maxHp: 1000
+      });
+      dummy.isDummy = true;
+      room.enemies = [dummy];
+
+      const player = createMockPlayer({ x: 100, y: 100 });
+      const state = createCombatState();
+
+      // Fire 4 bullets into dummy
+      for (let i = 0; i < 4; i++) {
+        state.bullets.push({
+          x: 300,
+          y: 300,
+          vx: 100,
+          vy: 0,
+          radius: 4,
+          dmg: 12,
+          pierceLeft: 0,
+          bounceLeft: 0,
+          hitIds: new Set(),
+          color: '#fff',
+          life: 1,
+          maxLife: 1
+        });
+        updateCombatPipeline(0.016, room, player, state);
+      }
+
+      expect((dummy as any).dummyHits).toBe(4);
+      expect((dummy as any).dummyTotalDmg).toBe(48);
+      expect(state.damageNumbers.find(d => d.text.includes('TOTAL DMG'))).toBeUndefined();
+
+      // 5th hit
+      state.bullets.push({
+        x: 300,
+        y: 300,
+        vx: 100,
+        vy: 0,
+        radius: 4,
+        dmg: 12,
+        pierceLeft: 0,
+        bounceLeft: 0,
+        hitIds: new Set(),
+        color: '#fff',
+        life: 1,
+        maxLife: 1
+      });
+      updateCombatPipeline(0.016, room, player, state);
+
+      expect((dummy as any).dummyHits).toBe(5);
+      expect((dummy as any).dummyTotalDmg).toBe(60);
+
+      const banner = state.damageNumbers.find(d => d.text === '🎯 TOTAL DMG: 60');
+      expect(banner).toBeDefined();
+      expect(banner?.color).toBe('#00f5d4');
+      expect(banner?.x).toBe(dummy.x);
+      // After updateCombatPipeline completes, life has decayed by dt (0.016) from 1.0, and y by 26 * dt
+      expect(banner?.maxLife).toBe(1.0);
+      expect(banner?.life).toBeCloseTo(1.0 - 0.016, 3);
+      expect(banner?.y).toBeCloseTo(dummy.y - dummy.radius - 26 - 26 * 0.016, 2);
+    });
   });
 });
 

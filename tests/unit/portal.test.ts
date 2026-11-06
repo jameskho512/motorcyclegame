@@ -17,6 +17,8 @@ import {
   shouldPromptPortal,
   isClearOfPortal,
   getNextSectorBriefing,
+  getPortalRiskAssessment,
+  PortalRiskAssessment,
   PORTAL_X,
   PORTAL_Y,
   PORTAL_RADIUS,
@@ -244,6 +246,123 @@ describe('PortalModalController', () => {
     expect(overlay.getAttribute('data-next-sector')).toBe('SMELTER FOUNDRY');
     expect(overlay.getAttribute('data-next-boss')).toBe('SIEGE BEHEMOTH');
     expect(overlay.getAttribute('data-threat-mult')).toBe('1.55x');
+    expect(overlay.getAttribute('data-readiness')).toBe('⚡ COMBAT READY');
+    expect(overlay.getAttribute('data-low-hull-warning')).toBe('false');
+  });
+
+  it('sets data-readiness and data-low-hull-warning attributes for critical hull on open', () => {
+    modal.open({ floorNum: 1, playerHp: 2, playerMaxHp: 6 }, vi.fn());
+    expect(overlay.getAttribute('data-readiness')).toBe('⚠️ CRITICAL HULL');
+    expect(overlay.getAttribute('data-low-hull-warning')).toBe('true');
+  });
+
+  it('sets data-readiness and data-low-hull-warning attributes for full integrity on open', () => {
+    modal.open({ floorNum: 2, playerHp: 6, playerMaxHp: 6 }, vi.fn());
+    expect(overlay.getAttribute('data-readiness')).toBe('★ FULL INTEGRITY');
+    expect(overlay.getAttribute('data-low-hull-warning')).toBe('false');
+  });
+
+  it('sets data-readiness and data-low-hull-warning attributes for moderate combat ready on open', () => {
+    modal.open({ floorNum: 3, playerHp: 4, playerMaxHp: 6 }, vi.fn());
+    expect(overlay.getAttribute('data-readiness')).toBe('⚡ COMBAT READY');
+    expect(overlay.getAttribute('data-low-hull-warning')).toBe('false');
+  });
+});
+
+describe('getPortalRiskAssessment pure helper', () => {
+  it('returns FULL INTEGRITY when playerHp >= playerMaxHp', () => {
+    const assessment: PortalRiskAssessment = getPortalRiskAssessment(1, 6, 6);
+    expect(assessment).toEqual({
+      readinessLabel: '★ FULL INTEGRITY',
+      recommendation: 'Optimal combat readiness for descent.',
+      isLowHullWarning: false
+    });
+
+    // Overhealed or bonus health above max
+    const overhealed = getPortalRiskAssessment(2, 7, 6);
+    expect(overhealed.readinessLabel).toBe('★ FULL INTEGRITY');
+    expect(overhealed.isLowHullWarning).toBe(false);
+  });
+
+  it('returns COMBAT READY when playerHp is moderate (> 35% and < 100%)', () => {
+    const assessment = getPortalRiskAssessment(1, 4, 6);
+    expect(assessment).toEqual({
+      readinessLabel: '⚡ COMBAT READY',
+      recommendation: 'Systems nominal for next sector.',
+      isLowHullWarning: false
+    });
+
+    const assessment3 = getPortalRiskAssessment(1, 3, 6); // 50%
+    expect(assessment3.readinessLabel).toBe('⚡ COMBAT READY');
+    expect(assessment3.isLowHullWarning).toBe(false);
+  });
+
+  it('returns CRITICAL HULL when playerHp / playerMaxHp <= 0.35', () => {
+    // 2/6 = 0.333... <= 0.35
+    const assessment2 = getPortalRiskAssessment(1, 2, 6);
+    expect(assessment2).toEqual({
+      readinessLabel: '⚠️ CRITICAL HULL',
+      recommendation: 'Visit Shop or scavenge Fuel before descending!',
+      isLowHullWarning: true
+    });
+
+    // 1/6 = 0.166... <= 0.35
+    const assessment1 = getPortalRiskAssessment(1, 1, 6);
+    expect(assessment1).toEqual({
+      readinessLabel: '⚠️ CRITICAL HULL',
+      recommendation: 'Visit Shop or scavenge Fuel before descending!',
+      isLowHullWarning: true
+    });
+
+    // 0 HP
+    const assessment0 = getPortalRiskAssessment(1, 0, 6);
+    expect(assessment0).toEqual({
+      readinessLabel: '⚠️ CRITICAL HULL',
+      recommendation: 'Visit Shop or scavenge Fuel before descending!',
+      isLowHullWarning: true
+    });
+
+    // Exactly 35% boundary (35 / 100)
+    const exact35 = getPortalRiskAssessment(1, 35, 100);
+    expect(exact35.readinessLabel).toBe('⚠️ CRITICAL HULL');
+    expect(exact35.isLowHullWarning).toBe(true);
+
+    // Just above 35% (36 / 100)
+    const above35 = getPortalRiskAssessment(1, 36, 100);
+    expect(above35.readinessLabel).toBe('⚡ COMBAT READY');
+    expect(above35.isLowHullWarning).toBe(false);
+  });
+
+  it('returns default COMBAT READY when playerHp or playerMaxHp are missing or invalid', () => {
+    expect(getPortalRiskAssessment(1)).toEqual({
+      readinessLabel: '⚡ COMBAT READY',
+      recommendation: 'Systems nominal for next sector.',
+      isLowHullWarning: false
+    });
+
+    expect(getPortalRiskAssessment(1, undefined, 6)).toEqual({
+      readinessLabel: '⚡ COMBAT READY',
+      recommendation: 'Systems nominal for next sector.',
+      isLowHullWarning: false
+    });
+
+    expect(getPortalRiskAssessment(1, 4, undefined)).toEqual({
+      readinessLabel: '⚡ COMBAT READY',
+      recommendation: 'Systems nominal for next sector.',
+      isLowHullWarning: false
+    });
+
+    expect(getPortalRiskAssessment(1, 4, 0)).toEqual({
+      readinessLabel: '⚡ COMBAT READY',
+      recommendation: 'Systems nominal for next sector.',
+      isLowHullWarning: false
+    });
+  });
+
+  it('is accessible via PortalModalController static and instance methods', () => {
+    expect(PortalModalController.getPortalRiskAssessment(1, 6, 6)).toEqual(getPortalRiskAssessment(1, 6, 6));
+    const controller = new PortalModalController();
+    expect(controller.getPortalRiskAssessment(1, 2, 6)).toEqual(getPortalRiskAssessment(1, 2, 6));
   });
 });
 

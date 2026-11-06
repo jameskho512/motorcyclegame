@@ -293,6 +293,14 @@ export function addFloatingText(
 }
 
 /**
+ * Formats hit telemetry for Sanctuary Target Range training dummies.
+ */
+export function formatDummyHitTelemetry(damage: number, isCrit: boolean = false): string {
+  const rounded = Math.max(1, Math.round(Number(damage) || 0));
+  return isCrit ? `🎯 CRIT ${rounded}!` : `🎯 HIT ${rounded}`;
+}
+
+/**
  * Spawns directional muzzle particles.
  */
 export function spawnMuzzleParticles(
@@ -1123,6 +1131,21 @@ export function updatePlayerBullets(
         }
         damageEnemy(en, dmg, false, state);
         (en as any).hitFlashTimer = 0.07;
+
+        if (en.isDummy) {
+          (en as any).dummyHits = ((en as any).dummyHits || 0) + 1;
+          (en as any).dummyTotalDmg = ((en as any).dummyTotalDmg || 0) + dmg;
+          if ((en as any).dummyHits % 5 === 0) {
+            state.damageNumbers.push({
+              x: en.x,
+              y: en.y - en.radius - 26,
+              text: `🎯 TOTAL DMG: ${Math.round((en as any).dummyTotalDmg)}`,
+              color: '#00f5d4',
+              life: 1.0,
+              maxLife: 1.0
+            });
+          }
+        }
 
         // Shotgun 11px physics knockback
         if (b.knockback) {

@@ -44,6 +44,45 @@ export function isClearOfPortal(playerX: number, playerY: number): boolean {
 export interface PortalModalInfo {
   /** Current floor number; the popup offers floorNum + 1. */
   floorNum: number;
+  playerHp?: number;
+  playerMaxHp?: number;
+}
+
+export type PortalModalContext = PortalModalInfo;
+
+export interface PortalRiskAssessment {
+  readinessLabel: string;
+  recommendation: string;
+  isLowHullWarning: boolean;
+}
+
+export function getPortalRiskAssessment(
+  _floorNum: number = 1,
+  playerHp?: number,
+  playerMaxHp?: number
+): PortalRiskAssessment {
+  if (typeof playerHp === 'number' && typeof playerMaxHp === 'number' && playerMaxHp > 0) {
+    const ratio = playerHp / playerMaxHp;
+    if (ratio <= 0.35) {
+      return {
+        readinessLabel: '⚠️ CRITICAL HULL',
+        recommendation: 'Visit Shop or scavenge Fuel before descending!',
+        isLowHullWarning: true
+      };
+    }
+    if (playerHp >= playerMaxHp) {
+      return {
+        readinessLabel: '★ FULL INTEGRITY',
+        recommendation: 'Optimal combat readiness for descent.',
+        isLowHullWarning: false
+      };
+    }
+  }
+  return {
+    readinessLabel: '⚡ COMBAT READY',
+    recommendation: 'Systems nominal for next sector.',
+    isLowHullWarning: false
+  };
 }
 
 export interface SectorBriefing {
@@ -140,11 +179,28 @@ export class PortalModalController {
     return getNextSectorBriefing(currentFloor);
   }
 
+  public static getPortalRiskAssessment(
+    floorNum: number = 1,
+    playerHp?: number,
+    playerMaxHp?: number
+  ): PortalRiskAssessment {
+    return getPortalRiskAssessment(floorNum, playerHp, playerMaxHp);
+  }
+
+  public getPortalRiskAssessment(
+    floorNum: number = 1,
+    playerHp?: number,
+    playerMaxHp?: number
+  ): PortalRiskAssessment {
+    return getPortalRiskAssessment(floorNum, playerHp, playerMaxHp);
+  }
+
   public open(info: PortalModalInfo, onConfirm: () => void, onCancel?: () => void): void {
     this.pendingConfirm = onConfirm;
     this.pendingCancel = onCancel || null;
 
     const briefing = getNextSectorBriefing(info.floorNum);
+    const assessment = getPortalRiskAssessment(info.floorNum, info.playerHp, info.playerMaxHp);
 
     if (info.floorNum === 6) {
       if (this.floorLabelEl) {
@@ -191,6 +247,8 @@ export class PortalModalController {
       this.overlay.setAttribute('data-next-boss', briefing.bossName);
       this.overlay.setAttribute('data-threat-mult', briefing.threatMult);
       this.overlay.setAttribute('title', `Next: ${briefing.biomeName} (Boss: ${briefing.bossName}, Threat: ${briefing.threatMult})`);
+      this.overlay.setAttribute('data-readiness', assessment.readinessLabel);
+      this.overlay.setAttribute('data-low-hull-warning', String(assessment.isLowHullWarning));
     }
 
     if (this.warningEl) {

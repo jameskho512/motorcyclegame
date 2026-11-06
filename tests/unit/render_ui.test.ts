@@ -28,7 +28,7 @@ import { ShopModalController } from '../../src/ui/shopModal';
 import { FilterManager } from '../../src/render/shaders';
 import { StageManager, getFloorMoteColor, getEliteAffixColor } from '../../src/render/stage';
 import { Pickup, MetaSaveState, PlayerState, Obstacle, Dungeon, Room } from '../../src/types/game';
-import { GarageController, getWeaponMasteryTier } from '../../src/ui/garage';
+import { GarageController, getWeaponMasteryTier, getStashSalvageSummary, type StashSalvageSummary } from '../../src/ui/garage';
 
 describe('Render & UI Subsystems', () => {
   describe('Semicircular Fuel Gauge Math', () => {
@@ -774,6 +774,91 @@ describe('Render & UI Subsystems', () => {
       expect(railgunBadge?.textContent).toContain('☆☆☆ UNRANKED · 0 KILLS');
       // No (+0% DMG) text when dmgBonusPct is 0
       expect(railgunBadge?.textContent).not.toContain('+0% DMG');
+    });
+
+    it('sets telemetry attributes (data-stash-count, data-total-salvage, data-highest-rarity) on #stash-list', () => {
+      // Empty stash case
+      metaSave.stash = [];
+      const garage = new GarageController(callbacks);
+      garage.open(false, 1, metaSave, player);
+
+      const stashList = document.getElementById('stash-list');
+      expect(stashList).not.toBeNull();
+      expect(stashList?.getAttribute('data-stash-count')).toBe('0');
+      expect(stashList?.getAttribute('data-total-salvage')).toBe('0');
+      expect(stashList?.getAttribute('data-highest-rarity')).toBe('-1');
+
+      // Populated stash case: 1 Common (sell 3) + 1 Rare (sell 18) + 1 Legendary (sell 40) = 61 scrap, highest rarity 3
+      metaSave.stash = [
+        { slot: 'frame', rarity: 0, name: 'Stock Frame', stats: { hp: 1 } },
+        { slot: 'engine', rarity: 2, name: 'Racing Engine', stats: { dmg: 0.2 } },
+        { slot: 'tires', rarity: 3, name: 'Apex Tires', stats: { speed: 0.25 } }
+      ];
+      garage.render(metaSave, player);
+
+      expect(stashList?.getAttribute('data-stash-count')).toBe('3');
+      expect(stashList?.getAttribute('data-total-salvage')).toBe('61');
+      expect(stashList?.getAttribute('data-highest-rarity')).toBe('3');
+    });
+  });
+
+  describe('Garage Stash Salvage Telemetry Math (getStashSalvageSummary)', () => {
+    it('returns zero values and highestRarity -1 for empty or invalid stashes', () => {
+      expect(getStashSalvageSummary([])).toEqual({
+        itemCount: 0,
+        totalSalvageScrap: 0,
+        highestRarity: -1
+      });
+      expect(getStashSalvageSummary(undefined as any)).toEqual({
+        itemCount: 0,
+        totalSalvageScrap: 0,
+        highestRarity: -1
+      });
+      expect(getStashSalvageSummary(null as any)).toEqual({
+        itemCount: 0,
+        totalSalvageScrap: 0,
+        highestRarity: -1
+      });
+      expect(getStashSalvageSummary('invalid' as any)).toEqual({
+        itemCount: 0,
+        totalSalvageScrap: 0,
+        highestRarity: -1
+      });
+    });
+
+    it('correctly sums scrap salvage values and identifies highest rarity tier', () => {
+      const summary: StashSalvageSummary = getStashSalvageSummary([
+        { slot: 'frame', rarity: 0, name: 'Common Frame', stats: {} },       // sell: 3, rarity 0
+        { slot: 'handlebars', rarity: 1, name: 'Magic Bars', stats: {} },    // sell: 8, rarity 1
+        { slot: 'engine', rarity: 2, name: 'Rare Engine', stats: {} },       // sell: 18, rarity 2
+        { slot: 'tires', rarity: 3, name: 'Legendary Tires', stats: {} },    // sell: 40, rarity 3
+      ]);
+
+      expect(summary).toEqual({
+        itemCount: 4,
+        totalSalvageScrap: 69, // 3 + 8 + 18 + 40
+        highestRarity: 3
+      });
+    });
+
+    it('handles single-item stash and defaults item rarity gracefully', () => {
+      const single = getStashSalvageSummary([
+        { slot: 'tank', rarity: 1, name: 'Magic Tank', stats: {} }
+      ]);
+      expect(single).toEqual({
+        itemCount: 1,
+        totalSalvageScrap: 8,
+        highestRarity: 1
+      });
+
+      const missingRarity = getStashSalvageSummary([
+        { slot: 'exhaust', name: 'Unknown Exhaust', stats: {} } as any
+      ]);
+      expect(missingRarity).toEqual({
+        itemCount: 1,
+        totalSalvageScrap: 3, // defaults to rarity 0 -> sell 3
+        highestRarity: 0
+      });
     });
   });
 

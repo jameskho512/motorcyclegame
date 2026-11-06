@@ -24,7 +24,8 @@ import {
   spawnBossMinions,
   updateEnemyAI,
   generateBossDefeatRewards,
-  BOSS_COLORS
+  BOSS_COLORS,
+  BOSS_NAMES
 } from '../../src/systems/enemyAI';
 import { handleEnemyDeath, createCombatState } from '../../src/systems/combat';
 import type {
@@ -954,4 +955,250 @@ describe('Systems: EnemyAI — Elite Affixes & Overclocked Cycling', () => {
     expect(overclockedTurret.aiTimer).toBeCloseTo(0.25, 4);
   });
 });
+
+describe('Systems: EnemyAI — Boss Phase-2 Enrage Across All 6 Floor Variants (Floors 1-6)', () => {
+  it('verifies all 6 Boss variants (Floors 1 through 6) enter Phase-2 Enrage when hp <= maxHp * 0.5', () => {
+    const expectedVariants = [
+      { floor: 1, variant: 0, name: BOSS_NAMES[0] },
+      { floor: 2, variant: 1, name: BOSS_NAMES[1] },
+      { floor: 3, variant: 2, name: BOSS_NAMES[2] },
+      { floor: 4, variant: 3, name: BOSS_NAMES[3] },
+      { floor: 5, variant: 4, name: BOSS_NAMES[4] },
+      { floor: 6, variant: 5, name: BOSS_NAMES[5] }
+    ];
+
+    for (const { floor, variant, name } of expectedVariants) {
+      const room = createMockRoom();
+      const player = createMockPlayer({ x: 500, y: 360 });
+      const boss = createBoss(floor, 360, 360);
+
+      expect(boss.bossVariant).toBe(variant);
+      expect(boss.name).toBe(name);
+
+      // Phase 1 check: hp > 50%
+      boss.hp = Math.floor(boss.maxHp * 0.51);
+      updateEnemyAI({
+        room,
+        enemy: boss,
+        dt: 0.05,
+        player,
+        projScale: 1,
+        enemyBullets: [],
+        enemyBombs: [],
+        floorNum: floor
+      });
+      expect(boss.phase).toBe(1);
+      expect((boss as any).enraged).toBe(false);
+
+      // Phase 2 check: hp exactly 50%
+      boss.hp = Math.floor(boss.maxHp * 0.50);
+      updateEnemyAI({
+        room,
+        enemy: boss,
+        dt: 0.05,
+        player,
+        projScale: 1,
+        enemyBullets: [],
+        enemyBombs: [],
+        floorNum: floor
+      });
+      expect(boss.phase).toBe(2);
+      expect((boss as any).enraged).toBe(true);
+
+      // Phase 2 check: hp well below 50% (e.g. 20%)
+      boss.hp = Math.floor(boss.maxHp * 0.20);
+      updateEnemyAI({
+        room,
+        enemy: boss,
+        dt: 0.05,
+        player,
+        projScale: 1,
+        enemyBullets: [],
+        enemyBombs: [],
+        floorNum: floor
+      });
+      expect(boss.phase).toBe(2);
+      expect((boss as any).enraged).toBe(true);
+    }
+  });
+
+  it('verifies overdrivePulseTimer decrements and resets to 2.4s, spawning floor hazards only on Floors 4 & 5', () => {
+    for (let floor = 1; floor <= 6; floor++) {
+      const room = createMockRoom();
+      const player = createMockPlayer({ x: 500, y: 360 });
+      const boss = createBoss(floor, 360, 360);
+      boss.hp = Math.floor(boss.maxHp * 0.4); // Trigger Phase 2
+
+      // Step 1: Initial frame initializes overdrivePulseTimer to 2.4 and subtracts dt
+      updateEnemyAI({
+        room,
+        enemy: boss,
+        dt: 0.1,
+        player,
+        projScale: 1,
+        enemyBullets: [],
+        enemyBombs: [],
+        floorNum: floor
+      });
+      expect(boss.phase).toBe(2);
+      expect((boss as any).overdrivePulseTimer).toBeCloseTo(2.3, 4);
+
+      // Step 2: Trigger pulse timer reset
+      (boss as any).overdrivePulseTimer = 0.05;
+      updateEnemyAI({
+        room,
+        enemy: boss,
+        dt: 0.1,
+        player,
+        projScale: 1,
+        enemyBullets: [],
+        enemyBombs: [],
+        floorNum: floor
+      });
+      expect((boss as any).overdrivePulseTimer).toBeCloseTo(2.4, 4);
+
+      // Verify hazard spawning behavior:
+      // Floors 4 (Cryo Valkyrie) & 5 (Inferno Colossus) spawn 46px hazards on pulse reset
+      // Floors 1, 2, 3, 6 do NOT spawn hazards on pulse reset
+      const pulseHazards = room.hazards.filter(h => h.radius === 46 && h.life === 3.5);
+      if (floor === 4 || floor === 5) {
+        expect(pulseHazards.length).toBeGreaterThanOrEqual(1);
+        expect(pulseHazards[0].maxLife).toBe(3.5);
+      } else {
+        expect(pulseHazards).toHaveLength(0);
+      }
+    }
+  });
+
+  it('verifies 1.25x dash velocity boost in Phase 2 for Floors 1, 2, 3, 6 (Variants 0, 1, 2, 5) but NOT Floors 4 & 5 (Variants 3 & 4)', () => {
+    for (let floor = 1; floor <= 6; floor++) {
+      const room = createMockRoom();
+      const player = createMockPlayer({ x: 500, y: 360 });
+
+      // Run windup -> dashing in Phase 1
+      const bossP1 = createBoss(floor, 360, 360);
+      bossP1.state = 'windup';
+      bossP1.specialTimer = 0.05;
+
+      updateEnemyAI({
+        room,
+        enemy: bossP1,
+        dt: 0.1,
+        player,
+        projScale: 1,
+        enemyBullets: [],
+        enemyBombs: [],
+        floorNum: floor
+      });
+      expect(bossP1.state).toBe('dashing');
+      const p1Speed = Math.hypot(bossP1.dashVx || 0, bossP1.dashVy || 0);
+
+      // Run windup -> dashing in Phase 2
+      const bossP2 = createBoss(floor, 360, 360);
+      bossP2.hp = Math.floor(bossP2.maxHp * 0.35); // Enraged Phase 2
+      bossP2.state = 'windup';
+      bossP2.specialTimer = 0.05;
+
+      updateEnemyAI({
+        room,
+        enemy: bossP2,
+        dt: 0.1,
+        player,
+        projScale: 1,
+        enemyBullets: [],
+        enemyBombs: [],
+        floorNum: floor
+      });
+      expect(bossP2.state).toBe('dashing');
+      expect(bossP2.phase).toBe(2);
+      const p2Speed = Math.hypot(bossP2.dashVx || 0, bossP2.dashVy || 0);
+
+      if (floor === 4 || floor === 5) {
+        // Floors 4 (variant 3) and 5 (variant 4) are excluded from the 1.25x dash boost
+        expect(p2Speed / p1Speed).toBeCloseTo(1.0, 2);
+      } else {
+        // Floors 1, 2, 3, 6 (variants 0, 1, 2, 5) receive the 1.25x dash velocity boost
+        expect(p2Speed / p1Speed).toBeCloseTo(1.25, 2);
+      }
+    }
+  });
+
+  it('verifies enablePhase2ExtraProjectiles 4-bullet fan across all 6 Boss variants in Phase 2', () => {
+    for (let floor = 1; floor <= 6; floor++) {
+      const player = createMockPlayer({ x: 500, y: 360 });
+
+      // Case A: Phase 2 WITHOUT enablePhase2ExtraProjectiles
+      const roomA = createMockRoom();
+      const bossA = createBoss(floor, 360, 360);
+      bossA.hp = Math.floor(bossA.maxHp * 0.4); // Phase 2
+      bossA.aiTimer = 0.05;
+      const bulletsA: EnemyBullet[] = [];
+
+      updateEnemyAI({
+        room: roomA,
+        enemy: bossA,
+        dt: 0.1,
+        player,
+        projScale: 1,
+        enemyBullets: bulletsA,
+        enemyBombs: [],
+        floorNum: floor
+      });
+      expect(bossA.phase).toBe(2);
+
+      // Case B: Phase 2 WITH enablePhase2ExtraProjectiles
+      const roomB = createMockRoom();
+      const bossB = createBoss(floor, 360, 360);
+      bossB.hp = Math.floor(bossB.maxHp * 0.4); // Phase 2
+      bossB.aiTimer = 0.05;
+      (bossB as any).enablePhase2ExtraProjectiles = true;
+      const bulletsB: EnemyBullet[] = [];
+
+      updateEnemyAI({
+        room: roomB,
+        enemy: bossB,
+        dt: 0.1,
+        player,
+        projScale: 1,
+        enemyBullets: bulletsB,
+        enemyBombs: [],
+        floorNum: floor
+      });
+      expect(bossB.phase).toBe(2);
+
+      // Exactly 4 extra bullets fired
+      expect(bulletsB.length - bulletsA.length).toBe(4);
+
+      // Case C: Phase 1 WITH enablePhase2ExtraProjectiles -> should NOT fire extra bullets
+      const roomC = createMockRoom();
+      const bossC = createBoss(floor, 360, 360);
+      bossC.hp = bossC.maxHp; // Phase 1
+      bossC.aiTimer = 0.05;
+      (bossC as any).enablePhase2ExtraProjectiles = true;
+      const bulletsC: EnemyBullet[] = [];
+
+      updateEnemyAI({
+        room: roomC,
+        enemy: bossC,
+        dt: 0.1,
+        player,
+        projScale: 1,
+        enemyBullets: bulletsC,
+        enemyBombs: [],
+        floorNum: floor
+      });
+      expect(bossC.phase).toBe(1);
+      // In Phase 1 with flag, bullets equal Phase 2 without flag
+      expect(bulletsC.length).toBe(bulletsA.length);
+
+      // Verify the 4 extra projectiles have yellow/gold color (#ffd166), radius 6.5, and correct fan speed
+      const phase2FanBullets = bulletsB.filter(b => {
+        const speed = Math.hypot(b.vx, b.vy);
+        return b.color === '#ffd166' && b.radius === 6.5 && Math.abs(speed - 260) < 1;
+      });
+      expect(phase2FanBullets).toHaveLength(4);
+    }
+  });
+});
+
 

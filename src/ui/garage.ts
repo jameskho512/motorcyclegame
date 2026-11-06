@@ -109,6 +109,26 @@ export function buildRunPostMortemSummary(
   return { rankGrade, headline, statsLine };
 }
 
+export interface StashSalvageSummary {
+  itemCount: number;
+  totalSalvageScrap: number;
+  highestRarity: number;
+}
+
+export function getStashSalvageSummary(stash: EquipmentItem[] = []): StashSalvageSummary {
+  if (!Array.isArray(stash) || stash.length === 0) {
+    return { itemCount: 0, totalSalvageScrap: 0, highestRarity: -1 };
+  }
+  let totalSalvageScrap = 0;
+  let highestRarity = -1;
+  for (const item of stash) {
+    const r = item?.rarity ?? 0;
+    totalSalvageScrap += RARITY[r]?.sell ?? 0;
+    if (r > highestRarity) highestRarity = r;
+  }
+  return { itemCount: stash.length, totalSalvageScrap, highestRarity };
+}
+
 export interface GarageCallbacks {
   onEquipItem: (item: EquipmentItem) => void;
   onUnequipSlot: (slotId: EquipSlot) => void;
@@ -650,6 +670,11 @@ export class GarageController {
     this.stashList.innerHTML = '';
 
     const stash = metaSave.stash || [];
+    const salvage = getStashSalvageSummary(stash);
+    this.stashList.setAttribute('data-stash-count', String(salvage.itemCount));
+    this.stashList.setAttribute('data-total-salvage', String(salvage.totalSalvageScrap));
+    this.stashList.setAttribute('data-highest-rarity', String(salvage.highestRarity));
+
     const GHOST_FILL = 11;
 
     if (stash.length === 0) {
