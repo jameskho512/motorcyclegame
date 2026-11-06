@@ -127,11 +127,8 @@ export class StageManager {
     this.app.stage.addChild(this.vfxLayer);
     this.app.stage.addChild(this.hudLayer);
 
-    // Attach post-processing filters
-    const filters = this.filterManager.getFilters();
-    if (filters.length > 0) {
-      this.app.stage.filters = filters;
-    }
+    // Post-processing: keep stage filters empty to maintain 60 FPS without GPU blur bottleneck
+    this.app.stage.filters = [];
 
     this.isInitialized = true;
   }
@@ -146,7 +143,7 @@ export class StageManager {
     const filters = this.filterManager.getFilters();
     if (filters.length > 0) {
       this.app.stage.filters = filters;
-    } else {
+    } else if (this.app.stage.filters && this.app.stage.filters.length > 0) {
       this.app.stage.filters = [];
     }
   }
@@ -371,7 +368,11 @@ export class StageManager {
       drawEnemy(g, en, timestampMs);
     }
 
-    // 6. Player Motorcycle
+    // Directional afterburner jet cones and subtle rim aura rendered UNDER player motorcycle
+    const isBoosting = (player.nos > 0 && !player.nosLock);
+    this.vfx.renderKiAura(g, player, isBoosting);
+
+    // 6. Player Motorcycle (Always on top of aura and exhaust plumes)
     drawMotorcycle(g, player, timestampMs);
   }
 
@@ -395,35 +396,33 @@ export class StageManager {
         .stroke({ color: 0xffd166, width: 2, alpha });
     }
 
-    // 2. Player Bullets & Flames
-    for (const b of bullets) {
+    // 2. Player Bullets & Flames (Streamlined single circle fill, capped at 120)
+    const bulletCount = Math.min(bullets.length, 120);
+    for (let i = 0; i < bulletCount; i++) {
+      const b = bullets[i];
       const alpha = b.isFlame ? Math.max(0.2, b.life / (b.maxLife || 0.36)) : 1.0;
       const bColor = parseColor(b.color, 0xffd166);
 
-      // Outer ink border for crisp visibility
-      g.circle(b.x, b.y, b.radius + 1)
-        .stroke({ color: 0x0a0b10, width: 2, alpha });
-
-      // Core color
       g.circle(b.x, b.y, b.radius)
         .fill({ color: bColor, alpha });
 
-      if (!b.isFlame) {
-        // Specular white center
+      if (!b.isFlame && b.radius > 2.5) {
         g.circle(b.x, b.y, b.radius * 0.45)
           .fill({ color: 0xffffff, alpha });
       }
     }
 
-    // 3. Enemy Bullets
-    for (const eb of enemyBullets) {
+    // 3. Enemy Bullets (Streamlined single circle fill, capped at 120)
+    const enemyBulletCount = Math.min(enemyBullets.length, 120);
+    for (let i = 0; i < enemyBulletCount; i++) {
+      const eb = enemyBullets[i];
       const ebColor = parseColor(eb.color, 0xef233c);
-      g.circle(eb.x, eb.y, eb.radius + 1)
-        .stroke({ color: 0x0a0b10, width: 2 });
       g.circle(eb.x, eb.y, eb.radius)
         .fill({ color: ebColor });
-      g.circle(eb.x, eb.y, eb.radius * 0.45)
-        .fill({ color: 0xffffff });
+      if (eb.radius > 2.5) {
+        g.circle(eb.x, eb.y, eb.radius * 0.45)
+          .fill({ color: 0xffffff });
+      }
     }
 
     // 4. Arcing Grenades
@@ -459,8 +458,10 @@ export class StageManager {
     this.vfx.renderShockwaves(g, particles);
     this.vfx.renderHitSparks(g);
 
-    // 8. Normal Particle Sparks
-    for (const pt of particles) {
+    // 8. Normal Particle Sparks (Streamlined single circle fill, capped at 150)
+    const particleCount = Math.min(particles.length, 150);
+    for (let i = 0; i < particleCount; i++) {
+      const pt = particles[i];
       if (!pt.shockwaveMax) {
         const alpha = Math.max(0, pt.life / pt.maxLife);
         const col = parseColor(pt.color, 0xffd166);
@@ -469,9 +470,8 @@ export class StageManager {
       }
     }
 
-    // 9. Anime Speed Lines & Ki Aura during NOS Boost
+    // 9. Anime Speed Lines during NOS Boost (Ki aura rendered underneath player in entityLayer)
     const isBoosting = (player.nos > 0 && !player.nosLock);
-    this.vfx.renderKiAura(g, player, isBoosting);
     this.vfx.renderSpeedLines(g, player, isBoosting);
   }
 

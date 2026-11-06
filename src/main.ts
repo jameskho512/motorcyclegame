@@ -349,7 +349,11 @@ export class MotoRogueApp {
       c.height = Math.round(cssH * dpr);
     };
 
-    fitCanvas(canvas, size, size);
+    // Set PixiJS main canvas CSS dimensions only.
+    // Direct mutation of canvas.width/height desyncs PixiJS v8's viewport & projection matrix!
+    canvas.style.width = `${size}px`;
+    canvas.style.height = `${size}px`;
+
     if (miniCanvas) fitCanvas(miniCanvas, 220, 135);
     if (fuelCanvas) fitCanvas(fuelCanvas, 220, 110);
     if (bikeCanvas) fitCanvas(bikeCanvas, 260, 165);
@@ -397,6 +401,9 @@ export class MotoRogueApp {
     const player = this.stateManager.player;
     const room = this.getCurrentRoom();
 
+    // Call inputManager.update(player.x, player.y) at the start of every frame
+    this.inputManager.update(player.x, player.y);
+
     // 1. Audio Engine Modulation
     const speed = Math.hypot(player.vx, player.vy);
     const speedRatio = Math.min(1.5, speed / (player.baseSpeed || 265));
@@ -417,6 +424,16 @@ export class MotoRogueApp {
     const iy = (inputState.down ? 1 : 0) - (inputState.up ? 1 : 0);
 
     const { boosting } = updateNos(player, isShiftHeld, isMoving, dt);
+
+    // Per-frame NOS bar visual update
+    const nosFill = document.getElementById('nos-fill');
+    if (nosFill) {
+      nosFill.style.width = `${(player.nos / player.nosMax) * 100}%`;
+      nosFill.style.background = player.nosLock
+        ? '#e63946'
+        : (boosting ? 'linear-gradient(90deg,#4cc9f0,#fff)' : 'linear-gradient(90deg,#4895ef,#4cc9f0)');
+    }
+
     updateBikeKinematics(player, ix, iy, boosting, dt, room);
 
     // Apply movement displacement

@@ -58,6 +58,13 @@ export class SoundSynthesizer implements AudioService {
   private lastFlameSfx: number = 0;
   private lastHitSfx: number = 0;
 
+  // Stateful 5-gear motorcycle transmission
+  private gear: number = 1;
+  private throttleTime: number = 0;
+  private shiftCutTimer: number = 0;
+  private lfoPhase: number = 0;
+  private lastEngineUpdateTime: number = 0;
+
   constructor(storage: StorageDriver = defaultStorage) {
     this.storage = storage;
     this.muted = this.storage.getItem(SAVE_KEY_MUTED) === '1';
@@ -161,23 +168,145 @@ export class SoundSynthesizer implements AudioService {
     return this.muted;
   }
 
-  public updateEngine(speedRatio: number, isBoosting: boolean, paused: boolean): void {
+  /**
+   * Stateful 5-gear transmission simulation for continuous motorcycle engine audio.
+   */
+  public updateEngine(
+    speedRatio: number,
+    isBoosting: boolean,
+    paused: boolean,
+    customDt?: number
+  ): void {
+    const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const dt = customDt !== undefined
+      ? customDt
+      : (this.lastEngineUpdateTime === 0 ? 0.016 : Math.min(0.1, (nowMs - this.lastEngineUpdateTime) / 1000));
+    this.lastEngineUpdateTime = nowMs;
+
+    // Handle idle vs moving
+    let f1: number;
+    let targetGain: number;
+
+    if (speedRatio <= 0.08) {
+      // Idle reset to 1st gear
+      this.gear = 1;
+      this.throttleTime = 0;
+      this.shiftCutTimer = 0;
+      this.lfoPhase += dt * 8.0 * Math.PI * 2; // 8 Hz gentle idle burble
+      f1 = 44 + Math.sin(this.lfoPhase) * 2.0;
+      targetGain = 0.025;
+    } else {
+      // Accelerating / Moving
+      this.throttleTime += dt;
+
+      // 5-gear threshold progression
+      let targetGear = 1;
+      if (this.throttleTime >= 4.10) {
+        targetGear = 5;
+      } else if (this.throttleTime >= 2.65) {
+        targetGear = 4;
+      } else if (this.throttleTime >= 1.50) {
+        targetGear = 3;
+      } else if (this.throttleTime >= 0.65) {
+        targetGear = 2;
+      }
+
+      // Upshift trigger: 55ms throttle-cut dip
+      if (targetGear > this.gear) {
+        this.gear = targetGear;
+        this.shiftCutTimer = 0.055;
+      }
+
+      if (this.shiftCutTimer > 0) {
+        this.shiftCutTimer = Math.max(0, this.shiftCutTimer - dt);
+      }
+
+      // Gear RPM bands: entry RPM to max ~135 Hz
+      const gearBands: Record<number, { entry: number; max: number; startT: number; endT: number }> = {
+        1: { entry: 48, max: 132, startT: 0.00, endT: 0.65 },
+        2: { entry: 62, max: 134, startT: 0.65, endT: 1.50 },
+        3: { entry: 72, max: 135, startT: 1.50, endT: 2.65 },
+        4: { entry: 80, max: 135, startT: 2.65, endT: 4.10 },
+        5: { entry: 86, max: 135, startT: 4.10, endT: 6.00 }
+      };
+
+      const band = gearBands[this.gear] || gearBands[5];
+      let p: number;
+      if (this.gear === 5) {
+        p = Math.min(1.0, speedRatio);
+      } else {
+        const span = band.endT - band.startT;
+        p = Math.max(0, Math.min(1.0, (this.throttleTime - band.startT) / span));
+      }
+
+      const baseRpm = band.entry + (band.max - band.entry) * Math.pow(p, 0.88);
+
+      // 16-32 Hz combustion cadence modulation (24 Hz)
+      this.lfoPhase += dt * 24.0 * Math.PI * 2;
+      const cadence = Math.sin(this.lfoPhase) * 3.5;
+
+      // Cruising / top-gear throttle rev pulses
+      const revPulse = this.gear === 5 ? Math.sin(this.throttleTime * 3.8) * 4.0 : 0;
+
+      f1 = baseRpm + cadence + revPulse + (isBoosting ? 32 : 0);
+
+      // Shift cut: momentary gain dip + pitch drop to new gear entry RPM
+      if (this.shiftCutTimer > 0) {
+        f1 = band.entry;
+        targetGain = 0.012;
+      } else {
+        targetGain = 0.035 + (f1 / 140) * 0.055 + (isBoosting ? 0.040 : 0);
+      }
+    }
+
+    const f2 = f1 * (isBoosting ? 2.5 : 2.0);
+    const cutoff = Math.min(1800, f1 * 3.4 + (isBoosting ? 260 : 60));
+
     if (!this.actx || !this.engGain || !this.engOsc1 || !this.engOsc2 || !this.engFilter) {
       return;
     }
 
     const now = this.actx.currentTime;
-    const params = calculateEngineParams(speedRatio, isBoosting, paused, this.muted);
 
     if (this.muted || paused) {
       this.engGain.gain.setTargetAtTime(0.0001, now, 0.06);
       return;
     }
 
-    this.engOsc1.frequency.setTargetAtTime(params.f1, now, 0.05);
-    this.engOsc2.frequency.setTargetAtTime(params.f2, now, 0.05);
-    this.engFilter.frequency.setTargetAtTime(params.cutoff, now, 0.05);
-    this.engGain.gain.setTargetAtTime(params.gain, now, 0.06);
+    const tc = this.shiftCutTimer > 0 ? 0.015 : 0.04;
+    this.engOsc1.frequency.setTargetAtTime(f1, now, tc);
+    this.engOsc2.frequency.setTargetAtTime(f2, now, tc);
+    this.engFilter.frequency.setTargetAtTime(cutoff, now, 0.05);
+    this.engGain.gain.setTargetAtTime(targetGain, now, tc);
+  }
+
+  /**
+   * Backwards-compatible alias for updateEngine.
+   */
+  public updateEngineHum(
+    speedRatio: number,
+    isBoosting: boolean,
+    paused: boolean,
+    customDt?: number
+  ): void {
+    this.updateEngine(speedRatio, isBoosting, paused, customDt);
+  }
+
+  /**
+   * Returns current transmission diagnostics for verification and tests.
+   */
+  public getTransmission(): {
+    gear: number;
+    throttleTime: number;
+    shiftCutTimer: number;
+    lfoPhase: number;
+  } {
+    return {
+      gear: this.gear,
+      throttleTime: this.throttleTime,
+      shiftCutTimer: this.shiftCutTimer,
+      lfoPhase: this.lfoPhase
+    };
   }
 
   private playTone(

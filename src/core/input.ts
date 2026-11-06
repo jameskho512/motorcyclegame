@@ -132,13 +132,13 @@ export class InputManager {
     const dy = this.state.mouseY - playerY;
     this.state.aimAngle = Math.atan2(dy, dx);
 
-    // Refresh movement state
-    this.state.up = !!(this.rawKeys['w'] || this.rawKeys['arrowup']);
-    this.state.down = !!(this.rawKeys['s'] || this.rawKeys['arrowdown']);
-    this.state.left = !!(this.rawKeys['a'] || this.rawKeys['arrowleft']);
-    this.state.right = !!(this.rawKeys['d'] || this.rawKeys['arrowright']);
-    this.state.boost = !!(this.rawKeys['shift']);
-    this.state.fire = this.state.mouseDown;
+    // Refresh movement state (supports e.key and e.code so Shift does not mask WASD)
+    this.state.up = !!(this.rawKeys['w'] || this.rawKeys['keyw'] || this.rawKeys['arrowup']);
+    this.state.down = !!(this.rawKeys['s'] || this.rawKeys['keys'] || this.rawKeys['arrowdown']);
+    this.state.left = !!(this.rawKeys['a'] || this.rawKeys['keya'] || this.rawKeys['arrowleft']);
+    this.state.right = !!(this.rawKeys['d'] || this.rawKeys['keyd'] || this.rawKeys['arrowright']);
+    this.state.boost = !!(this.rawKeys['shift'] || this.rawKeys['shiftleft'] || this.rawKeys['shiftright']);
+    this.state.fire = this.state.mouseDown || this.state.fire;
   }
 
   /**
@@ -158,15 +158,14 @@ export class InputManager {
       this.targetWindow.addEventListener('keyup', this.handleKeyUpBound as EventListener);
       this.targetWindow.addEventListener('mouseup', this.handleMouseUpBound as EventListener);
       this.targetWindow.addEventListener('wheel', this.handleWheelBound as EventListener, { passive: false });
+      this.targetWindow.addEventListener('mousemove', this.handleMouseMoveBound as EventListener);
+      this.targetWindow.addEventListener('mousedown', this.handleMouseDownBound as EventListener);
     }
 
     if (this.canvas) {
       this.canvas.addEventListener('mousemove', this.handleMouseMoveBound as EventListener);
       this.canvas.addEventListener('mousedown', this.handleMouseDownBound as EventListener);
       this.canvas.addEventListener('mouseup', this.handleMouseUpBound as EventListener);
-    } else if (this.targetWindow) {
-      this.targetWindow.addEventListener('mousemove', this.handleMouseMoveBound as EventListener);
-      this.targetWindow.addEventListener('mousedown', this.handleMouseDownBound as EventListener);
     }
 
     this.attached = true;
@@ -183,10 +182,8 @@ export class InputManager {
       this.targetWindow.removeEventListener('keyup', this.handleKeyUpBound as EventListener);
       this.targetWindow.removeEventListener('mouseup', this.handleMouseUpBound as EventListener);
       this.targetWindow.removeEventListener('wheel', this.handleWheelBound as EventListener);
-      if (!this.canvas) {
-        this.targetWindow.removeEventListener('mousemove', this.handleMouseMoveBound as EventListener);
-        this.targetWindow.removeEventListener('mousedown', this.handleMouseDownBound as EventListener);
-      }
+      this.targetWindow.removeEventListener('mousemove', this.handleMouseMoveBound as EventListener);
+      this.targetWindow.removeEventListener('mousedown', this.handleMouseDownBound as EventListener);
     }
 
     if (this.canvas) {
@@ -228,8 +225,14 @@ export class InputManager {
   private handleKeyDown(e: KeyboardEvent): void {
     this.callbacks.onUserGesture?.();
 
-    const k = e.key.toLowerCase();
+    const k = e.key ? e.key.toLowerCase() : '';
     this.rawKeys[k] = true;
+    if (e.code) {
+      this.rawKeys[e.code.toLowerCase()] = true;
+    }
+    if (e.shiftKey || e.code === 'ShiftLeft' || e.code === 'ShiftRight' || k === 'shift') {
+      this.rawKeys['shift'] = true;
+    }
 
     // Check if shop modal overlay is currently visible in DOM or state
     const isShopOpen =
@@ -272,21 +275,31 @@ export class InputManager {
   }
 
   private handleKeyUp(e: KeyboardEvent): void {
-    const k = e.key.toLowerCase();
+    const k = e.key ? e.key.toLowerCase() : '';
     this.rawKeys[k] = false;
+    if (e.code) {
+      this.rawKeys[e.code.toLowerCase()] = false;
+    }
+    if (!e.shiftKey && (e.code === 'ShiftLeft' || e.code === 'ShiftRight' || k === 'shift')) {
+      this.rawKeys['shift'] = false;
+      this.rawKeys['shiftleft'] = false;
+      this.rawKeys['shiftright'] = false;
+    }
     this.update();
   }
 
   private handleMouseMove(e: MouseEvent): void {
-    if (this.canvas) {
+    if (this.canvas && typeof this.canvas.getBoundingClientRect === 'function') {
       const rect = this.canvas.getBoundingClientRect();
       const scaleX = rect.width > 0 ? ARENA_WIDTH / rect.width : 1;
       const scaleY = rect.height > 0 ? ARENA_HEIGHT / rect.height : 1;
-      this.state.mouseX = (e.clientX - rect.left) * scaleX;
-      this.state.mouseY = (e.clientY - rect.top) * scaleY;
+      const mx = (e.clientX - rect.left) * scaleX;
+      const my = (e.clientY - rect.top) * scaleY;
+      this.state.mouseX = Math.max(0, Math.min(ARENA_WIDTH, mx));
+      this.state.mouseY = Math.max(0, Math.min(ARENA_HEIGHT, my));
     } else {
-      this.state.mouseX = e.clientX;
-      this.state.mouseY = e.clientY;
+      this.state.mouseX = e.clientX ?? this.state.mouseX;
+      this.state.mouseY = e.clientY ?? this.state.mouseY;
     }
   }
 

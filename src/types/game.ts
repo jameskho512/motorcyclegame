@@ -515,6 +515,7 @@ export interface AudioService {
   toggleMute(): boolean;
   isMuted?(): boolean;
   updateEngine(speedRatio: number, isBoosting: boolean, paused: boolean): void;
+  updateEngineHum?(speedRatio: number, isBoosting: boolean, paused: boolean): void;
   shoot(weaponId: WeaponId | string): void;
   arcChain(): void;
   explosion(): void;

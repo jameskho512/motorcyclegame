@@ -104,47 +104,98 @@ export class VFXManager {
   }
 
   /**
-   * Renders Dragon Ball / Anime Ki flame aura around player motorcycle during NOS boost.
+   * Renders directional twin-exhaust afterburner jet cones and subtle perimeter aura during NOS boost.
+   * Rendered underneath the player motorcycle to keep chassis, rider helmet, and turret unobstructed.
    */
   public renderKiAura(g: Graphics, player: PlayerState, isBoosting: boolean): void {
     if (!isBoosting || player.nosLock || player.nos <= 0) return;
 
-    const t = this.speedLineTimer * 18;
-    const px = player.x;
-    const py = player.y;
+    const angle = player.bikeAngle;
+    const cosB = Math.cos(angle);
+    const sinB = Math.sin(angle);
+    const oppAngle = angle + Math.PI;
+    const cosOpp = Math.cos(oppAngle);
+    const sinOpp = Math.sin(oppAngle);
+    const perpX = -sinOpp;
+    const perpY = cosOpp;
 
-    // Outer jagged flame arcs
-    const pointsCount = 10;
-    const outerRadius = player.radius + 14;
-    const innerRadius = player.radius + 6;
+    // Local-to-world transform along player bike orientation
+    const toWorld = (lx: number, ly: number): [number, number] => {
+      return [
+        player.x + cosB * lx - sinB * ly,
+        player.y + sinB * lx + cosB * ly
+      ];
+    };
 
-    // 1. Hard-edge outer flame contour (dark ink outline)
-    const flamePoints: number[] = [];
-    for (let i = 0; i < pointsCount; i++) {
-      const a = (i / pointsCount) * Math.PI * 2 + player.bikeAngle;
-      const r = i % 2 === 0
-        ? outerRadius + Math.sin(t + i * 2) * 5
-        : innerRadius + Math.cos(t * 1.5 + i) * 3;
-      flamePoints.push(px + Math.cos(a) * r, py + Math.sin(a) * r);
+    // 1. Subtle translucent rim contour around bike perimeter (NO opaque fill over bike body)
+    const rimPoints: number[] = [];
+    const rimSteps = 16;
+    const rx = 28; // Longitudinal semi-axis
+    const ry = 16; // Lateral semi-axis
+    for (let i = 0; i < rimSteps; i++) {
+      const theta = (i / rimSteps) * Math.PI * 2;
+      const [wx, wy] = toWorld(Math.cos(theta) * rx, Math.sin(theta) * ry);
+      rimPoints.push(wx, wy);
     }
+    const pulseAlpha = 0.42 + Math.sin(this.speedLineTimer * 14) * 0.18;
+    g.poly(rimPoints)
+      .stroke({ color: 0x4cc9f0, width: 2, alpha: pulseAlpha });
 
-    g.poly(flamePoints)
-      .fill({ color: 0x4895ef, alpha: 0.4 })
-      .stroke({ color: 0x0a0b10, width: 2.5, alpha: 0.8 });
+    // 2. Twin-exhaust afterburner jet cones shooting backward from rear pipes (-23, -8) and (-23, 8)
+    const pipeYOffsets = [-8, 8];
+    const flicker = Math.sin(this.speedLineTimer * 46) * 4.5 + Math.cos(this.speedLineTimer * 31) * 2.5;
+    const outerLen = Math.max(20, 32 + flicker);
+    const coreLen = outerLen * 0.62;
 
-    // 2. Inner high-intensity electric core
-    const corePoints: number[] = [];
-    for (let i = 0; i < pointsCount; i++) {
-      const a = (i / pointsCount) * Math.PI * 2 + player.bikeAngle + 0.2;
-      const r = i % 2 === 0
-        ? (innerRadius + 2) + Math.cos(t * 2 + i) * 3
-        : player.radius + Math.sin(t * 2 + i) * 2;
-      corePoints.push(px + Math.cos(a) * r, py + Math.sin(a) * r);
+    for (const pyOff of pipeYOffsets) {
+      const [tipX, tipY] = toWorld(-23, pyOff);
+
+      // Outer expanding cyan flame plume
+      const outerCone = [
+        tipX + perpX * 3.2, tipY + perpY * 3.2,
+        tipX + cosOpp * (outerLen * 0.35) + perpX * 5.0, tipY + sinOpp * (outerLen * 0.35) + perpY * 5.0,
+        tipX + cosOpp * outerLen, tipY + sinOpp * outerLen,
+        tipX + cosOpp * (outerLen * 0.35) - perpX * 5.0, tipY + sinOpp * (outerLen * 0.35) - perpY * 5.0,
+        tipX - perpX * 3.2, tipY - perpY * 3.2
+      ];
+
+      g.poly(outerCone)
+        .fill({ color: 0x4895ef, alpha: 0.72 })
+        .stroke({ color: 0x0a0b10, width: 1.5, alpha: 0.6 });
+
+      // High-intensity electric cyan mid-core
+      const midCone = [
+        tipX + perpX * 2.2, tipY + perpY * 2.2,
+        tipX + cosOpp * coreLen, tipY + sinOpp * coreLen,
+        tipX - perpX * 2.2, tipY - perpY * 2.2
+      ];
+
+      g.poly(midCone)
+        .fill({ color: 0x4cc9f0, alpha: 0.88 });
+
+      // Blinding white heat core at nozzle
+      const whiteCore = [
+        tipX + perpX * 1.2, tipY + perpY * 1.2,
+        tipX + cosOpp * (coreLen * 0.55), tipY + sinOpp * (coreLen * 0.55),
+        tipX - perpX * 1.2, tipY - perpY * 1.2
+      ];
+
+      g.poly(whiteCore)
+        .fill({ color: 0xffffff, alpha: 0.96 });
+
+      // Mach shock diamond pulse
+      const diamondDist = outerLen * 0.45;
+      const dX = tipX + cosOpp * diamondDist;
+      const dY = tipY + sinOpp * diamondDist;
+      const diamondPts = [
+        dX + cosOpp * 4, dY + sinOpp * 4,
+        dX + perpX * 2.5, dY + perpY * 2.5,
+        dX - cosOpp * 4, dY - sinOpp * 4,
+        dX - perpX * 2.5, dY - perpY * 2.5
+      ];
+      g.poly(diamondPts)
+        .fill({ color: 0xffffff, alpha: 0.85 });
     }
-
-    g.poly(corePoints)
-      .fill({ color: 0x4cc9f0, alpha: 0.7 })
-      .stroke({ color: 0xffffff, width: 1.5, alpha: 0.9 });
   }
 
   /**

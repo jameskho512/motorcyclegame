@@ -156,13 +156,23 @@ export class FilterManager {
 
   public getFilters(): Filter[] {
     const list: Filter[] = [];
-    if (this.bloomFilter) list.push(this.bloomFilter);
-    if (this.impactFrameActive && this.flashFilter) list.push(this.flashFilter);
-    if (this.shockwaveFilter) list.push(this.shockwaveFilter);
+    // Full-screen stage bloom and continuous shockwave filters are disabled to maintain 60 FPS
+    // under heavy combat without multi-pass Gaussian blur bottleneck.
+    if (this.impactFrameActive && this.flashFilter) {
+      list.push(this.flashFilter);
+    }
     return list;
   }
 
   public isImpactActive(): boolean {
     return this.impactFrameActive;
+  }
+
+  public getBloomFilter(): Filter | null {
+    return this.bloomFilter;
+  }
+
+  public getShockwaveFilter(): ShockwaveFilter | null {
+    return this.shockwaveFilter;
   }
 }

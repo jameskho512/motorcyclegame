@@ -1059,6 +1059,17 @@ export function updateCombatVfx(dt: number, state: CombatState): void {
       state.damageNumbers.splice(i, 1);
     }
   }
+
+  // Strict buffer caps to prevent render loop degradation under heavy combat
+  if (state.particles.length > 150) {
+    state.particles.splice(0, state.particles.length - 150);
+  }
+  if (state.bullets.length > 120) {
+    state.bullets.splice(0, state.bullets.length - 120);
+  }
+  if (state.damageNumbers.length > 30) {
+    state.damageNumbers.splice(0, state.damageNumbers.length - 30);
+  }
 }
 
 /**
