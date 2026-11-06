@@ -29,8 +29,14 @@ import { TooltipManager } from '../../src/ui/tooltip';
 import { ShopModalController } from '../../src/ui/shopModal';
 import { FilterManager } from '../../src/render/shaders';
 import { StageManager, getFloorMoteColor, getEliteAffixColor } from '../../src/render/stage';
-import { Pickup, MetaSaveState, PlayerState, Obstacle, Dungeon, Room } from '../../src/types/game';
-import { GarageController, getWeaponMasteryTier, getStashSalvageSummary, type StashSalvageSummary } from '../../src/ui/garage';
+import { Pickup, MetaSaveState, PlayerState, Obstacle, Dungeon, Room, EquipmentItem } from '../../src/types/game';
+import {
+  GarageController,
+  getWeaponMasteryTier,
+  getStashSalvageSummary,
+  getDowngradeStashItems,
+  type StashSalvageSummary
+} from '../../src/ui/garage';
 
 describe('Render & UI Subsystems', () => {
   describe('Semicircular Fuel Gauge Math', () => {
@@ -778,7 +784,7 @@ describe('Render & UI Subsystems', () => {
       expect(railgunBadge?.textContent).not.toContain('+0% DMG');
     });
 
-    it('sets telemetry attributes (data-stash-count, data-total-salvage, data-highest-rarity) on #stash-list', () => {
+    it('sets telemetry attributes (data-stash-count, data-downgrade-count, data-total-salvage, data-highest-rarity) on #stash-list', () => {
       // Empty stash case
       metaSave.stash = [];
       const garage = new GarageController(callbacks);
@@ -787,6 +793,7 @@ describe('Render & UI Subsystems', () => {
       const stashList = document.getElementById('stash-list');
       expect(stashList).not.toBeNull();
       expect(stashList?.getAttribute('data-stash-count')).toBe('0');
+      expect(stashList?.getAttribute('data-downgrade-count')).toBe('0');
       expect(stashList?.getAttribute('data-total-salvage')).toBe('0');
       expect(stashList?.getAttribute('data-highest-rarity')).toBe('-1');
 
@@ -799,8 +806,49 @@ describe('Render & UI Subsystems', () => {
       garage.render(metaSave, player);
 
       expect(stashList?.getAttribute('data-stash-count')).toBe('3');
+      expect(stashList?.getAttribute('data-downgrade-count')).toBe('0');
       expect(stashList?.getAttribute('data-total-salvage')).toBe('61');
       expect(stashList?.getAttribute('data-highest-rarity')).toBe('3');
+    });
+
+    it('sets data-downgrade-count and data-is-downgrade attributes on stash cards correctly', () => {
+      metaSave.equipped = {
+        engine: { slot: 'engine', rarity: 2, name: 'High-End Engine', stats: { dmg: 0.18 } },
+        tires: { slot: 'tires', rarity: 1, name: 'Standard Tires', stats: { speed: 0.1 } },
+        exhaust: { slot: 'exhaust', rarity: 1, name: 'Stock Exhaust', stats: { speed: 0.1 } }
+      };
+
+      metaSave.stash = [
+        // Downgrade: engine with dmg 0.06 < equipped dmg 0.18
+        { slot: 'engine', rarity: 0, name: 'Rusty Engine', stats: { dmg: 0.06 } },
+        // Upgrade: tires with speed 0.25 > equipped speed 0.10
+        { slot: 'tires', rarity: 3, name: 'Apex Tires', stats: { speed: 0.25 } },
+        // Equal: exhaust with speed 0.10 == equipped speed 0.10
+        { slot: 'exhaust', rarity: 1, name: 'Matching Exhaust', stats: { speed: 0.1 } },
+        // Unequipped slot: frame is empty in equipped -> not a downgrade
+        { slot: 'frame', rarity: 0, name: 'Standard Frame', stats: { hp: 1 } }
+      ];
+
+      const garage = new GarageController(callbacks);
+      garage.open(false, 1, metaSave, player);
+
+      const stashList = document.getElementById('stash-list');
+      expect(stashList).not.toBeNull();
+      expect(stashList?.getAttribute('data-stash-count')).toBe('4');
+      // Only 1 item (Rusty Engine) is a downgrade
+      expect(stashList?.getAttribute('data-downgrade-count')).toBe('1');
+
+      const cards = stashList?.querySelectorAll('.stash-item');
+      expect(cards?.length).toBe(4);
+
+      // card 0: Rusty Engine -> downgrade
+      expect(cards?.[0].getAttribute('data-is-downgrade')).toBe('true');
+      // card 1: Apex Tires -> upgrade
+      expect(cards?.[1].getAttribute('data-is-downgrade')).toBe('false');
+      // card 2: Matching Exhaust -> equal
+      expect(cards?.[2].getAttribute('data-is-downgrade')).toBe('false');
+      // card 3: Standard Frame -> unequipped slot
+      expect(cards?.[3].getAttribute('data-is-downgrade')).toBe('false');
     });
   });
 
@@ -861,6 +909,82 @@ describe('Render & UI Subsystems', () => {
         totalSalvageScrap: 3, // defaults to rarity 0 -> sell 3
         highestRarity: 0
       });
+    });
+  });
+
+  describe('Garage Stash Salvage Downgrades Filter (getDowngradeStashItems)', () => {
+    it('returns empty array for empty or invalid stashes or missing equipped map', () => {
+      expect(getDowngradeStashItems([], {})).toEqual([]);
+      expect(getDowngradeStashItems(undefined as any, {})).toEqual([]);
+      expect(getDowngradeStashItems(null as any, {})).toEqual([]);
+      expect(getDowngradeStashItems('invalid' as any, {})).toEqual([]);
+      expect(getDowngradeStashItems([
+        { slot: 'frame', rarity: 0, name: 'Frame', stats: { hp: 1 } } as EquipmentItem
+      ], undefined as any)).toEqual([]);
+      expect(getDowngradeStashItems([
+        { slot: 'frame', rarity: 0, name: 'Frame', stats: { hp: 1 } } as EquipmentItem
+      ], null as any)).toEqual([]);
+    });
+
+    it('returns empty array when equipped slots are empty, null, or undefined', () => {
+      const stash: EquipmentItem[] = [
+        { slot: 'frame', rarity: 0, name: 'Frame', stats: { hp: 1 } },
+        { slot: 'tires', rarity: 1, name: 'Tires', stats: { speed: 0.1 } }
+      ];
+      const equipped = {
+        frame: null,
+        tires: undefined
+      };
+      expect(getDowngradeStashItems(stash, equipped)).toEqual([]);
+    });
+
+    it('does not include higher-score stash items (upgrades)', () => {
+      const stash: EquipmentItem[] = [
+        { slot: 'engine', rarity: 2, name: 'Upgrade Engine', stats: { dmg: 0.24 } }
+      ];
+      const equipped = {
+        engine: { slot: 'engine' as const, rarity: 1 as const, name: 'Stock Engine', stats: { dmg: 0.06 } }
+      };
+      expect(getDowngradeStashItems(stash, equipped)).toEqual([]);
+    });
+
+    it('does not include equal-score stash items', () => {
+      const stash: EquipmentItem[] = [
+        { slot: 'tank', rarity: 1, name: 'Twin Tank', stats: { hp: 2 } }
+      ];
+      const equipped = {
+        tank: { slot: 'tank' as const, rarity: 1 as const, name: 'Current Tank', stats: { hp: 2 } }
+      };
+      expect(getDowngradeStashItems(stash, equipped)).toEqual([]);
+    });
+
+    it('correctly returns strictly lower-score stash items (downgrades)', () => {
+      const downgradeItem: EquipmentItem = { slot: 'exhaust', rarity: 0, name: 'Rusty Pipe', stats: { speed: 0.05 } };
+      const stash: EquipmentItem[] = [downgradeItem];
+      const equipped = {
+        exhaust: { slot: 'exhaust' as const, rarity: 2 as const, name: 'Titanium Exhaust', stats: { speed: 0.15 } }
+      };
+      expect(getDowngradeStashItems(stash, equipped)).toEqual([downgradeItem]);
+    });
+
+    it('filters mixed stash containing upgrades, downgrades, equal scores, and unequipped slots', () => {
+      const downgrade1: EquipmentItem = { slot: 'frame', rarity: 0, name: 'Basic Frame', stats: { hp: 1 } };
+      const downgrade2: EquipmentItem = { slot: 'exhaust', rarity: 1, name: 'Old Pipe', stats: { speed: 0.05 } };
+      const upgrade: EquipmentItem = { slot: 'engine', rarity: 3, name: 'Supercharged V8', stats: { dmg: 0.36 } };
+      const equalItem: EquipmentItem = { slot: 'tires', rarity: 2, name: 'Equal Tires', stats: { speed: 0.2 } };
+      const unequippedSlotItem: EquipmentItem = { slot: 'tank', rarity: 2, name: 'Big Tank', stats: { hp: 3 } };
+
+      const stash: EquipmentItem[] = [downgrade1, upgrade, equalItem, downgrade2, unequippedSlotItem];
+      const equipped = {
+        frame: { slot: 'frame' as const, rarity: 2 as const, name: 'Reinforced Frame', stats: { hp: 3 } },
+        exhaust: { slot: 'exhaust' as const, rarity: 2 as const, name: 'Dual Exhaust', stats: { speed: 0.15 } },
+        engine: { slot: 'engine' as const, rarity: 1 as const, name: 'Stock Engine', stats: { dmg: 0.06 } },
+        tires: { slot: 'tires' as const, rarity: 2 as const, name: 'Stock Tires', stats: { speed: 0.2 } },
+        tank: null
+      };
+
+      const result = getDowngradeStashItems(stash, equipped);
+      expect(result).toEqual([downgrade1, downgrade2]);
     });
   });
 

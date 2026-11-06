@@ -576,6 +576,26 @@ describe('Tier 5: Playability Verification & End-to-End Simulation', () => {
           </aside>
           <div id="game-wrapper">
             <canvas id="canvas" width="720" height="720"></canvas>
+            <button type="button" id="hub-interact-banner" class="hub-interact-banner" hidden>
+              <span class="hub-interact-key">[PRESS E]</span>
+              <div class="hub-interact-copy">
+                <strong id="hub-interact-title">STATION</strong>
+                <span id="hub-interact-desc">Interact</span>
+              </div>
+            </button>
+            <div id="hub-station-overlay" aria-hidden="true">
+              <div class="hub-station-card">
+                <span id="hub-station-kicker">SANCTUARY</span>
+                <h2 id="hub-station-title">STATION</h2>
+                <div id="hub-station-speaker">NPC</div>
+                <blockquote id="hub-station-quote"></blockquote>
+                <div id="hub-station-purpose"></div>
+                <div id="hub-station-body"></div>
+                <div id="hub-station-feedback" hidden></div>
+                <button type="button" id="btn-hub-station-primary">[E] ACTIVATE</button>
+                <button type="button" id="btn-hub-station-close">[ESC] CLOSE</button>
+              </div>
+            </div>
             <div id="shop-confirm-overlay">
               <div class="shop-item-name" id="shop-modal-name">Item Name</div>
               <div class="shop-item-desc" id="shop-modal-desc">Item Description</div>
@@ -641,6 +661,26 @@ describe('Tier 5: Playability Verification & End-to-End Simulation', () => {
           </aside>
           <div id="game-wrapper">
             <canvas id="canvas" width="720" height="720"></canvas>
+            <button type="button" id="hub-interact-banner" class="hub-interact-banner" hidden>
+              <span class="hub-interact-key">[PRESS E]</span>
+              <div class="hub-interact-copy">
+                <strong id="hub-interact-title">STATION</strong>
+                <span id="hub-interact-desc">Interact</span>
+              </div>
+            </button>
+            <div id="hub-station-overlay" aria-hidden="true">
+              <div class="hub-station-card">
+                <span id="hub-station-kicker">SANCTUARY</span>
+                <h2 id="hub-station-title">STATION</h2>
+                <div id="hub-station-speaker">NPC</div>
+                <blockquote id="hub-station-quote"></blockquote>
+                <div id="hub-station-purpose"></div>
+                <div id="hub-station-body"></div>
+                <div id="hub-station-feedback" hidden></div>
+                <button type="button" id="btn-hub-station-primary">[E] ACTIVATE</button>
+                <button type="button" id="btn-hub-station-close">[ESC] CLOSE</button>
+              </div>
+            </div>
             <div id="shop-confirm-overlay">
               <div class="shop-item-name" id="shop-modal-name">Item Name</div>
               <div class="shop-item-desc" id="shop-modal-desc">Item Description</div>
@@ -1050,26 +1090,41 @@ describe('Tier 5: Playability Verification & End-to-End Simulation', () => {
     it('persists Outlaw Sanctuary Hub scannerBuff across launch portal and toggles .is-low-hull vignette at <= 34% HP', () => {
       setupAppDom();
       const app = new MotoRogueApp();
+      app.inputManager.attach(document.getElementById('canvas'), window);
       app.enterHomeBase();
 
       const hubRoom = app.getCurrentRoom()!;
       expect(hubRoom.type).toBe('hub');
 
-      // 1. Move onto Doc's Cyber-Codex station
+      // 1. Move onto Doc's Cyber-Codex station -> verify [PRESS E] banner appears (no auto-trigger)
       const codexNpc = hubRoom.pickups.find(p => (p as any).npcId === 'codex')!;
       expect(codexNpc).toBeDefined();
       app.stateManager.player.x = codexNpc.x;
       app.stateManager.player.y = codexNpc.y;
       app.update(0.016);
 
+      const bannerEl = document.getElementById('hub-interact-banner')!;
+      expect(bannerEl.hidden).toBe(false);
+      expect(app.stateManager.player.scannerBuff).toBeFalsy();
+
+      // Press [E] to open the Intel & Scanner Lab interface modal, then click/confirm primary action to calibrate Scanner
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'e' }));
+      expect(document.getElementById('hub-station-overlay')?.classList.contains('visible')).toBe(true);
+      (document.getElementById('btn-hub-station-primary') as HTMLButtonElement).click();
+      (document.getElementById('btn-hub-station-close') as HTMLButtonElement).click();
+
       expect(app.stateManager.player.scannerBuff).toBe(true);
 
-      // 2. Move onto Highway Gate launch station and verify scannerBuff persists into Floor 1 run
+      // 2. Move onto Highway Gate launch station, press [E] to open Launch Gate modal, and deploy into Floor 1 run
       const launchNpc = hubRoom.pickups.find(p => (p as any).npcId === 'launch')!;
       expect(launchNpc).toBeDefined();
       app.stateManager.player.x = launchNpc.x;
       app.stateManager.player.y = launchNpc.y;
       app.update(0.016);
+
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'e' }));
+      expect(document.getElementById('hub-station-overlay')?.classList.contains('visible')).toBe(true);
+      (document.getElementById('btn-hub-station-primary') as HTMLButtonElement).click();
 
       expect(app.inHomeBase).toBe(false);
       expect(app.stateManager.player.scannerBuff).toBe(true);

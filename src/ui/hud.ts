@@ -27,7 +27,7 @@ import {
   DROP_ITEM_HI_FI_SVG,
   getModIconSvg
 } from './icons';
-import { formatWeaponMasteryHint } from './tooltip';
+import { formatWeaponMasteryHint, formatStyleRankTooltip } from './tooltip';
 import { getFloorBountyContract } from '../world/dungeon';
 
 export interface MinimapCoord {
@@ -1387,6 +1387,11 @@ export class HUDController {
     const rankDef = styleGrades.find(g => styleScore >= g.min) || styleGrades[styleGrades.length - 1];
     player.styleRank = rankDef.grade;
 
+    const styleCardEl = document.getElementById('style-rank-card');
+    if (styleCardEl) {
+      styleCardEl.setAttribute('data-tip', formatStyleRankTooltip(styleScore, rankDef.grade));
+    }
+
     const gradeEl = document.getElementById('style-rank-grade');
     if (gradeEl) {
       gradeEl.textContent = rankDef.grade;
@@ -1403,9 +1408,36 @@ export class HUDController {
     }
     const subEl = document.getElementById('style-rank-sub');
     if (subEl) {
-      subEl.textContent = (player as any).driftBoostTimer > 0
-        ? '⚡ DRIFT OVERCHARGE ACTIVE (+35% SPD/RATE)'
-        : `${rankDef.bonusDesc} // DRIFT: ${Math.round((player.driftCharge || 0) * 100)}%`;
+      if (rankDef.grade === 'D') {
+        subEl.textContent = 'BUFF: None (Reach Rank C at 24% for +3% Fire Rate & Speed)';
+      } else {
+        subEl.textContent = (player as any).driftBoostTimer > 0
+          ? '⚡ DRIFT OVERCHARGE ACTIVE (+35% SPD/RATE)'
+          : 'ACTIVE BUFF: ' + rankDef.bonusDesc;
+      }
+    }
+
+    let howtoEl = document.getElementById('style-rank-howto');
+    if (!howtoEl && styleCardEl) {
+      howtoEl = document.createElement('div');
+      howtoEl.id = 'style-rank-howto';
+      howtoEl.className = 'style-rank-howto';
+      styleCardEl.appendChild(howtoEl);
+    }
+    if (howtoEl) {
+      howtoEl.textContent = `HOW TO RAISE: Hold [SPACE] Drift (${Math.round((player.driftCharge || 0) * 100)}%) · Graze Bullets · Kill Hostiles`;
+    }
+
+    const synergyCardEl = document.getElementById('synergy-tracker-card');
+    if (synergyCardEl) {
+      synergyCardEl.setAttribute(
+        'data-tip',
+        `<b style="color:#ffd60a">EVOLUTION &amp; SYNERGY MATRIX</b><br/>` +
+        `<span style="color:#e0e0e0">Tracks run-long build milestones, weapon overclocks, and sector bounties.</span><br/><br/>` +
+        `<b style="color:#00f5d4">• WEAPON EVOLUTION:</b> Collect your weapon's signature Mod OR 3 Item Stacks to Overclock your primary gun into an endgame weapon.<br/>` +
+        `<b style="color:#ffd60a">• FLOOR BOUNTIES:</b> Complete the sector challenge before clearing the boss for bonus Scrap ⚙️ and Coins 🪙.<br/>` +
+        `<b style="color:#ff9f1c">• DUO SYNERGIES:</b> Pairing specific passive items unlocks powerful combined firing mechanics.`
+      );
     }
 
     const synListContainers = [
@@ -1415,45 +1447,88 @@ export class HUDController {
 
     if (synListContainers.length > 0) {
       const activeWep = WEAPONS[player.weapon] || WEAPONS.pistol;
-      const evoDef = WEAPON_EVOLUTIONS[player.weapon];
+      const evoDef = WEAPON_EVOLUTIONS[player.weapon] || WEAPON_EVOLUTIONS.pistol;
       const isEvo = isWeaponEvolved(player.weapon, player);
       const totalStacks = Object.values(player.itemStacks || {}).reduce((acc, v) => acc + (v || 0), 0);
       const synergyRows: string[] = [];
 
+      const hasSigMod = Boolean(
+        player.items && (
+          player.items.includes(evoDef.signatureModName) ||
+          player.items.includes(evoDef.signatureModDisplayName) ||
+          player.items.includes(evoDef.signatureModId)
+        )
+      );
+
       if (isEvo) {
         synergyRows.push(
-          `<div class="synergy-pill" style="--syn-color:#00f5d4" data-tip="<b style='color:#00f5d4'>★ ${evoDef.evolvedName}</b><br/>${evoDef.desc}"><span style="pointer-events:none">★ ${evoDef.evolvedName}</span><small style="pointer-events:none">ACTIVE</small></div>`
+          `<div class="synergy-pill is-evolved" style="--syn-color:#00f5d4" data-tip="<b style='color:#00f5d4'>★ EVOLVED: ${evoDef.evolvedName}</b><br/>Effect: ${evoDef.desc}<br/><i>Your ${activeWep.name} is permanently Overclocked for this run!</i>">
+            <div class="synergy-pill-main">
+              <span>★ ${activeWep.name} → ${evoDef.evolvedName}</span>
+              <small>EVOLVED</small>
+            </div>
+            <div class="synergy-pill-desc">Effect: ${evoDef.desc}</div>
+          </div>`
         );
       } else {
         synergyRows.push(
-          `<div class="synergy-pill" style="--syn-color:#ffd60a" data-tip="<b style='color:#ffd60a'>${evoDef.evolvedName}</b><br/>${evoDef.desc}<br/><i>Unlock: ${evoDef.signatureModDisplayName || evoDef.signatureModName} or 3+ Item Stacks</i>"><span style="pointer-events:none">${activeWep.name} → ${evoDef.evolvedName}</span><small style="pointer-events:none">${evoDef.signatureModDisplayName || evoDef.signatureModName} or ${totalStacks}/3 Stacks</small></div>`
+          `<div class="synergy-pill" style="--syn-color:#ffd60a" data-tip="<b style='color:#ffd60a'>WEAPON EVOLUTION: ${evoDef.evolvedName}</b><br/><b>Upgraded Effect:</b> ${evoDef.desc}<br/><b>How to Unlock (need either one):</b><br/>1. Find <b>${evoDef.signatureModDisplayName || evoDef.signatureModName}</b> Mod (${hasSigMod ? '✓ Found' : '✗ Not found yet'}) in ★ Treasure or $ Shop rooms<br/>2. OR collect <b>3 Passive Item Stacks</b> (${totalStacks}/3 collected) from enemy drops">
+            <div class="synergy-pill-main">
+              <span>⚡ ${activeWep.name} → ${evoDef.evolvedName}</span>
+              <small>${evoDef.signatureModDisplayName || evoDef.signatureModName} or ${totalStacks}/3 Stacks</small>
+            </div>
+            <div class="synergy-pill-desc">Effect: ${evoDef.desc} · Unlock: Get &quot;${evoDef.signatureModDisplayName || evoDef.signatureModName}&quot; Mod OR 3 Item Stacks in ★/$ rooms</div>
+          </div>`
         );
       }
 
       const activeDuos = getActiveDuoSynergies ? getActiveDuoSynergies(player) : [];
       for (const duo of activeDuos) {
         synergyRows.push(
-          `<div class="synergy-pill" style="--syn-color:${duo.color}" data-tip="<b style='color:${duo.color}'>✦ DUO: ${duo.name}</b><br/>${duo.desc}"><span style="pointer-events:none">✦ ${duo.name.toUpperCase()}</span><small style="pointer-events:none">DUO ACTIVE</small></div>`
+          `<div class="synergy-pill" style="--syn-color:${duo.color}" data-tip="<b style='color:${duo.color}'>✦ DUO: ${duo.name}</b><br/>${duo.desc}">
+            <div class="synergy-pill-main">
+              <span>✦ ${duo.name.toUpperCase()}</span>
+              <small>DUO ACTIVE</small>
+            </div>
+            <div class="synergy-pill-desc">Effect: ${duo.desc}</div>
+          </div>`
         );
       }
 
       if ((player as any).scannerBuff) {
         synergyRows.push(
-          `<div class="synergy-pill" style="--syn-color:#72efdd" data-tip="<b style='color:#72efdd'>Doc Tactical Scanner</b><br/>+8% Weapon Damage &amp; +15% Projectile Speed"><span style="pointer-events:none">DOC TACTICAL SCANNER</span><small style="pointer-events:none">+8% DMG / +15% SPD</small></div>`
+          `<div class="synergy-pill" style="--syn-color:#72efdd" data-tip="<b style='color:#72efdd'>Doc Tactical Scanner</b><br/>+8% Weapon Damage &amp; +15% Projectile Speed">
+            <div class="synergy-pill-main">
+              <span>DOC TACTICAL SCANNER</span>
+              <small>+8% DMG / +15% SPD</small>
+            </div>
+            <div class="synergy-pill-desc">Buff: +8% Weapon Damage &amp; +15% Projectile Speed</div>
+          </div>`
         );
       }
       if ((player.heatLevel || 0) > 0) {
         synergyRows.push(
-          `<div class="synergy-pill" style="--syn-color:#ff4d6d" data-tip="<b style='color:#ff4d6d'>Valkyrie Bounty Heat ${player.heatLevel}</b><br/>+${(player.heatLevel || 0) * 25}% Bonus Scrap &amp; Elevated Enemy Threat"><span style="pointer-events:none">VALKYRIE BOUNTY PACT</span><small style="pointer-events:none">+${(player.heatLevel || 0) * 25}% SCRAP</small></div>`
+          `<div class="synergy-pill" style="--syn-color:#ff4d6d" data-tip="<b style='color:#ff4d6d'>Valkyrie Bounty Heat ${player.heatLevel}</b><br/>+${(player.heatLevel || 0) * 25}% Bonus Scrap &amp; Elevated Enemy Threat">
+            <div class="synergy-pill-main">
+              <span>VALKYRIE BOUNTY PACT</span>
+              <small>+${(player.heatLevel || 0) * 25}% SCRAP</small>
+            </div>
+            <div class="synergy-pill-desc">Pact: +${(player.heatLevel || 0) * 25}% Scrap · High Threat</div>
+          </div>`
         );
       }
 
       const contract = getFloorBountyContract(floorNum);
+      const bountyDone = Boolean((player as any).floorBountyCompleted);
+      const bountyProg = Math.min(contract.targetCount, Number((player as any).floorBountyProgress) || 0);
       synergyRows.push(
         `<div class="hud-synergy-row is-bounty-contract" data-tip="${this.escAttr(`${contract.title}: ${contract.desc} (Reward: +${contract.scrapReward} Scrap, +${contract.coinReward} Coins)`)}">
-  <span class="hud-synergy-name" style="color:#ffd60a;">🏆 ${this.escAttr(contract.title)}</span>
-  <span class="hud-synergy-state" style="color:#00f5d4;">+${contract.scrapReward}⚙️ +${contract.coinReward}🪙</span>
-</div>`
+          <div class="synergy-pill-main">
+            <span class="hud-synergy-name" style="color:#ffd60a;">🏆 BOUNTY: ${this.escAttr(contract.title)} ${bountyDone ? '(✓ DONE)' : `(${bountyProg}/${contract.targetCount})`}</span>
+            <span class="hud-synergy-state" style="color:#00f5d4;">+${contract.scrapReward}⚙️ +${contract.coinReward}🪙</span>
+          </div>
+          <div class="synergy-pill-desc">Task: ${this.escAttr(contract.desc)}</div>
+        </div>`
       );
 
       const html = synergyRows.join('');

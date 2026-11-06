@@ -109,6 +109,10 @@ export function getNextEntityId(): number {
   return ++entityIdCounter;
 }
 
+export type EliteAffix = 'volatile' | 'overclocked' | 'vampiric';
+
+export const ELITE_AFFIXES: readonly EliteAffix[] = ['volatile', 'overclocked', 'vampiric'] as const;
+
 export interface EnemyTypeBaseConfig {
   baseHp: number;
   baseSpeed: number;
@@ -1001,3 +1005,49 @@ export function rollEliteStatus(floor: number, rng: () => number = Math.random):
   const chance = getEliteSpawnChance(floor);
   return rng() < chance;
 }
+
+// ============================================================================
+// 5. ELITE AFFIX TACTICAL INTELLIGENCE
+// ============================================================================
+
+export interface EliteAffixTacticalInfo {
+  affix: EliteAffix;
+  label: string;
+  behaviorDesc: string;
+  deathPayoffDesc: string;
+  colorHex: string;
+}
+
+export const ELITE_AFFIX_TACTICAL_INFO: Record<EliteAffix, EliteAffixTacticalInfo> = {
+  volatile: {
+    affix: 'volatile',
+    label: '💥 VOLATILE ELITE',
+    behaviorDesc: 'Unstable core charges toward target',
+    deathPayoffDesc: 'Detonates on death, damaging nearby enemies',
+    colorHex: '#ff5400'
+  },
+  overclocked: {
+    affix: 'overclocked',
+    label: '⚡ OVERCLOCKED ELITE',
+    behaviorDesc: '+25% movement speed & +30% fire rate',
+    deathPayoffDesc: 'Grants +20 NOS surge on elimination',
+    colorHex: '#00f5d4'
+  },
+  vampiric: {
+    affix: 'vampiric',
+    label: '🩸 VAMPIRIC ELITE',
+    behaviorDesc: 'Regenerates hull integrity while in combat',
+    deathPayoffDesc: 'Siphons +1 Fuel Heart to player on kill',
+    colorHex: '#ff1f4b'
+  }
+};
+
+/**
+ * Returns tactical intelligence descriptors and visual metadata for an elite affix.
+ * Returns null if the affix is absent or invalid.
+ */
+export function getEliteAffixTacticalInfo(affix?: EliteAffix | null): EliteAffixTacticalInfo | null {
+  if (!affix) return null;
+  return ELITE_AFFIX_TACTICAL_INFO[affix] ?? null;
+}
+

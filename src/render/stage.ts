@@ -588,9 +588,130 @@ export class StageManager {
   }
 
   /**
-   * Renders the safe sanctuary Outlaw Skull & Gear emblem in the center of the Home Base hub.
+   * Renders the safe sanctuary Outlaw Skull & Gear emblem in the center of the Home Base hub,
+   * flanked by 5 architectural station bays with distinct 2.5D depth, props, and ambient lighting.
    */
   private renderHubSanctuaryDecal(g: Graphics, cx: number, cy: number, timestampMs: number): void {
+    // 0. Recessed Architectural Station Bays around the 5 Sanctuary destinations
+    // 0a. Top-Left (185, 215) — GARAGE & ARMORY BAY (0xffd60a)
+    g.roundRect(185 - 68, 215 - 48, 136, 96, 10)
+      .fill({ color: 0x10131d, alpha: 0.95 })
+      .stroke({ color: 0xffd60a, width: 2, alpha: 0.85 });
+    g.rect(185 - 66, 215 - 46, 132, 10)
+      .fill({ color: 0x07080d, alpha: 0.85 });
+    // Hydraulic lift rails
+    g.rect(185 - 34, 215 - 38, 8, 76)
+      .fill({ color: 0x242836 })
+      .stroke({ color: 0x0a0b10, width: 1.5 });
+    g.rect(185 + 26, 215 - 38, 8, 76)
+      .fill({ color: 0x242836 })
+      .stroke({ color: 0x0a0b10, width: 1.5 });
+    g.moveTo(185 - 34, 215 - 18).lineTo(185 + 34, 215 - 18).stroke({ color: 0x181c28, width: 2.5 });
+    g.moveTo(185 - 34, 215 + 18).lineTo(185 + 34, 215 + 18).stroke({ color: 0x181c28, width: 2.5 });
+    // Red mechanic tool cabinet
+    g.rect(185 - 60, 215 - 32, 14, 44)
+      .fill({ color: 0xe5203a })
+      .stroke({ color: 0x0a0b10, width: 1.5 });
+    for (let dy = 215 - 26; dy <= 215 + 6; dy += 8) {
+      g.moveTo(185 - 58, dy).lineTo(185 - 48, dy).stroke({ color: 0x0a0b10, width: 1 });
+      g.moveTo(185 - 55, dy + 2).lineTo(185 - 51, dy + 2).stroke({ color: 0xdde2eb, width: 1.2 });
+    }
+    // Warm golden ambient spotlight
+    g.circle(185, 215, 58).fill({ color: 0xffd60a, alpha: 0.08 });
+
+    // 0b. Top-Right (535, 215) — THE SCRAP FORGE (0x2ee6ff / 0xff5400)
+    g.roundRect(535 - 68, 215 - 48, 136, 96, 10)
+      .fill({ color: 0x141118, alpha: 0.95 })
+      .stroke({ color: 0x2ee6ff, width: 2, alpha: 0.85 });
+    g.rect(535 - 66, 215 - 46, 132, 10)
+      .fill({ color: 0x07080d, alpha: 0.85 });
+    // Glowing molten hearth trough + inner core
+    g.roundRect(535 + 38, 215 - 28, 20, 52, 4)
+      .fill({ color: 0xff5400 })
+      .stroke({ color: 0x0a0b10, width: 1.5 });
+    g.roundRect(535 + 42, 215 - 22, 12, 40, 2)
+      .fill({ color: 0xffd60a });
+    g.moveTo(535 + 44, 215 - 4).lineTo(535 + 52, 215 - 4).stroke({ color: 0xffffff, width: 1.5, alpha: 0.75 });
+    // Heavy iron anvil prop on left
+    g.rect(535 - 58, 215 - 20, 16, 16)
+      .fill({ color: 0x2e2c39 })
+      .stroke({ color: 0x0a0b10, width: 1.5 });
+    g.moveTo(535 - 60, 215 - 20).lineTo(535 - 40, 215 - 20).stroke({ color: 0x484558, width: 3 });
+    // Warm forge ambient glow
+    const forgePulse = 0.09 + 0.02 * Math.sin(timestampMs / 90);
+    g.circle(535, 215, 58).fill({ color: 0xff5400, alpha: forgePulse });
+
+    // 0c. Top-Center (360, 155) — INTEL & SCANNER LAB (0x9d4edd / 0x00f5d4)
+    g.roundRect(360 - 74, 155 - 44, 148, 88, 10)
+      .fill({ color: 0x111526, alpha: 0.95 })
+      .stroke({ color: 0x9d4edd, width: 2, alpha: 0.85 });
+    g.rect(360 - 72, 155 - 42, 144, 10)
+      .fill({ color: 0x07080d, alpha: 0.85 });
+    // Horizontal & vertical cyan grid lines
+    for (let gy = 155 - 28; gy <= 155 + 32; gy += 15) {
+      g.moveTo(360 - 66, gy).lineTo(360 + 66, gy).stroke({ color: 0x00f5d4, width: 1, alpha: 0.18 });
+    }
+    for (let gx = 360 - 60; gx <= 360 + 60; gx += 20) {
+      g.moveTo(gx, 155 - 36).lineTo(gx, 155 + 36).stroke({ color: 0x00f5d4, width: 1, alpha: 0.18 });
+    }
+    // Terminal monitors
+    g.rect(360 - 64, 155 - 24, 14, 20).fill({ color: 0x1a2138 }).stroke({ color: 0x00f5d4, width: 1.2, alpha: 0.7 });
+    g.rect(360 - 62, 155 - 22, 10, 16).fill({ color: 0x00f5d4, alpha: 0.4 });
+    g.rect(360 + 50, 155 - 24, 14, 20).fill({ color: 0x1a2138 }).stroke({ color: 0x9d4edd, width: 1.2, alpha: 0.7 });
+    g.rect(360 + 52, 155 - 22, 10, 16).fill({ color: 0x9d4edd, alpha: 0.45 });
+    // Cyan ambient glow
+    g.circle(360, 155, 56).fill({ color: 0x00f5d4, alpha: 0.08 });
+
+    // 0d. Bottom-Left (185, 505) — OUTLAW WAR ROOM & BOUNTIES (0x06d6a0)
+    g.roundRect(185 - 68, 505 - 48, 136, 96, 10)
+      .fill({ color: 0x0f1c1a, alpha: 0.95 })
+      .stroke({ color: 0x06d6a0, width: 2, alpha: 0.85 });
+    g.rect(185 - 66, 505 - 46, 132, 10)
+      .fill({ color: 0x07080d, alpha: 0.85 });
+    // Tactical corner brackets
+    const bL = 185 - 64;
+    const bR = 185 + 64;
+    const bT = 505 - 44;
+    const bB = 505 + 44;
+    const bk = 10;
+    g.moveTo(bL, bT + bk).lineTo(bL, bT).lineTo(bL + bk, bT).stroke({ color: 0x06d6a0, width: 2, alpha: 0.85 });
+    g.moveTo(bR - bk, bT).lineTo(bR, bT).lineTo(bR, bT + bk).stroke({ color: 0x06d6a0, width: 2, alpha: 0.85 });
+    g.moveTo(bL, bB - bk).lineTo(bL, bB).lineTo(bL + bk, bB).stroke({ color: 0x06d6a0, width: 2, alpha: 0.85 });
+    g.moveTo(bR - bk, bB).lineTo(bR, bB).lineTo(bR, bB - bk).stroke({ color: 0x06d6a0, width: 2, alpha: 0.85 });
+    // Ammo crate props
+    g.rect(185 - 58, 505 - 30, 16, 22).fill({ color: 0x2b3a30 }).stroke({ color: 0x0a0b10, width: 1.5 });
+    g.moveTo(185 - 58, 505 - 30).lineTo(185 - 42, 505 - 8).stroke({ color: 0x19241e, width: 1.5 });
+    g.moveTo(185 - 58, 505 - 8).lineTo(185 - 42, 505 - 30).stroke({ color: 0x19241e, width: 1.5 });
+    g.rect(185 - 54, 505 - 2, 14, 16).fill({ color: 0x36483c }).stroke({ color: 0x0a0b10, width: 1.2 });
+    // Emerald ambient glow
+    g.circle(185, 505, 58).fill({ color: 0x06d6a0, alpha: 0.08 });
+
+    // 0e. Bottom-Right (535, 505) — SECTOR 1 HIGHWAY LAUNCH GATE (0xe5203a / 0xffd60a)
+    g.roundRect(535 - 72, 505 - 48, 144, 96, 10)
+      .fill({ color: 0x121218, alpha: 0.95 })
+      .stroke({ color: 0xe5203a, width: 2, alpha: 0.85 });
+    g.rect(535 - 70, 505 - 46, 140, 10)
+      .fill({ color: 0x07080d, alpha: 0.85 });
+    // Yellow dashed road centerline
+    for (let dx = 535 - 56; dx <= 535 + 46; dx += 20) {
+      g.moveTo(dx, 505).lineTo(dx + 11, 505).stroke({ color: 0xffd60a, width: 3, alpha: 0.85 });
+    }
+    // Animated crimson/gold launch chevrons (>>>)
+    const chPhase = Math.floor(timestampMs / 220) % 3;
+    const chevX = [535 - 24, 535, 535 + 24];
+    for (let i = 0; i < 3; i++) {
+      const isLit = i === chPhase;
+      const chevCol = isLit ? 0xffd60a : 0xe5203a;
+      const chevAlpha = isLit ? 0.95 : 0.45;
+      const cx0 = chevX[i];
+      g.moveTo(cx0 - 6, 505 - 14)
+        .lineTo(cx0 + 6, 505)
+        .lineTo(cx0 - 6, 505 + 14)
+        .stroke({ color: chevCol, width: 3, alpha: chevAlpha });
+    }
+    // Crimson/gold ambient spotlight
+    g.circle(535, 505, 58).fill({ color: 0xe5203a, alpha: 0.08 });
+
     // 1. Glowing power tracks radiating out to all 5 NPC stations
     const stations = [
       [185, 215],
@@ -1158,35 +1279,45 @@ export class StageManager {
         const npc = p as any;
         const npcId = npc.npcId;
         const badgeY = p.y + (p.radius || 34) + 16;
-        let textStr = 'STATION';
+        const distToPlayer = Math.hypot(player.x - p.x, player.y - p.y);
+        const isNear = distToPlayer <= (player.radius || 16) + (p.radius || 34) + 24;
+
+        let textStr = isNear ? '[E] INTERACT' : 'STATION [E]';
         let col = 0xffd166;
         if (npcId === 'garage') {
-          textStr = 'GARAGE [G]';
+          textStr = isNear ? '[E] OPEN GARAGE' : 'GARAGE & ARMORY [E]';
           col = 0xffd60a;
         } else if (npcId === 'blacksmith') {
-          textStr = 'FORGE 12⚙️';
+          textStr = isNear ? '[E] USE FORGE (12⚙️)' : 'SCRAP FORGE [E]';
           col = 0x2ee6ff;
-        } else if (npcId === 'bounty') {
-          textStr = 'WAR ROOM';
-          col = 0x06d6a0;
         } else if (npcId === 'codex') {
-          textStr = 'CYBER-CODEX';
+          textStr = isNear ? '[E] INTEL & +DMG BUFF' : 'INTEL & SCANNER [E]';
           col = 0x9d4edd;
+        } else if (npcId === 'bounty') {
+          textStr = isNear ? '[E] CACHE & HEAT LVL' : 'WAR ROOM & HEAT [E]';
+          col = 0x06d6a0;
         } else if (npcId === 'launch') {
-          textStr = 'RIDE OUT ►';
+          textStr = isNear ? '[E] LAUNCH RUN ►' : 'DEPLOY: SECTOR 1 [E]';
           col = 0xe5203a;
         }
 
-        // Proximity glow halo when player is near an interactive Sanctuary station
-        const distToPlayer = Math.hypot(player.x - p.x, player.y - p.y);
-        if (distToPlayer < 105) {
-          const haloPulse = 0.45 + 0.25 * Math.sin(timestampMs / 130);
+        // Proximity glow & high-visibility pulsing [PRESS E] interaction ring
+        if (isNear) {
+          const ringPulse = 0.75 + 0.25 * Math.sin(timestampMs / 110);
+          // Outer glow ring
+          g.circle(p.x, p.y, (p.radius || 34) + 12)
+            .stroke({ color: col, width: 5, alpha: 0.65 * ringPulse });
+          // High-visibility pulsing white interaction ring
+          g.circle(p.x, p.y, (p.radius || 34) + 12)
+            .stroke({ color: 0xffffff, width: 3, alpha: ringPulse });
+        } else if (distToPlayer < 115) {
+          const haloPulse = 0.35 + 0.15 * Math.sin(timestampMs / 160);
           g.circle(p.x, p.y, (p.radius || 34) + 10)
-            .stroke({ color: col, width: 2.5, alpha: haloPulse });
+            .stroke({ color: col, width: 2, alpha: haloPulse });
         }
 
-        // Wider slanted comic nameplate badge (halfW = 54)
-        const halfW = 54;
+        // Wider slanted comic nameplate badge (halfW = 68)
+        const halfW = 68;
         const halfH = 10;
         const slant = 6;
         const badge = [
@@ -1199,7 +1330,7 @@ export class StageManager {
           .fill({ color: 0x0a0b10, alpha: 0.85 });
         g.poly(badge)
           .fill({ color: col, alpha: 1 })
-          .stroke({ color: 0x0a0b10, width: 2.5, join: 'miter' });
+          .stroke({ color: isNear ? 0xffffff : 0x0a0b10, width: isNear ? 3 : 2.5, join: 'miter' });
 
         let priceText = pricePool[priceUsed] as Text | undefined;
         if (!priceText) {
@@ -1207,7 +1338,7 @@ export class StageManager {
             text: textStr,
             style: new TextStyle({
               fontFamily: "'Impact', 'Haettenschweiler', 'Arial Black', sans-serif",
-              fontSize: 13,
+              fontSize: 12,
               fontStyle: 'italic',
               fontWeight: '900',
               fill: '#ffffff',
@@ -1220,6 +1351,7 @@ export class StageManager {
         }
         priceUsed++;
         if (priceText.text !== textStr) priceText.text = textStr;
+        if (priceText.style.fontSize !== 12) priceText.style.fontSize = 12;
         priceText.visible = true;
         priceText.position.set(p.x, badgeY);
       } else if ('cost' in p && typeof p.cost === 'number') {

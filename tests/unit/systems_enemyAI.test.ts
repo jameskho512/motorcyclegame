@@ -25,7 +25,10 @@ import {
   updateEnemyAI,
   generateBossDefeatRewards,
   BOSS_COLORS,
-  BOSS_NAMES
+  BOSS_NAMES,
+  getEliteAffixTacticalInfo,
+  type EliteAffix,
+  type EliteAffixTacticalInfo
 } from '../../src/systems/enemyAI';
 import { handleEnemyDeath, createCombatState } from '../../src/systems/combat';
 import type {
@@ -1198,6 +1201,62 @@ describe('Systems: EnemyAI — Boss Phase-2 Enrage Across All 6 Floor Variants (
       });
       expect(phase2FanBullets).toHaveLength(4);
     }
+  });
+});
+
+describe('Systems: EnemyAI — Elite Affix Tactical Intelligence (M59)', () => {
+  it('returns null when affix is undefined, null, or empty', () => {
+    expect(getEliteAffixTacticalInfo()).toBeNull();
+    expect(getEliteAffixTacticalInfo(undefined)).toBeNull();
+    expect(getEliteAffixTacticalInfo(null)).toBeNull();
+    expect(getEliteAffixTacticalInfo('' as unknown as EliteAffix)).toBeNull();
+    expect(getEliteAffixTacticalInfo('unknown_affix' as unknown as EliteAffix)).toBeNull();
+  });
+
+  it('returns correct tactical intelligence for volatile elite affix', () => {
+    const info = getEliteAffixTacticalInfo('volatile');
+    expect(info).not.toBeNull();
+    expect(info).toEqual<EliteAffixTacticalInfo>({
+      affix: 'volatile',
+      label: '💥 VOLATILE ELITE',
+      behaviorDesc: 'Unstable core charges toward target',
+      deathPayoffDesc: 'Detonates on death, damaging nearby enemies',
+      colorHex: '#ff5400'
+    });
+  });
+
+  it('returns correct tactical intelligence for overclocked elite affix', () => {
+    const info = getEliteAffixTacticalInfo('overclocked');
+    expect(info).not.toBeNull();
+    expect(info).toEqual<EliteAffixTacticalInfo>({
+      affix: 'overclocked',
+      label: '⚡ OVERCLOCKED ELITE',
+      behaviorDesc: '+25% movement speed & +30% fire rate',
+      deathPayoffDesc: 'Grants +20 NOS surge on elimination',
+      colorHex: '#00f5d4'
+    });
+  });
+
+  it('returns correct tactical intelligence for vampiric elite affix', () => {
+    const info = getEliteAffixTacticalInfo('vampiric');
+    expect(info).not.toBeNull();
+    expect(info).toEqual<EliteAffixTacticalInfo>({
+      affix: 'vampiric',
+      label: '🩸 VAMPIRIC ELITE',
+      behaviorDesc: 'Regenerates hull integrity while in combat',
+      deathPayoffDesc: 'Siphons +1 Fuel Heart to player on kill',
+      colorHex: '#ff1f4b'
+    });
+  });
+
+  it('resolves tactical intelligence directly from spawned elite enemy affix', () => {
+    const eliteEnemy = createEnemy('turret', 100, 100, 1, true, 1001); // 1001 + 1 % 3 = 0 -> 'volatile'
+    const affix = (eliteEnemy as any).eliteAffix as EliteAffix;
+    expect(affix).toBe('volatile');
+    const info = getEliteAffixTacticalInfo(affix);
+    expect(info).not.toBeNull();
+    expect(info?.label).toContain('VOLATILE');
+    expect(info?.colorHex).toBe('#ff5400');
   });
 });
 

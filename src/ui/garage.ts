@@ -129,6 +129,25 @@ export function getStashSalvageSummary(stash: EquipmentItem[] = []): StashSalvag
   return { itemCount: stash.length, totalSalvageScrap, highestRarity };
 }
 
+/**
+ * Returns all items in the stash where the corresponding equipment slot is equipped
+ * and the stash item's score is strictly lower than the equipped item's score (downgrade).
+ */
+export function getDowngradeStashItems(
+  stash: EquipmentItem[],
+  equipped: Partial<Record<EquipSlot, EquipmentItem | null>>
+): EquipmentItem[] {
+  if (!Array.isArray(stash) || stash.length === 0 || !equipped) {
+    return [];
+  }
+  return stash.filter(item => {
+    if (!item || !item.slot) return false;
+    const eqItem = equipped[item.slot];
+    if (!eqItem) return false;
+    return itemScore(item) < itemScore(eqItem);
+  });
+}
+
 export interface GarageCallbacks {
   onEquipItem: (item: EquipmentItem) => void;
   onUnequipSlot: (slotId: EquipSlot) => void;
@@ -671,7 +690,9 @@ export class GarageController {
 
     const stash = metaSave.stash || [];
     const salvage = getStashSalvageSummary(stash);
+    const downgrades = getDowngradeStashItems(metaSave.stash, metaSave.equipped);
     this.stashList.setAttribute('data-stash-count', String(salvage.itemCount));
+    this.stashList.setAttribute('data-downgrade-count', String(downgrades.length));
     this.stashList.setAttribute('data-total-salvage', String(salvage.totalSalvageScrap));
     this.stashList.setAttribute('data-highest-rarity', String(salvage.highestRarity));
 
@@ -710,6 +731,8 @@ export class GarageController {
       el.type = 'button';
       el.className = `stash-item rarity-${R.id}`;
       el.style.setProperty('--rar', R.color);
+      const isDowngrade = Boolean(eqItem && itemScore(it) < itemScore(eqItem));
+      el.setAttribute('data-is-downgrade', isDowngrade ? 'true' : 'false');
       el.title = `${it.name} - ${R.name} ${slotLabel}\n${statsStr}\n${vsEquippedLine}\nClick: install | Right-click / Del: sell for ${R.sell} scrap`;
       el.setAttribute('aria-label', `${it.name}, ${R.name} ${slotLabel}. ${statsStr}. ${vsEquippedLine}. Install. Press Delete to sell for ${R.sell} scrap`);
       el.innerHTML = `

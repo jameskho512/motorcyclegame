@@ -192,7 +192,9 @@ export class TooltipManager {
   public formatPickupTooltip(p: Pickup): string | null {
     if ((p as any).type === 'hub_npc') {
       const npc = p as any;
-      const costLine = npc.cost > 0 ? `<br/><span class="tip-cost">Cost: ${npc.cost} Scrap ⚙️</span>` : '<br/><span class="tip-free">Ride onto station to interact</span>';
+      const costLine = npc.cost > 0
+        ? `<br/><span class="tip-cost">Press [E] to open · Forge Cost: ${npc.cost} Scrap ⚙️</span>`
+        : '<br/><span class="tip-free">Press [E] near station to open interface</span>';
       return `${tipTitle(npc.name, '#ffd60a', 'Home Base')}<br/>${npc.subtitle}${costLine}`;
     }
 
@@ -328,4 +330,22 @@ export class TooltipManager {
       this.hide();
     }
   }
+}
+
+/**
+ * Generates rich HTML tooltip content for the Outlaw Style Rank meter.
+ */
+export function formatStyleRankTooltip(styleScore: number = 12, grade: string = 'D'): string {
+  const rounded = Math.round(styleScore);
+  return (
+    `<b style="color:#ffd60a">OUTLAW STYLE RANK (${grade} — ${rounded}%)</b><br/>` +
+    `<span style="color:#cfd6e6">Higher Style Ranks grant live combat buffs to Fire Rate, Bike Speed, Loot Luck, and passive NOS Regeneration.</span><br/><br/>` +
+    `<b style="color:#00f5d4">HOW TO IMPROVE:</b><br/>` +
+    `• Hold [SPACE] while turning to Powerslide Drift (+8/s &amp; +35% Fire Rate Burst)<br/>` +
+    `• Dodge within 28px of Enemy Bullets to Graze (+12 Style &amp; +8 NOS)<br/>` +
+    `• Chain Enemy Kills (+9 Style per kill) · Taking damage drops Style (-35)<br/><br/>` +
+    `<b style="color:#ff9f1c">RANK REWARDS:</b><br/>` +
+    `• C (24%): +3% Spd/Rate · B (38%): +6% Spd/Rate · A (52%): +10% Spd/Rate<br/>` +
+    `• S (66%): +15% Spd/Rate +1.5 NOS/s · SS (80%): +20% Spd/Rate +2.5 NOS/s · SSS (92%): +25% Spd/Rate +4 NOS/s`
+  );
 }

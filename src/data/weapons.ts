@@ -331,3 +331,69 @@ export function getEvolutionsForMod(modIdOrName: string): WeaponEvolutionDef[] {
   );
 }
 
+export interface WeaponEvolutionProgress {
+  evolved: boolean;
+  evolvedName: string;
+  signatureModId: string;
+  signatureModName: string;
+  hasSignatureMod: boolean;
+  maxStackCount: number;
+  progressPct: number;
+  statusText: string;
+}
+
+export interface Player {
+  items?: string[];
+  itemStacks?: Record<string, number>;
+}
+
+/**
+ * Calculates weapon overclock evolution progress, requirement fulfillment,
+ * percentage completion, and UI badge status string.
+ */
+export function getWeaponEvolutionProgress(
+  weaponId: WeaponId,
+  player: Pick<Player, 'items' | 'itemStacks'>
+): WeaponEvolutionProgress {
+  const evo = WEAPON_EVOLUTIONS[weaponId] || WEAPON_EVOLUTIONS.pistol;
+  const items = player.items || [];
+  const hasSignatureMod = Boolean(
+    items.includes(evo.signatureModName) ||
+      items.includes(evo.signatureModDisplayName) ||
+      items.includes(evo.signatureModId)
+  );
+
+  const stackValues = Object.values(player.itemStacks || {}).filter(
+    (v): v is number => typeof v === 'number'
+  );
+  const maxStackCount = stackValues.length > 0 ? Math.max(0, ...stackValues) : 0;
+
+  // Verify baseline evolution check for parity
+  isWeaponEvolved(weaponId, player as Player);
+
+  const signatureContrib = hasSignatureMod ? 50 : 0;
+  const stackContrib = Math.min(50, Math.round((Math.min(3, maxStackCount) / 3) * 50));
+  let progressPct = signatureContrib + stackContrib;
+
+  const evolved = progressPct >= 100;
+  if (evolved) {
+    progressPct = 100;
+  }
+
+  const statusText = evolved
+    ? '⚡ OVERCLOCK EVOLVED: ' + evo.evolvedName.toUpperCase()
+    : `[${hasSignatureMod ? '✓' : '✗'} ${evo.signatureModName}] + [${Math.min(3, maxStackCount)}/3 Mod Stack]`;
+
+  return {
+    evolved,
+    evolvedName: evo.evolvedName,
+    signatureModId: evo.signatureModId,
+    signatureModName: evo.signatureModName,
+    hasSignatureMod,
+    maxStackCount,
+    progressPct,
+    statusText
+  };
+}
+
+

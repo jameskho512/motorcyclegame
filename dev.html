@@ -133,20 +133,25 @@
     <!-- Widescreen Left-Wing: Style Rank & Active Synergy Tracker -->
     <div class="hud-wing-panel hud-wing-left" id="left-wing-panel" aria-label="Style Rank and Active Synergies">
       <div class="style-rank-card" id="style-rank-card">
-        <div class="style-rank-head">
+        <div class="style-rank-head" data-tip="&lt;b style='color:#ffd60a'&gt;OUTLAW STYLE RANK&lt;/b&gt;&lt;br/&gt;Raise style by holding SPACE to Drift, dodging enemy fire, and chaining rapid kills.&lt;br/&gt;Higher ranks grant massive score bonuses, projectile velocity, and combat adrenaline!">
           <span class="style-rank-kicker">OUTLAW STYLE</span>
           <span class="style-rank-title" id="style-rank-title">CRUISING</span>
+          <span class="hud-help-pill" aria-hidden="true">? HOVER FOR GUIDE</span>
         </div>
         <div class="style-rank-main">
           <span class="style-rank-grade" id="style-rank-grade">D</span>
           <div class="style-rank-bar-wrap">
             <div class="style-rank-bar"><div class="style-rank-fill" id="style-rank-fill" style="width: 18%"></div></div>
             <span class="style-rank-sub" id="style-rank-sub">DRIFT [SPACE] + SPEED COMBO</span>
+            <span class="style-rank-howto" id="style-rank-howto">HOW TO RAISE: Hold [SPACE] to Drift · Dodge Bullets · Kill Hostiles</span>
           </div>
         </div>
       </div>
       <div class="synergy-tracker-card" id="synergy-tracker-card">
-        <div class="synergy-head">EVOLUTION &amp; SYNERGY MATRIX</div>
+        <div class="synergy-head" data-tip="&lt;b style='color:#2ee6ff'&gt;EVOLUTION &amp; SYNERGY MATRIX&lt;/b&gt;&lt;br/&gt;Collect Weapon Signature Mods or 3+ item stacks to evolve your primary weapon.&lt;br/&gt;Also tracks active Intel Lab scanner buffs, Duo synergies, and Bounty pacts.">
+          <span>EVOLUTION &amp; SYNERGY MATRIX</span>
+          <span class="hud-help-pill" aria-hidden="true">? HOVER FOR GUIDE</span>
+        </div>
         <div class="synergy-list" id="synergy-list"></div>
       </div>
     </div>
@@ -236,6 +241,15 @@
       <strong class="hud-toast-title" id="hud-toast-title">★ DOORS &amp; MINIMAP WARP UNLOCKED</strong>
     </div>
 
+    <!-- Sanctuary Home Base Proximity Interaction Prompt ([E] to Interact) -->
+    <button type="button" id="hub-interact-banner" class="hub-interact-banner" aria-live="polite" hidden>
+      <span class="hub-interact-key">[PRESS E]</span>
+      <div class="hub-interact-copy">
+        <strong id="hub-interact-title">SCRAP FORGE</strong>
+        <span id="hub-interact-desc">Spend 12 Scrap to upgrade equipped gear rarity or forge a new part</span>
+      </div>
+    </button>
+
     <!-- Boss Room Entry Intro Splash Banner (Guilty Gear / Persona 5 VS Cut-In) -->
     <div id="boss-intro-banner" aria-hidden="true">
       <div class="boss-intro-speedlines" aria-hidden="true"></div>
@@ -273,6 +287,29 @@
           <button id="btn-portal-confirm" type="button" class="portal-btn portal-btn--primary"><kbd>E</kbd> DESCEND</button>
           <button id="btn-portal-cancel" type="button" class="portal-btn portal-btn--secondary"><kbd>ESC</kbd> STAY</button>
         </div>
+      </div>
+    </div>
+
+    <!-- Sanctuary Home Base Station Interface Modal -->
+    <div id="hub-station-overlay" aria-hidden="true">
+      <div class="hub-station-card" role="dialog" aria-modal="true" aria-labelledby="hub-station-title">
+        <header class="hub-station-header">
+          <div class="hub-station-title-wrap">
+            <span class="hub-station-kicker" id="hub-station-kicker">SANCTUARY HIDEOUT // STATION</span>
+            <h2 class="hub-station-title" id="hub-station-title">THE SCRAP FORGE</h2>
+          </div>
+          <div class="hub-station-speaker-pill" id="hub-station-speaker">IRONSMITH KORR</div>
+        </header>
+        <blockquote class="hub-station-quote" id="hub-station-quote">"12 Scrap for a fresh black-market part! Step onto the forge."</blockquote>
+        <div class="hub-station-purpose" id="hub-station-purpose">
+          Spend Scrap salvaged from runs to permanently upgrade your equipped gear's rarity (+25% to all stats) or forge a brand-new piece of equipment.
+        </div>
+        <div class="hub-station-body" id="hub-station-body"></div>
+        <div class="hub-station-feedback" id="hub-station-feedback" hidden></div>
+        <footer class="hub-station-actions" id="hub-station-actions">
+          <button type="button" class="portal-btn portal-btn--primary" id="btn-hub-station-primary"><kbd>E</kbd> ACTIVATE</button>
+          <button type="button" class="portal-btn portal-btn--secondary" id="btn-hub-station-close"><kbd>ESC</kbd> CLOSE</button>
+        </footer>
       </div>
     </div>
 

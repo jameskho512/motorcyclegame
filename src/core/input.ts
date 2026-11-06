@@ -47,6 +47,7 @@ export interface InputCallbacks {
   onUserGesture?: () => void;
   onToggleSettings?: () => void;
   onCloseSettings?: () => void;
+  onInteract?: () => void;
 }
 
 export class InputManager {
@@ -294,6 +295,11 @@ export class InputManager {
         this.callbacks.onShopCancel?.();
         return;
       }
+    }
+
+    if (k === 'e' && !e.repeat && !this.isGarageModalActive && !this.isShopModalActive && !this.isSettingsActive) {
+      this.callbacks.onInteract?.();
+      return;
     }
 
     // Audio mute toggle

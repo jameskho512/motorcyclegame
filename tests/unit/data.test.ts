@@ -17,7 +17,9 @@ import {
   WEAPON_EVOLUTIONS,
   isWeaponEvolved,
   getEvolutionsForMod,
-  WEAPON_PROC_COEFFICIENTS
+  WEAPON_PROC_COEFFICIENTS,
+  getWeaponEvolutionProgress,
+  WeaponEvolutionProgress
 } from '@/data/weapons';
 import {
   META_UPGRADES,
@@ -596,5 +598,22 @@ describe('Tooltip: formatHubNpcTooltip', () => {
       quote: '"Keep your NOS cool and your barrels hot."',
       accentColor: '#ffd166'
     });
+  });
+
+  it('computes getWeaponEvolutionProgress across 0%, partial, 50%, and 100% evolved states', () => {
+    const p0: WeaponEvolutionProgress = getWeaponEvolutionProgress('pistol', { items: [], itemStacks: {} });
+    expect(p0.evolved).toBe(false);
+    expect(p0.progressPct).toBe(0);
+    expect(p0.hasSignatureMod).toBe(false);
+    expect(p0.maxStackCount).toBe(0);
+
+    const pSig = getWeaponEvolutionProgress('pistol', { items: ['Ricochet Rounds'], itemStacks: {} });
+    expect(pSig.hasSignatureMod).toBe(true);
+    expect(pSig.progressPct).toBe(50);
+
+    const pFull = getWeaponEvolutionProgress('pistol', { items: ['Ricochet Rounds'], itemStacks: { lens: 3 } });
+    expect(pFull.evolved).toBe(true);
+    expect(pFull.progressPct).toBe(100);
+    expect(pFull.statusText).toContain('OVERCLOCK EVOLVED');
   });
 });

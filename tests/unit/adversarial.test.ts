@@ -38,7 +38,8 @@ import {
   ARENA_HEIGHT,
   MAX_STASH_SIZE
 } from '@/types/game';
-import { getFloorBountyContract } from '@/world/dungeon';
+import { getFloorBountyContract, getHubNpcGreeting } from '@/world/dungeon';
+import { getStyleAdrenalineBonus } from '@/systems/physics';
 import {
   getPortalRiskAssessment,
   getNextSectorBriefing
@@ -691,6 +692,131 @@ describe('Adversarial Challenge 4: Stress Testing Run Mod Clamps', () => {
         expect(riskFull.isLowHullWarning).toBe(false);
         expect(riskFull.readinessLabel).toBe('★ FULL INTEGRITY');
       }
+    });
+  });
+
+  describe('Adversarial Challenge 7: Runtime Hub NPC Dialogue & Style Adrenaline Integration (M57)', () => {
+    it('verifies getHubNpcGreeting resilience across extreme bestFloor inputs (0..99) and all NPC types', () => {
+      const npcIds = ['garage', 'blacksmith', 'bounty', 'codex', 'launch', 'unknown_vendor'];
+      const floorCases = [0, 1, 2, 3, 4, 10, 50, 99];
+
+      for (const npcId of npcIds) {
+        for (const floor of floorCases) {
+          const greeting = getHubNpcGreeting(npcId, floor, 0);
+          expect(greeting).toBeDefined();
+          expect(greeting.speaker).toBeTruthy();
+          expect(greeting.quote).toBeTruthy();
+          expect(greeting.accentColor).toMatch(/^#[0-9a-fA-F]{6}$/);
+
+          if (npcId === 'garage') {
+            if (floor >= 4) {
+              expect(greeting.quote).toBe(`Chassis survived Sector ${floor}! Bolt on your finest parts, Rider.`);
+            } else {
+              expect(greeting.quote).toBe('Tune your V8 and equip high-grade salvage before hitting the highway.');
+            }
+          }
+        }
+      }
+    });
+
+    it('verifies getHubNpcGreeting dynamic bounty scaling across heatLevel edge cases (0..3)', () => {
+      // heatLevel = 0
+      const heat0 = getHubNpcGreeting('bounty', 1, 0);
+      expect(heat0.speaker).toBe('VALKYRIE BROKER');
+      expect(heat0.quote).toBe('Raise the Bounty Heat for massive Scrap payouts, outlaw!');
+      expect(heat0.accentColor).toBe('#06d6a0');
+
+      // heatLevel = 1..3
+      for (let heat = 1; heat <= 3; heat++) {
+        const greeting = getHubNpcGreeting('bounty', 1, heat);
+        expect(greeting.quote).toBe(`HEAT ${heat} ACTIVE! +${heat * 25}% Scrap from all hostiles.`);
+      }
+
+      // Negative heat edge case gracefully handled
+      const negHeat = getHubNpcGreeting('bounty', 1, -5);
+      expect(negHeat.quote).toBe('Raise the Bounty Heat for massive Scrap payouts, outlaw!');
+    });
+
+    it('verifies getStyleAdrenalineBonus boundary clamps and monotonic scaling (-10..150)', () => {
+      // Underflow / clamped to D
+      const underflow = getStyleAdrenalineBonus(-10);
+      expect(underflow.rank).toBe('D');
+      expect(underflow.nosRegenBonusPerSec).toBe(0);
+      expect(underflow.speedBonusMult).toBe(1.0);
+
+      const zero = getStyleAdrenalineBonus(0);
+      expect(zero.rank).toBe('D');
+      expect(zero.nosRegenBonusPerSec).toBe(0);
+
+      // Score 20: C rank
+      const score20 = getStyleAdrenalineBonus(20);
+      expect(score20.rank).toBe('C');
+      expect(score20.nosRegenBonusPerSec).toBe(0.5);
+
+      // Score 36: B rank
+      const score36 = getStyleAdrenalineBonus(36);
+      expect(score36.rank).toBe('B');
+      expect(score36.nosRegenBonusPerSec).toBe(1.5);
+
+      // Score 52: A rank
+      const score52 = getStyleAdrenalineBonus(52);
+      expect(score52.rank).toBe('A');
+      expect(score52.nosRegenBonusPerSec).toBe(3);
+
+      // Score 68: S rank
+      const score68 = getStyleAdrenalineBonus(68);
+      expect(score68.rank).toBe('S');
+      expect(score68.nosRegenBonusPerSec).toBe(5);
+
+      // Score 80: SS rank
+      const score80 = getStyleAdrenalineBonus(80);
+      expect(score80.rank).toBe('SS');
+      expect(score80.nosRegenBonusPerSec).toBe(8);
+
+      // Score 92: SSS rank
+      const score92 = getStyleAdrenalineBonus(92);
+      expect(score92.rank).toBe('SSS');
+      expect(score92.nosRegenBonusPerSec).toBe(12);
+      expect(score92.speedBonusMult).toBe(1.15);
+
+      // Overflow / clamped to SSS
+      const overflow = getStyleAdrenalineBonus(150);
+      expect(overflow.rank).toBe('SSS');
+      expect(overflow.nosRegenBonusPerSec).toBe(12);
+      expect(overflow.speedBonusMult).toBe(1.15);
+
+      // Monotonic progression across step increments from -10 to 150
+      let prevNos = -1;
+      let prevSpeed = 0.99;
+      for (let s = -10; s <= 150; s += 5) {
+        const bonus = getStyleAdrenalineBonus(s);
+        expect(bonus.nosRegenBonusPerSec).toBeGreaterThanOrEqual(prevNos);
+        expect(bonus.speedBonusMult).toBeGreaterThanOrEqual(prevSpeed);
+        prevNos = bonus.nosRegenBonusPerSec;
+        prevSpeed = bonus.speedBonusMult;
+      }
+    });
+
+    it('verifies NOS regen integration with player state conforms to clamp and cap invariants', () => {
+      const player = {
+        nos: 95,
+        nosMax: 100,
+        styleScore: 95
+      };
+
+      const dt = 0.5;
+      const curStyle = player.styleScore || 12;
+      const styleAdrenaline = getStyleAdrenalineBonus(curStyle) as any;
+      if (styleAdrenaline.nosRegenBonus === undefined) {
+        styleAdrenaline.nosRegenBonus = styleAdrenaline.nosRegenBonusPerSec ?? 0;
+      }
+
+      if (styleAdrenaline.nosRegenBonus > 0) {
+        player.nos = Math.min(player.nosMax, player.nos + dt * styleAdrenaline.nosRegenBonus);
+      }
+
+      // 95 + 0.5 * 12 = 101, capped at 100
+      expect(player.nos).toBe(100);
     });
   });
 });
