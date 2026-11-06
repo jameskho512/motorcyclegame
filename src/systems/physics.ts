@@ -446,3 +446,20 @@ export function updatePlayerPhysics(
     transition
   };
 }
+
+export interface StyleAdrenalineBonus {
+  rank: 'D' | 'C' | 'B' | 'A' | 'S' | 'SS' | 'SSS';
+  nosRegenBonusPerSec: number;
+  speedBonusMult: number;
+}
+
+export function getStyleAdrenalineBonus(styleScore: number = 12): StyleAdrenalineBonus {
+  const s = Math.max(0, Math.min(100, Number(styleScore) || 0));
+  if (s >= 92) return { rank: 'SSS', nosRegenBonusPerSec: 12, speedBonusMult: 1.15 };
+  if (s >= 80) return { rank: 'SS', nosRegenBonusPerSec: 8, speedBonusMult: 1.10 };
+  if (s >= 68) return { rank: 'S', nosRegenBonusPerSec: 5, speedBonusMult: 1.08 };
+  if (s >= 52) return { rank: 'A', nosRegenBonusPerSec: 3, speedBonusMult: 1.05 };
+  if (s >= 36) return { rank: 'B', nosRegenBonusPerSec: 1.5, speedBonusMult: 1.02 };
+  if (s >= 20) return { rank: 'C', nosRegenBonusPerSec: 0.5, speedBonusMult: 1.0 };
+  return { rank: 'D', nosRegenBonusPerSec: 0, speedBonusMult: 1.0 };
+}

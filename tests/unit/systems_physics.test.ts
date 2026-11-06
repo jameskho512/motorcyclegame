@@ -24,7 +24,9 @@ import {
   resolveCircleAABB,
   resolveObstacleCollisions,
   handleWallAndDoors,
-  updatePlayerPhysics
+  updatePlayerPhysics,
+  getStyleAdrenalineBonus,
+  type StyleAdrenalineBonus
 } from '@/systems/physics';
 import {
   ARENA_WIDTH,
@@ -600,6 +602,131 @@ describe('Physics Module: Kinematics, NOS, and Collisions (src/systems/physics.t
 
       updateBikeKinematics(player, 0, 0, false, 0.05, room);
       expect(player.nosLock).toBe(true);
+    });
+  });
+
+  describe('Style Adrenaline Bonus (getStyleAdrenalineBonus)', () => {
+    it('returns default D rank bonus when called with no arguments (default styleScore = 12)', () => {
+      const bonus: StyleAdrenalineBonus = getStyleAdrenalineBonus();
+      expect(bonus).toEqual({
+        rank: 'D',
+        nosRegenBonusPerSec: 0,
+        speedBonusMult: 1.0
+      });
+    });
+
+    it('correctly returns D rank for styleScore < 20 and boundary 0, 19', () => {
+      expect(getStyleAdrenalineBonus(0)).toEqual({
+        rank: 'D',
+        nosRegenBonusPerSec: 0,
+        speedBonusMult: 1.0
+      });
+      expect(getStyleAdrenalineBonus(19)).toEqual({
+        rank: 'D',
+        nosRegenBonusPerSec: 0,
+        speedBonusMult: 1.0
+      });
+      expect(getStyleAdrenalineBonus(19.99)).toEqual({
+        rank: 'D',
+        nosRegenBonusPerSec: 0,
+        speedBonusMult: 1.0
+      });
+    });
+
+    it('handles negative inputs and NaN gracefully by falling back to D rank', () => {
+      expect(getStyleAdrenalineBonus(-10)).toEqual({
+        rank: 'D',
+        nosRegenBonusPerSec: 0,
+        speedBonusMult: 1.0
+      });
+      expect(getStyleAdrenalineBonus(NaN)).toEqual({
+        rank: 'D',
+        nosRegenBonusPerSec: 0,
+        speedBonusMult: 1.0
+      });
+    });
+
+    it('correctly returns C rank for boundary 20 and values < 36', () => {
+      expect(getStyleAdrenalineBonus(20)).toEqual({
+        rank: 'C',
+        nosRegenBonusPerSec: 0.5,
+        speedBonusMult: 1.0
+      });
+      expect(getStyleAdrenalineBonus(35.9)).toEqual({
+        rank: 'C',
+        nosRegenBonusPerSec: 0.5,
+        speedBonusMult: 1.0
+      });
+    });
+
+    it('correctly returns B rank for boundary 36 and values < 52', () => {
+      expect(getStyleAdrenalineBonus(36)).toEqual({
+        rank: 'B',
+        nosRegenBonusPerSec: 1.5,
+        speedBonusMult: 1.02
+      });
+      expect(getStyleAdrenalineBonus(51.9)).toEqual({
+        rank: 'B',
+        nosRegenBonusPerSec: 1.5,
+        speedBonusMult: 1.02
+      });
+    });
+
+    it('correctly returns A rank for boundary 52 and values < 68', () => {
+      expect(getStyleAdrenalineBonus(52)).toEqual({
+        rank: 'A',
+        nosRegenBonusPerSec: 3,
+        speedBonusMult: 1.05
+      });
+      expect(getStyleAdrenalineBonus(67.9)).toEqual({
+        rank: 'A',
+        nosRegenBonusPerSec: 3,
+        speedBonusMult: 1.05
+      });
+    });
+
+    it('correctly returns S rank for boundary 68 and values < 80', () => {
+      expect(getStyleAdrenalineBonus(68)).toEqual({
+        rank: 'S',
+        nosRegenBonusPerSec: 5,
+        speedBonusMult: 1.08
+      });
+      expect(getStyleAdrenalineBonus(79.9)).toEqual({
+        rank: 'S',
+        nosRegenBonusPerSec: 5,
+        speedBonusMult: 1.08
+      });
+    });
+
+    it('correctly returns SS rank for boundary 80 and values < 92', () => {
+      expect(getStyleAdrenalineBonus(80)).toEqual({
+        rank: 'SS',
+        nosRegenBonusPerSec: 8,
+        speedBonusMult: 1.10
+      });
+      expect(getStyleAdrenalineBonus(91.9)).toEqual({
+        rank: 'SS',
+        nosRegenBonusPerSec: 8,
+        speedBonusMult: 1.10
+      });
+    });
+
+    it('correctly returns SSS rank for boundary 92, 100, and values > 100 clamped', () => {
+      expect(getStyleAdrenalineBonus(92)).toEqual({
+        rank: 'SSS',
+        nosRegenBonusPerSec: 12,
+        speedBonusMult: 1.15
+      });
+      expect(getStyleAdrenalineBonus(100)).toEqual({
+        rank: 'SSS',
+        nosRegenBonusPerSec: 12,
+        speedBonusMult: 1.15
+      });
+      expect(getStyleAdrenalineBonus(150)).toEqual({
+        rank: 'SSS',
+        nosRegenBonusPerSec: 12,
+        speedBonusMult: 1.15
+      });
     });
   });
 });

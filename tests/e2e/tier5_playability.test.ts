@@ -70,6 +70,12 @@ import { generateDungeon, getFloorBountyContract } from '../../src/world/dungeon
 import { formatWeaponMasteryHint } from '../../src/ui/tooltip';
 import { MotoRogueApp } from '../../src/main';
 
+import { getHubNpcGreeting } from '@/world/dungeon';
+import { getModStackTierClass, HUDController } from '@/ui/hud';
+import { getPortalRiskAssessment } from '@/ui/portalModal';
+import { getStashSalvageSummary } from '@/ui/garage';
+import { formatDummyHitTelemetry } from '@/systems/combat';
+
 describe('Tier 5: Playability Verification & End-to-End Simulation', () => {
   let player: PlayerState;
   let storage: SafeLocalStorage;
@@ -1613,6 +1619,187 @@ describe('Tier 5: Playability Verification & End-to-End Simulation', () => {
       } finally {
         g.AudioContext = originalAC;
       }
+    });
+  });
+
+  // ==========================================================================
+  // 8. WAVE 12 PLAYABILITY INTEGRATION (SANCTUARY GREETINGS, MOD STACKS, PORTAL RISK & SALVAGE)
+  // ==========================================================================
+  describe('8. Wave 12 Playability Integration (Sanctuary NPC Greetings, Mod Stack Tiers, Portal Risk & Stash Salvage)', () => {
+    it('verifies getHubNpcGreeting across all 5 Sanctuary stations and dynamic progression quotes', () => {
+      // 1. Garage station (Chief Mechanic Vex)
+      const vexDefault = getHubNpcGreeting('garage', 1);
+      expect(vexDefault.npcId).toBe('garage');
+      expect(vexDefault.speaker).toBe('CHIEF MECHANIC VEX');
+      expect(vexDefault.accentColor).toBe('#ffd60a');
+      expect(vexDefault.quote).toBe('Tune your V8 and equip high-grade salvage before hitting the highway.');
+
+      const vexDeep = getHubNpcGreeting('garage', 5);
+      expect(vexDeep.quote).toContain('Chassis survived Sector 5!');
+
+      // 2. Blacksmith station (Ironsmith Korr)
+      const korr = getHubNpcGreeting('blacksmith');
+      expect(korr.npcId).toBe('blacksmith');
+      expect(korr.speaker).toBe('IRONSMITH KORR');
+      expect(korr.accentColor).toBe('#2ee6ff');
+      expect(korr.quote).toContain('12 Scrap for a fresh black-market part');
+
+      // 3. Bounty broker station (Valkyrie Broker)
+      const valkCold = getHubNpcGreeting('bounty', 1, 0);
+      expect(valkCold.npcId).toBe('bounty');
+      expect(valkCold.speaker).toBe('VALKYRIE BROKER');
+      expect(valkCold.accentColor).toBe('#06d6a0');
+      expect(valkCold.quote).toContain('Raise the Bounty Heat for massive Scrap payouts');
+
+      const valkHot = getHubNpcGreeting('bounty', 1, 3);
+      expect(valkHot.quote).toContain('HEAT 3 ACTIVE! +75% Scrap from all hostiles.');
+
+      // 4. Codex station (Doc Cullen)
+      const doc = getHubNpcGreeting('codex');
+      expect(doc.npcId).toBe('codex');
+      expect(doc.speaker).toBe('DOC CULLEN');
+      expect(doc.accentColor).toBe('#9d4edd');
+      expect(doc.quote).toContain('Tactical Scanner calibrated: +8% DMG & +15% Bullet Speed');
+
+      // 5. Launch station (Highway Dispatch)
+      const launch = getHubNpcGreeting('launch');
+      expect(launch.npcId).toBe('launch');
+      expect(launch.speaker).toBe('HIGHWAY DISPATCH');
+      expect(launch.accentColor).toBe('#e5203a');
+      expect(launch.quote).toContain('Blast doors unlocked. Hit the throttle when ready!');
+
+      // Fallback station
+      const unknown = getHubNpcGreeting('unknown');
+      expect(unknown.speaker).toBe('OUTLAW DRIFTER');
+      expect(unknown.accentColor).toBe('#ffd166');
+      expect(unknown.quote).toContain('Keep your NOS cool');
+    });
+
+    it('verifies getModStackTierClass mapping (1 -> stack-tier-1, 2 -> stack-tier-2, 3+ -> stack-tier-evo) and HUDController.updateMods DOM rendering', () => {
+      // 1. Pure function mapping
+      expect(getModStackTierClass(1)).toBe('stack-tier-1');
+      expect(getModStackTierClass(2)).toBe('stack-tier-2');
+      expect(getModStackTierClass(3)).toBe('stack-tier-evo');
+      expect(getModStackTierClass(7)).toBe('stack-tier-evo');
+      expect(getModStackTierClass(0)).toBe('stack-tier-1');
+      expect(getModStackTierClass(-2)).toBe('stack-tier-1');
+
+      // 2. HUDController DOM rendering with itemStacks
+      document.body.innerHTML = `
+        <div id="mod-list"></div>
+        <div id="items-list"></div>
+      `;
+
+      const hud = new HUDController();
+      const mockPlayer: any = {
+        items: [],
+        itemStacks: {
+          nitro_syringe: 4,
+          gasoline: 2,
+          chrome_lens: 1
+        }
+      };
+
+      hud.updateMods(mockPlayer);
+
+      const modList = document.getElementById('mod-list')!;
+      expect(modList).not.toBeNull();
+      const allChips = modList.querySelectorAll('[data-stack-tier]');
+      expect(allChips.length).toBe(3);
+
+      const evoChip = modList.querySelector('[aria-label*="Nitro Syringe x4"]');
+      expect(evoChip).not.toBeNull();
+      expect(evoChip?.getAttribute('data-stack-tier')).toBe('stack-tier-evo');
+      expect(evoChip?.classList.contains('stack-tier-evo')).toBe(true);
+
+      const tier2Chip = modList.querySelector('[aria-label*="Gasoline x2"]');
+      expect(tier2Chip).not.toBeNull();
+      expect(tier2Chip?.getAttribute('data-stack-tier')).toBe('stack-tier-2');
+      expect(tier2Chip?.classList.contains('stack-tier-2')).toBe(true);
+
+      const tier1Chip = modList.querySelector('[aria-label*="Chrome Lens x1"]');
+      expect(tier1Chip).not.toBeNull();
+      expect(tier1Chip?.getAttribute('data-stack-tier')).toBe('stack-tier-1');
+      expect(tier1Chip?.classList.contains('stack-tier-1')).toBe(true);
+
+      // 3. Existing chip markup update test
+      document.body.innerHTML = `
+        <div id="mod-list">
+          <span class="custom-badge" data-count="3">Nitro Syringe x3</span>
+          <span class="custom-badge" data-count="2">Gasoline x2</span>
+          <span class="custom-badge" data-count="1">Plating x1</span>
+        </div>
+      `;
+
+      hud.updateMods();
+      const badges = document.querySelectorAll('#mod-list .custom-badge');
+      expect(badges[0].getAttribute('data-stack-tier')).toBe('stack-tier-evo');
+      expect(badges[0].classList.contains('stack-tier-evo')).toBe(true);
+      expect(badges[1].getAttribute('data-stack-tier')).toBe('stack-tier-2');
+      expect(badges[1].classList.contains('stack-tier-2')).toBe(true);
+      expect(badges[2].getAttribute('data-stack-tier')).toBe('stack-tier-1');
+      expect(badges[2].classList.contains('stack-tier-1')).toBe(true);
+    });
+
+    it('verifies getPortalRiskAssessment (CRITICAL HULL, FULL INTEGRITY, COMBAT READY) and getStashSalvageSummary + formatDummyHitTelemetry', () => {
+      // 1. getPortalRiskAssessment
+      const critRisk = getPortalRiskAssessment(2, 20, 100);
+      expect(critRisk.readinessLabel).toContain('CRITICAL HULL');
+      expect(critRisk.isLowHullWarning).toBe(true);
+      expect(critRisk.recommendation).toBe('Visit Shop or scavenge Fuel before descending!');
+
+      const fullRisk = getPortalRiskAssessment(2, 100, 100);
+      expect(fullRisk.readinessLabel).toContain('FULL INTEGRITY');
+      expect(fullRisk.isLowHullWarning).toBe(false);
+      expect(fullRisk.recommendation).toBe('Optimal combat readiness for descent.');
+
+      const combatRisk = getPortalRiskAssessment(2, 60, 100);
+      expect(combatRisk.readinessLabel).toContain('COMBAT READY');
+      expect(combatRisk.isLowHullWarning).toBe(false);
+      expect(combatRisk.recommendation).toBe('Systems nominal for next sector.');
+
+      const defaultRisk = getPortalRiskAssessment(1);
+      expect(defaultRisk.readinessLabel).toContain('COMBAT READY');
+      expect(defaultRisk.isLowHullWarning).toBe(false);
+
+      // 2. getStashSalvageSummary
+      const emptySalvage = getStashSalvageSummary([]);
+      expect(emptySalvage).toEqual({
+        itemCount: 0,
+        totalSalvageScrap: 0,
+        highestRarity: -1
+      });
+
+      const sampleStash: EquipmentItem[] = [
+        {
+          name: 'Rusty Tires',
+          slot: 'tires',
+          rarity: 0,
+          stats: { speed: 10 }
+        },
+        {
+          name: 'Turbo Engine',
+          slot: 'engine',
+          rarity: 1,
+          stats: { speed: 20 }
+        },
+        {
+          name: 'Apex Tank',
+          slot: 'tank',
+          rarity: 3,
+          stats: { hp: 50 }
+        }
+      ];
+
+      const stashSalvage = getStashSalvageSummary(sampleStash);
+      expect(stashSalvage.itemCount).toBe(3);
+      expect(stashSalvage.totalSalvageScrap).toBe(3 + 8 + 40); // 51
+      expect(stashSalvage.highestRarity).toBe(3);
+
+      // 3. formatDummyHitTelemetry
+      expect(formatDummyHitTelemetry(45, false)).toBe('🎯 HIT 45');
+      expect(formatDummyHitTelemetry(99.6, true)).toBe('🎯 CRIT 100!');
+      expect(formatDummyHitTelemetry(0, false)).toBe('🎯 HIT 1');
     });
   });
 });

@@ -9,6 +9,7 @@ import { Pickup } from '../types/game';
 import { WEAPONS } from '../data/weapons';
 import { DROP_ITEMS } from '../data/upgrades';
 import { RARITY, fmtStat } from '../data/equipment';
+import { getHubNpcGreeting } from '../world/dungeon';
 
 /**
  * Comic speech-box title: ink heading text with the item's accent color shown
@@ -94,6 +95,27 @@ export function formatWeaponMasteryHint(kills: number = 0): string {
     return `Mastery: ★☆☆ ROOKIE I (+5% DMG · ${safeKills}/40 kills to ★★☆ ADEPT II)`;
   }
   return `Mastery: ☆☆☆ UNRANKED (${safeKills}/10 kills to ★☆☆ ROOKIE I +5% DMG)`;
+}
+
+export interface HubNpcTooltipInfo {
+  title: string;
+  subtitle: string;
+  quote: string;
+  accentColor: string;
+}
+
+export function formatHubNpcTooltip(
+  npcId: string,
+  bestFloor: number = 1,
+  heatLevel: number = 0
+): HubNpcTooltipInfo {
+  const greeting = getHubNpcGreeting(npcId, bestFloor, heatLevel);
+  return {
+    title: greeting.speaker,
+    subtitle: `SANCTUARY STATION // ${greeting.npcId.toUpperCase()}`,
+    quote: `"${greeting.quote}"`,
+    accentColor: greeting.accentColor
+  };
 }
 
 export class TooltipManager {

@@ -1228,6 +1228,24 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
 .sticker.rot-5 { transform: rotate(-8deg); }
 .sticker.rot-6 { transform: rotate(4deg); }
 
+/* RoR2 Mod Stack Tier Progression & 3-Stack Evolution Badges */
+.item-badge.stack-tier-2,
+.mod-chip.stack-tier-2 {
+  border: 2px solid #00f5d4;
+  box-shadow:
+    3px 4px 0 #0a0b10,
+    0 0 10px rgba(0, 245, 212, 0.45);
+}
+
+.item-badge.stack-tier-evo,
+.mod-chip.stack-tier-evo {
+  border: 2px solid #ffd60a;
+  box-shadow:
+    3px 4px 0 #0a0b10,
+    0 0 14px rgba(255, 214, 10, 0.55);
+  filter: drop-shadow(0 0 6px rgba(255, 214, 10, 0.7));
+}
+
 /* --------------------------------------------------------------------------
    7. Boss Room Entry Intro Splash Banner (#boss-intro-banner)
    -------------------------------------------------------------------------- */
@@ -1801,6 +1819,23 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
   white-space: nowrap;
   flex-shrink: 0;
   text-align: right;
+}
+
+.hud-synergy-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #eef1f8;
+}
+
+.hud-synergy-row.is-bounty-contract {
+  border-left: 3px solid #ffd60a;
+  background: rgba(255, 214, 10, 0.08);
 }
 
 .hud-wing-right {

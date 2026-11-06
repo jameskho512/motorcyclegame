@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { formatWeaponMasteryHint } from '@/ui/tooltip';
+import { formatWeaponMasteryHint, formatHubNpcTooltip, HubNpcTooltipInfo } from '@/ui/tooltip';
 import {
   WEAPONS,
   UNLOCKABLE_IDS,
@@ -512,5 +512,89 @@ describe('Tooltip: formatWeaponMasteryHint', () => {
     expect(formatWeaponMasteryHint(-1)).toBe('Mastery: ☆☆☆ UNRANKED (0/10 kills to ★☆☆ ROOKIE I +5% DMG)');
     expect(formatWeaponMasteryHint(-100)).toBe('Mastery: ☆☆☆ UNRANKED (0/10 kills to ★☆☆ ROOKIE I +5% DMG)');
     expect(formatWeaponMasteryHint(NaN)).toBe('Mastery: ☆☆☆ UNRANKED (0/10 kills to ★☆☆ ROOKIE I +5% DMG)');
+  });
+});
+
+describe('Tooltip: formatHubNpcTooltip', () => {
+  it('formats garage tooltip for default floor/heat and sector >= 4 progress', () => {
+    const tipDefault: HubNpcTooltipInfo = formatHubNpcTooltip('garage');
+    expect(tipDefault).toEqual({
+      title: 'CHIEF MECHANIC VEX',
+      subtitle: 'SANCTUARY STATION // GARAGE',
+      quote: '"Tune your V8 and equip high-grade salvage before hitting the highway."',
+      accentColor: '#ffd60a'
+    });
+
+    const tipSector5: HubNpcTooltipInfo = formatHubNpcTooltip('garage', 5);
+    expect(tipSector5.quote).toBe('"Chassis survived Sector 5! Bolt on your finest parts, Rider."');
+    expect(tipSector5.title).toBe('CHIEF MECHANIC VEX');
+    expect(tipSector5.subtitle).toBe('SANCTUARY STATION // GARAGE');
+    expect(tipSector5.accentColor).toBe('#ffd60a');
+  });
+
+  it('formats blacksmith forge station tooltip', () => {
+    const tip: HubNpcTooltipInfo = formatHubNpcTooltip('blacksmith');
+    expect(tip).toEqual({
+      title: 'IRONSMITH KORR',
+      subtitle: 'SANCTUARY STATION // BLACKSMITH',
+      quote: '"12 Scrap for a fresh black-market part! Step onto the forge."',
+      accentColor: '#2ee6ff'
+    });
+  });
+
+  it('formats bounty broker tooltip for default heat and heatLevel: 2', () => {
+    const tipDefault: HubNpcTooltipInfo = formatHubNpcTooltip('bounty');
+    expect(tipDefault).toEqual({
+      title: 'VALKYRIE BROKER',
+      subtitle: 'SANCTUARY STATION // BOUNTY',
+      quote: '"Raise the Bounty Heat for massive Scrap payouts, outlaw!"',
+      accentColor: '#06d6a0'
+    });
+
+    const tipHeat2: HubNpcTooltipInfo = formatHubNpcTooltip('bounty', 1, 2);
+    expect(tipHeat2).toEqual({
+      title: 'VALKYRIE BROKER',
+      subtitle: 'SANCTUARY STATION // BOUNTY',
+      quote: '"HEAT 2 ACTIVE! +50% Scrap from all hostiles."',
+      accentColor: '#06d6a0'
+    });
+  });
+
+  it('formats codex station tooltip', () => {
+    const tip: HubNpcTooltipInfo = formatHubNpcTooltip('codex');
+    expect(tip).toEqual({
+      title: 'DOC CULLEN',
+      subtitle: 'SANCTUARY STATION // CODEX',
+      quote: '"Tactical Scanner calibrated: +8% DMG & +15% Bullet Speed locked in."',
+      accentColor: '#9d4edd'
+    });
+  });
+
+  it('formats launch pad dispatch tooltip', () => {
+    const tip: HubNpcTooltipInfo = formatHubNpcTooltip('launch');
+    expect(tip).toEqual({
+      title: 'HIGHWAY DISPATCH',
+      subtitle: 'SANCTUARY STATION // LAUNCH',
+      quote: '"Blast doors unlocked. Hit the throttle when ready!"',
+      accentColor: '#e5203a'
+    });
+  });
+
+  it('handles unknown station fallback cleanly', () => {
+    const tipUnknown: HubNpcTooltipInfo = formatHubNpcTooltip('cantina');
+    expect(tipUnknown).toEqual({
+      title: 'OUTLAW DRIFTER',
+      subtitle: 'SANCTUARY STATION // CANTINA',
+      quote: '"Keep your NOS cool and your barrels hot."',
+      accentColor: '#ffd166'
+    });
+
+    const tipEmpty: HubNpcTooltipInfo = formatHubNpcTooltip('');
+    expect(tipEmpty).toEqual({
+      title: 'OUTLAW DRIFTER',
+      subtitle: 'SANCTUARY STATION // UNKNOWN',
+      quote: '"Keep your NOS cool and your barrels hot."',
+      accentColor: '#ffd166'
+    });
   });
 });
