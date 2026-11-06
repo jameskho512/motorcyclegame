@@ -39,6 +39,7 @@ import {
   getDowngradeStashItems,
   getBuildArchetypeSummary,
   getEquippedBikeVisualState,
+  getEquipmentLoadoutSummary,
   PART_ANCHORS,
   type StashSalvageSummary
 } from '../../src/ui/garage';
@@ -1503,6 +1504,103 @@ describe('Render & UI Subsystems', () => {
       expect(overlay?.getAttribute('data-career-rank')).toBe('syndicate_enforcer');
       expect(overlay?.getAttribute('data-career-title')).toBe('⚡ SYNDICATE ENFORCER');
       expect(overlay?.getAttribute('data-career-score')).toBe('210');
+    });
+
+    it('sets data-loadout-power-score, data-next-set-goal, data-loadout-summary, and renders .gx-set-goal-hint when no set bonus active in renderEquipmentBay', () => {
+      const garage = new GarageController(callbacks);
+      // metaSave.equipped from beforeEach has 1 Legendary tire ({ slot: 'tires', rarity: 3, name: 'Apex Tires', stats: { speed: 0.25 } })
+      garage.open(false, 1, metaSave, player);
+
+      const overlay = document.getElementById('garage-overlay')!;
+      const eqTotals = document.getElementById('eq-totals')!;
+      const summaryEl = document.getElementById('equip-bonus-summary')!;
+
+      const expectedSummary = getEquipmentLoadoutSummary(metaSave.equipped);
+      expect(expectedSummary.installedCount).toBe(1);
+      expect(expectedSummary.nextSetGoalText).toBe('Need 2 more Legendary for 3pc Valhalla Set');
+
+      // Verify attributes on overlay
+      expect(overlay.getAttribute('data-loadout-power-score')).toBe(expectedSummary.totalPowerScore.toFixed(1));
+      expect(overlay.getAttribute('data-next-set-goal')).toBe(expectedSummary.nextSetGoalText);
+      expect(overlay.getAttribute('data-loadout-summary')).toBe(expectedSummary.summaryLine);
+
+      // Verify attributes on eqTotals / summaryEl
+      expect(eqTotals.getAttribute('data-loadout-power-score')).toBe(expectedSummary.totalPowerScore.toFixed(1));
+      expect(eqTotals.getAttribute('data-next-set-goal')).toBe(expectedSummary.nextSetGoalText);
+      expect(eqTotals.getAttribute('data-loadout-summary')).toBe(expectedSummary.summaryLine);
+      expect(summaryEl.getAttribute('data-loadout-power-score')).toBe(expectedSummary.totalPowerScore.toFixed(1));
+      expect(summaryEl.getAttribute('data-next-set-goal')).toBe(expectedSummary.nextSetGoalText);
+      expect(summaryEl.getAttribute('data-loadout-summary')).toBe(expectedSummary.summaryLine);
+
+      // Since setBonus?.label is empty, .gx-set-goal-hint should be rendered and .gx-set-bonus should not be rendered
+      const hint = summaryEl.querySelector('.gx-set-goal-hint');
+      expect(hint).not.toBeNull();
+      expect(hint?.textContent).toContain('🎯');
+      expect(hint?.textContent).toContain('Need 2 more Legendary for 3pc Valhalla Set');
+      expect(summaryEl.querySelector('.gx-set-bonus')).toBeNull();
+
+      // Empty equipped: verify goal changes to Rare+ requirement and telemetry updates via direct renderEquipmentBay call
+      metaSave.equipped = {};
+      garage.renderEquipmentBay(metaSave, player);
+
+      const emptySummary = getEquipmentLoadoutSummary(metaSave.equipped);
+      expect(emptySummary.installedCount).toBe(0);
+      expect(emptySummary.totalPowerScore).toBe(0);
+      expect(emptySummary.nextSetGoalText).toBe('Need 4 more Rare+ for 4pc Rare Tuning Set');
+
+      expect(overlay.getAttribute('data-loadout-power-score')).toBe('0.0');
+      expect(overlay.getAttribute('data-next-set-goal')).toBe('Need 4 more Rare+ for 4pc Rare Tuning Set');
+      expect(overlay.getAttribute('data-loadout-summary')).toBe(emptySummary.summaryLine);
+      expect(eqTotals.getAttribute('data-loadout-power-score')).toBe('0.0');
+
+      const emptyHint = summaryEl.querySelector('.gx-set-goal-hint');
+      expect(emptyHint).not.toBeNull();
+      expect(emptyHint?.textContent).toContain('Need 4 more Rare+ for 4pc Rare Tuning Set');
+    });
+
+    it('renders .gx-set-bonus and hides .gx-set-goal-hint when a set bonus is active', () => {
+      const garage = new GarageController(callbacks);
+
+      // 2 Rare parts -> 2pc Rare Tuning (+6% Dmg, +4% Spd)
+      metaSave.equipped = {
+        tires: { slot: 'tires', rarity: 2, name: 'Rare Tires', stats: { speed: 0.1 } },
+        engine: { slot: 'engine', rarity: 2, name: 'Rare Engine', stats: { dmg: 0.12 } }
+      };
+
+      garage.open(false, 1, metaSave, player);
+
+      const summaryEl = document.getElementById('equip-bonus-summary')!;
+      const setBonusEl = summaryEl.querySelector('.gx-set-bonus');
+      expect(setBonusEl).not.toBeNull();
+      expect(setBonusEl?.textContent).toContain('2pc Rare Tuning');
+
+      // .gx-set-goal-hint must NOT be present when set bonus is active
+      const hint = summaryEl.querySelector('.gx-set-goal-hint');
+      expect(hint).toBeNull();
+
+      const loadout = getEquipmentLoadoutSummary(metaSave.equipped);
+      const overlay = document.getElementById('garage-overlay')!;
+      expect(overlay.getAttribute('data-loadout-power-score')).toBe(loadout.totalPowerScore.toFixed(1));
+      expect(overlay.getAttribute('data-next-set-goal')).toBe(loadout.nextSetGoalText);
+      expect(overlay.getAttribute('data-loadout-summary')).toBe(loadout.summaryLine);
+
+      // 3 Legendary parts -> 3pc Valhalla Set (+15% Dmg, +10% Spd)
+      metaSave.equipped = {
+        tires: { slot: 'tires', rarity: 3, name: 'Valhalla Tires', stats: { speed: 0.25 } },
+        engine: { slot: 'engine', rarity: 3, name: 'Valhalla Engine', stats: { dmg: 0.3 } },
+        exhaust: { slot: 'exhaust', rarity: 3, name: 'Valhalla Exhaust', stats: { blast: 0.2 } }
+      };
+
+      garage.renderEquipmentBay(metaSave, player);
+
+      const valhallaBonusEl = summaryEl.querySelector('.gx-set-bonus');
+      expect(valhallaBonusEl).not.toBeNull();
+      expect(valhallaBonusEl?.textContent).toContain('3pc Valhalla Set');
+      expect(summaryEl.querySelector('.gx-set-goal-hint')).toBeNull();
+
+      const valhallaLoadout = getEquipmentLoadoutSummary(metaSave.equipped);
+      expect(overlay.getAttribute('data-next-set-goal')).toBe('3pc Valhalla Set Active (+15% Dmg, +10% Spd)');
+      expect(overlay.getAttribute('data-loadout-power-score')).toBe(valhallaLoadout.totalPowerScore.toFixed(1));
     });
   });
 

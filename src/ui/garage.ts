@@ -36,7 +36,8 @@ import {
   fmtStat,
   itemScore,
   LEGENDARY_SLOT_PASSIVES,
-  getEquippedSetBonus
+  getEquippedSetBonus,
+  getEquipmentLoadoutSummary
 } from '../data/equipment';
 import {
   EQUIP_SLOT_HI_FI_SVG,
@@ -46,6 +47,8 @@ import {
 } from './icons';
 import { SET08_ASSETS } from './set08Assets';
 import { getCareerOutlawRank } from '@/core/state';
+
+export { getEquipmentLoadoutSummary };
 
 export interface BikeLiveryDef {
   id: BikeLiveryId;
@@ -766,6 +769,18 @@ export class GarageController {
    * Renders the 6 equipment slot bay around the bike lift canvas.
    */
   public renderEquipmentBay(metaSave: MetaSaveState, player?: PlayerState | null): void {
+    const loadout = getEquipmentLoadoutSummary(metaSave.equipped);
+    if (this.overlayEl) {
+      this.overlayEl.setAttribute('data-loadout-power-score', loadout.totalPowerScore.toFixed(1));
+      this.overlayEl.setAttribute('data-next-set-goal', loadout.nextSetGoalText);
+      this.overlayEl.setAttribute('data-loadout-summary', loadout.summaryLine);
+    }
+    if (this.eqTotals) {
+      this.eqTotals.setAttribute('data-loadout-power-score', loadout.totalPowerScore.toFixed(1));
+      this.eqTotals.setAttribute('data-next-set-goal', loadout.nextSetGoalText);
+      this.eqTotals.setAttribute('data-loadout-summary', loadout.summaryLine);
+    }
+
     if (!this.slotsLeft || !this.slotsRight) return;
 
     this.slotsLeft.innerHTML = '';
@@ -860,6 +875,8 @@ export class GarageController {
     summaryHtml += ` <span class="gx-archetype-badge" style="color:${archetype.badgeColor};font-weight:bold;margin-left:8px;" title="${esc(archetype.description)}">${esc(archetype.title)}</span>`;
     if (setBonus && setBonus.label) {
       summaryHtml += ` <span class="gx-set-bonus" style="color:#00f5d4;">★ <b>SET:</b> ${esc(setBonus.label)}</span>`;
+    } else {
+      summaryHtml += ` <span class="gx-set-goal-hint" style="color:#8892b0;font-size:11px;">🎯 ${esc(loadout.nextSetGoalText)}</span>`;
     }
     if (activeLegendaries.length > 0) {
       const legHtml = activeLegendaries.map(
@@ -884,12 +901,20 @@ export class GarageController {
       summaryEl.innerHTML = summaryHtml;
       summaryEl.setAttribute('data-tip', tipContent);
       summaryEl.setAttribute('title', `Career Telemetry: ${telemetryText}`);
+      summaryEl.setAttribute('data-loadout-power-score', loadout.totalPowerScore.toFixed(1));
+      summaryEl.setAttribute('data-next-set-goal', loadout.nextSetGoalText);
+      summaryEl.setAttribute('data-loadout-summary', loadout.summaryLine);
     }
 
-    if (this.eqTotals && this.eqTotals !== summaryEl && !this.eqTotals.contains(summaryEl)) {
-      this.eqTotals.innerHTML = summaryHtml;
-      this.eqTotals.setAttribute('data-tip', tipContent);
-      this.eqTotals.setAttribute('title', `Career Telemetry: ${telemetryText}`);
+    if (this.eqTotals) {
+      this.eqTotals.setAttribute('data-loadout-power-score', loadout.totalPowerScore.toFixed(1));
+      this.eqTotals.setAttribute('data-next-set-goal', loadout.nextSetGoalText);
+      this.eqTotals.setAttribute('data-loadout-summary', loadout.summaryLine);
+      if (this.eqTotals !== summaryEl && !this.eqTotals.contains(summaryEl)) {
+        this.eqTotals.innerHTML = summaryHtml;
+        this.eqTotals.setAttribute('data-tip', tipContent);
+        this.eqTotals.setAttribute('title', `Career Telemetry: ${telemetryText}`);
+      }
     }
   }
 

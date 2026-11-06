@@ -1156,4 +1156,88 @@ export function getRoomThreatAssessment(
   };
 }
 
+// ============================================================================
+// 7. BOSS ENCOUNTER TACTICAL BRIEFING & PHASE READINESS ADVISOR (M98)
+// ============================================================================
+
+export interface BossVariantProfile {
+  variantId: BossVariantId;
+  title: string;
+  subtitle: string;
+  color: string;
+}
+
+/**
+ * Returns the boss variant identity profile for a given floor number.
+ * Cycles through the 6 road-raging boss variants: ((floor - 1) % 6).
+ */
+export function getBossVariantProfile(floorNum: number = 1): BossVariantProfile {
+  const f = Math.max(1, Math.floor(Number.isFinite(floorNum) ? floorNum : 1));
+  const variantId = ((f - 1) % 6) as BossVariantId;
+  return {
+    variantId,
+    title: BOSS_NAMES[variantId] ?? 'SECTOR WARDEN',
+    subtitle: BOSS_SUBTITLES[variantId] ?? 'APEX THREAT',
+    color: BOSS_COLORS[variantId] ?? '#e63946'
+  };
+}
+
+export interface BossEncounterBriefing {
+  active: boolean;
+  bossTitle: string;
+  phase: 1 | 2;
+  isEnraged: boolean;
+  hpPct: number;
+  counterplayTip: string;
+  summaryLine: string;
+}
+
+/**
+ * Evaluates tactical telemetry and phase readiness briefing for an active boss encounter.
+ * Pure advisor function used by HUD tactical briefing banners, audio cues, and boss combat advisors.
+ */
+export function getBossEncounterBriefing(
+  boss?: Partial<Enemy> | null,
+  floorNum: number = 1
+): BossEncounterBriefing {
+  if (!boss || boss.type !== 'boss' || (boss.hp ?? 0) <= 0) {
+    return {
+      active: false,
+      bossTitle: 'NO ACTIVE BOSS',
+      phase: 1,
+      isEnraged: false,
+      hpPct: 0,
+      counterplayTip: 'Sector clear of boss signatures.',
+      summaryLine: 'BOSS TELEMETRY: INACTIVE'
+    };
+  }
+
+  const bossObj = boss as Partial<Boss>;
+  const hp = boss.hp ?? 1;
+  const maxHp = Math.max(1, boss.maxHp ?? 1);
+  const hpPct = Math.max(1, Math.min(100, Math.round((hp / maxHp) * 100)));
+
+  const isEnraged = Boolean(bossObj.enraged || bossObj.phase === 2 || hpPct <= 50);
+  const phase: 1 | 2 = isEnraged ? 2 : 1;
+
+  const profile = getBossVariantProfile(floorNum);
+  const bossTitle = profile?.title || (bossObj.name as string) || 'SECTOR WARDEN';
+
+  const counterplayTip = phase === 2
+    ? 'PHASE 2 OVERDRIVE: Boss bullet cadence doubled — use Drift [SPACE] i-frames and Graze for NOS!'
+    : 'PHASE 1: Maintain mid-range orbit and destroy elemental barrels before 50% HP enrage.';
+
+  const summaryLine = `${bossTitle} [PHASE ${phase}${isEnraged ? ' ENRAGED' : ''}] · ${hpPct}% HP · ${counterplayTip}`;
+
+  return {
+    active: true,
+    bossTitle,
+    phase,
+    isEnraged,
+    hpPct,
+    counterplayTip,
+    summaryLine
+  };
+}
+
 

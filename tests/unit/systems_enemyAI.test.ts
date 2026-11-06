@@ -30,7 +30,11 @@ import {
   type EliteAffix,
   type EliteAffixTacticalInfo,
   getRoomThreatAssessment,
-  type RoomThreatAssessment
+  type RoomThreatAssessment,
+  getBossEncounterBriefing,
+  type BossEncounterBriefing,
+  getBossVariantProfile,
+  type BossVariantProfile
 } from '../../src/systems/enemyAI';
 import { handleEnemyDeath, createCombatState } from '../../src/systems/combat';
 import type {
@@ -1428,6 +1432,148 @@ describe('Systems: EnemyAI — Room Combat Threat Assessment (M71)', () => {
     expect(postBossAssessment.threatScore).toBe(14);
   });
 });
+
+describe('Systems: EnemyAI — Boss Encounter Tactical Briefing & Phase Readiness Advisor (M98)', () => {
+  it('returns inactive telemetry for null, undefined, non-boss, and defeated enemies', () => {
+    const inactiveFromNull = getBossEncounterBriefing(null);
+    expect(inactiveFromNull).toEqual<BossEncounterBriefing>({
+      active: false,
+      bossTitle: 'NO ACTIVE BOSS',
+      phase: 1,
+      isEnraged: false,
+      hpPct: 0,
+      counterplayTip: 'Sector clear of boss signatures.',
+      summaryLine: 'BOSS TELEMETRY: INACTIVE'
+    });
+
+    const inactiveFromUndefined = getBossEncounterBriefing(undefined);
+    expect(inactiveFromUndefined.active).toBe(false);
+    expect(inactiveFromUndefined.summaryLine).toBe('BOSS TELEMETRY: INACTIVE');
+
+    const nonBoss = getBossEncounterBriefing({ type: 'swarmer', hp: 34, maxHp: 34 } as any);
+    expect(nonBoss.active).toBe(false);
+    expect(nonBoss.bossTitle).toBe('NO ACTIVE BOSS');
+
+    const zeroHpBoss = getBossEncounterBriefing({ type: 'boss', hp: 0, maxHp: 1000 } as any);
+    expect(zeroHpBoss.active).toBe(false);
+
+    const negativeHpBoss = getBossEncounterBriefing({ type: 'boss', hp: -10, maxHp: 1000 } as any);
+    expect(negativeHpBoss.active).toBe(false);
+  });
+
+  it('evaluates healthy Phase 1 boss (80% HP) with baseline counterplay tip', () => {
+    const healthyBoss = { type: 'boss' as const, hp: 800, maxHp: 1000 };
+    const briefing = getBossEncounterBriefing(healthyBoss, 1);
+
+    expect(briefing.active).toBe(true);
+    expect(briefing.bossTitle).toBe('SCRAP GOLIATH');
+    expect(briefing.phase).toBe(1);
+    expect(briefing.isEnraged).toBe(false);
+    expect(briefing.hpPct).toBe(80);
+    expect(briefing.counterplayTip).toBe(
+      'PHASE 1: Maintain mid-range orbit and destroy elemental barrels before 50% HP enrage.'
+    );
+    expect(briefing.summaryLine).toBe(
+      'SCRAP GOLIATH [PHASE 1] · 80% HP · PHASE 1: Maintain mid-range orbit and destroy elemental barrels before 50% HP enrage.'
+    );
+  });
+
+  it('evaluates enraged Phase 2 boss (40% HP) with overdrive counterplay advice', () => {
+    const enragedBoss = { type: 'boss' as const, hp: 400, maxHp: 1000 };
+    const briefing = getBossEncounterBriefing(enragedBoss, 1);
+
+    expect(briefing.active).toBe(true);
+    expect(briefing.bossTitle).toBe('SCRAP GOLIATH');
+    expect(briefing.phase).toBe(2);
+    expect(briefing.isEnraged).toBe(true);
+    expect(briefing.hpPct).toBe(40);
+    expect(briefing.counterplayTip).toBe(
+      'PHASE 2 OVERDRIVE: Boss bullet cadence doubled — use Drift [SPACE] i-frames and Graze for NOS!'
+    );
+    expect(briefing.summaryLine).toBe(
+      'SCRAP GOLIATH [PHASE 2 ENRAGED] · 40% HP · PHASE 2 OVERDRIVE: Boss bullet cadence doubled — use Drift [SPACE] i-frames and Graze for NOS!'
+    );
+  });
+
+  it('evaluates enrage flags (enraged: true or phase: 2) even when HP is above 50%', () => {
+    const flaggedBoss = { type: 'boss' as const, hp: 850, maxHp: 1000, enraged: true };
+    const briefingFlagged = getBossEncounterBriefing(flaggedBoss, 1);
+    expect(briefingFlagged.phase).toBe(2);
+    expect(briefingFlagged.isEnraged).toBe(true);
+    expect(briefingFlagged.hpPct).toBe(85);
+    expect(briefingFlagged.summaryLine).toContain('[PHASE 2 ENRAGED]');
+
+    const phase2Boss = { type: 'boss' as const, hp: 750, maxHp: 1000, phase: 2 };
+    const briefingPhase2 = getBossEncounterBriefing(phase2Boss, 1);
+    expect(briefingPhase2.phase).toBe(2);
+    expect(briefingPhase2.isEnraged).toBe(true);
+    expect(briefingPhase2.hpPct).toBe(75);
+  });
+
+  it('evaluates exact 50% HP threshold as enraged Phase 2 transition', () => {
+    const boundaryBoss50 = { type: 'boss' as const, hp: 500, maxHp: 1000 };
+    const briefing50 = getBossEncounterBriefing(boundaryBoss50, 1);
+    expect(briefing50.hpPct).toBe(50);
+    expect(briefing50.isEnraged).toBe(true);
+    expect(briefing50.phase).toBe(2);
+
+    const boundaryBoss51 = { type: 'boss' as const, hp: 510, maxHp: 1000 };
+    const briefing51 = getBossEncounterBriefing(boundaryBoss51, 1);
+    expect(briefing51.hpPct).toBe(51);
+    expect(briefing51.isEnraged).toBe(false);
+    expect(briefing51.phase).toBe(1);
+  });
+
+  it('maps boss variants and titles correctly across floors 1 through 6', () => {
+    const expectedVariants: Array<{ floor: number; title: string; subtitle: string; color: string }> = [
+      { floor: 1, title: 'SCRAP GOLIATH', subtitle: 'THE RUSTYARD JUGGERNAUT', color: '#e63946' },
+      { floor: 2, title: 'SIEGE BEHEMOTH', subtitle: 'HELLFIRE ARTILLERY RIG', color: '#f77f00' },
+      { floor: 3, title: 'OVERLORD HELION', subtitle: 'CYBER-PLASMA HOVERTANK', color: '#9d4edd' },
+      { floor: 4, title: 'CRYO VALKYRIE', subtitle: 'SUB-ZERO JET INTERCEPTOR', color: '#00bbf9' },
+      { floor: 5, title: 'INFERNO COLOSSUS', subtitle: 'MOLTEN SMELTER CRAWLER', color: '#ff5400' },
+      { floor: 6, title: 'OMEGA VALHALLA', subtitle: 'THE CHROME APOCALYPSE', color: '#ffd166' }
+    ];
+
+    for (const v of expectedVariants) {
+      const profile: BossVariantProfile = getBossVariantProfile(v.floor);
+      expect(profile.title).toBe(v.title);
+      expect(profile.subtitle).toBe(v.subtitle);
+      expect(profile.color).toBe(v.color);
+      expect(profile.variantId).toBe((v.floor - 1) % 6);
+
+      const boss = { type: 'boss' as const, hp: 900, maxHp: 1000 };
+      const briefing = getBossEncounterBriefing(boss, v.floor);
+      expect(briefing.bossTitle).toBe(v.title);
+      expect(briefing.summaryLine.startsWith(v.title)).toBe(true);
+    }
+
+    // Floor wrapping verification (floor 7 wraps to Scrap Goliath)
+    const profileWrap = getBossVariantProfile(7);
+    expect(profileWrap.title).toBe('SCRAP GOLIATH');
+  });
+
+  it('safely clamps HP percentages and handles edge input bounds', () => {
+    // Over-capped HP clamps to 100
+    const overHpBoss = { type: 'boss' as const, hp: 1200, maxHp: 1000 };
+    const briefingOver = getBossEncounterBriefing(overHpBoss, 1);
+    expect(briefingOver.hpPct).toBe(100);
+
+    // Bare minimum positive HP clamps to 1
+    const tinyHpBoss = { type: 'boss' as const, hp: 0.1, maxHp: 1000 };
+    const briefingTiny = getBossEncounterBriefing(tinyHpBoss, 1);
+    expect(briefingTiny.hpPct).toBe(1);
+
+    // Missing maxHp defaults gracefully without division by zero
+    const missingMaxHp = { type: 'boss' as const, hp: 50 };
+    const briefingMissingMax = getBossEncounterBriefing(missingMaxHp as any, 1);
+    expect(briefingMissingMax.hpPct).toBe(100);
+
+    // Fallback title when floor profile defaults or floorNum is invalid
+    const invalidFloorProfile = getBossVariantProfile(-5);
+    expect(invalidFloorProfile.title).toBe('SCRAP GOLIATH');
+  });
+});
+
 
 
 

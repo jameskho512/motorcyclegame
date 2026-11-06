@@ -16,6 +16,7 @@
  * 11. Post-Mortem Run Grade S Evaluation, Stash Salvage Summary & Weapon Mastery III Meta Carry-Over
  * 12. Full Sanctuary-to-Dungeon Preparation & Multi-Floor Combat Telemetry Workflow (Floor 1 -> Floor 3 -> Boss Room)
  * 13. Full Biker Build Archetype Progression Loop (Road Freelancer -> Hellfire Gunner -> Nitro Drifter -> Iron Juggernaut -> Vampiric Reaper)
+ * 14. Full 6-Slot Equipment Upgrade, Visual Model Mounting & Set Bonus Progression (M99)
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -28,6 +29,14 @@ import {
   BiomeZone,
   Obstacle
 } from '@/types/game';
+
+import {
+  getEquipmentLoadoutSummary,
+  getEquippedSetBonus,
+  EquipSlotId,
+  RarityTier
+} from '../../src/data/equipment';
+import { getEquippedBikeVisualState } from '../../src/ui/garage';
 
 import { RUN_MOD_POOL, calcUpgradeCost } from '@/data/upgrades';
 import { isWeaponEvolved } from '@/data/weapons';
@@ -1250,6 +1259,226 @@ describe('Tier 4: Real-World Application Scenarios', () => {
       expect(stage5Offense.siphonStatus).toBe('VAMPIRIC OVERDRIVE');
       expect(stage5Offense.effectiveDpsMult).toBeCloseTo(1.40);
       expect(stage5Offense.summaryLine).toBe('DPS x1.40 · VAMPIRIC OVERDRIVE (20% Siphon)');
+    });
+  });
+
+  // Scenario 14: Full 6-Slot Equipment Upgrade, Visual Model Mounting & Set Bonus Progression (M99)
+  describe('Scenario 14: Full 6-Slot Equipment Upgrade, Visual Model Mounting & Set Bonus Progression (M99)', () => {
+    it('progresses from empty stock chassis -> 4pc Rare Tuning Set -> 3pc Valhalla Legendary Overdrive with 24-model visual consistency', () => {
+      // 1. Initial empty equipment state (empty metaSave.equipped = {})
+      const metaSave = createDefaultMetaSave();
+      metaSave.equipped = {};
+
+      const emptyLoadout = getEquipmentLoadoutSummary(metaSave.equipped);
+      expect(emptyLoadout.installedCount).toBe(0);
+      expect(emptyLoadout.emptySlots).toEqual(['tires', 'engine', 'handlebars', 'exhaust', 'frame', 'tank']);
+      expect(emptyLoadout.totalPowerScore).toBe(0);
+      expect(emptyLoadout.highestRarity).toBe(0);
+      expect(emptyLoadout.rarityCounts[0]).toBe(0);
+      expect(emptyLoadout.rarityCounts[2]).toBe(0);
+      expect(emptyLoadout.rarityCounts[3]).toBe(0);
+      expect(emptyLoadout.nextSetGoalText).toBe('Need 4 more Rare+ for 4pc Rare Tuning Set');
+      expect(emptyLoadout.summaryLine).toBe('LOADOUT: 0/6 INSTALLED · POWER: 0.0 · Need 4 more Rare+ for 4pc Rare Tuning Set');
+
+      const emptyVisualState = getEquippedBikeVisualState(metaSave);
+      expect(emptyVisualState.equippedCount).toBe(0);
+      expect(emptyVisualState.equippedSlots).toEqual([]);
+      expect(emptyVisualState.modelCodes).toEqual([]);
+      expect(emptyVisualState.summaryLine).toBe('MOUNTED MODELS (0/6): STOCK CHASSIS');
+
+      const emptyBonus = getEquippedSetBonus(metaSave.equipped);
+      expect(emptyBonus.rareCount).toBe(0);
+      expect(emptyBonus.legendaryCount).toBe(0);
+      expect(emptyBonus.dmgBonus).toBe(0);
+      expect(emptyBonus.speedBonus).toBe(0);
+      expect(emptyBonus.label).toBe('');
+
+      // 2. Equipping 4 Rare (rarity: 2) items across tires, engine, exhaust, handlebars
+      const rareTires: EquipmentItem = {
+        slot: 'tires',
+        rarity: 2,
+        name: 'Apex Turbine Slicks',
+        stats: { speed: 0.14 }
+      };
+      const rareEngine: EquipmentItem = {
+        slot: 'engine',
+        rarity: 2,
+        name: 'Hyper-Billet Twin-Cam',
+        stats: { dmg: 0.168 }
+      };
+      const rareExhaust: EquipmentItem = {
+        slot: 'exhaust',
+        rarity: 2,
+        name: 'Akra-Gold Carbon Cannons',
+        stats: { blast: 0.224 }
+      };
+      const rareHandlebars: EquipmentItem = {
+        slot: 'handlebars',
+        rarity: 2,
+        name: 'Apex Radar Clip-Ons',
+        stats: { fireRate: 0.14 }
+      };
+
+      metaSave.equipped = {
+        tires: rareTires,
+        engine: rareEngine,
+        exhaust: rareExhaust,
+        handlebars: rareHandlebars
+      };
+
+      // Verifying getEquippedSetBonus activates the 4pc Rare Tuning Set (+12% Dmg, +8% Spd)
+      const rareBonus = getEquippedSetBonus(metaSave.equipped);
+      expect(rareBonus.rareCount).toBe(4);
+      expect(rareBonus.legendaryCount).toBe(0);
+      expect(rareBonus.dmgBonus).toBeCloseTo(0.12);
+      expect(rareBonus.speedBonus).toBeCloseTo(0.08);
+      expect(rareBonus.label).toBe('4pc Rare Tuning (+12% Dmg, +8% Spd)');
+
+      // Verifying getEquippedBikeVisualState reports 4 active MK-III models
+      const rareVisualState = getEquippedBikeVisualState(metaSave);
+      expect(rareVisualState.equippedCount).toBe(4);
+      expect(rareVisualState.equippedSlots).toEqual(['tires', 'engine', 'handlebars', 'exhaust']);
+      expect(rareVisualState.modelCodes).toEqual([
+        'TR-03 APEX TURBINE',
+        'EN-03 HYPER-BILLET',
+        'HB-03 APEX RADAR',
+        'EX-03 AKRA-GOLD'
+      ]);
+      expect(rareVisualState.parts.tires?.tierBadge).toBe('MK-III');
+      expect(rareVisualState.parts.engine?.tierBadge).toBe('MK-III');
+      expect(rareVisualState.parts.handlebars?.tierBadge).toBe('MK-III');
+      expect(rareVisualState.parts.exhaust?.tierBadge).toBe('MK-III');
+      expect(rareVisualState.summaryLine).toBe(
+        'MOUNTED MODELS (4/6): TR-03 APEX TURBINE · EN-03 HYPER-BILLET · HB-03 APEX RADAR · EX-03 AKRA-GOLD'
+      );
+
+      // Verifying getEquipmentLoadoutSummary updates totalPowerScore and nextSetGoalText
+      const rareLoadout = getEquipmentLoadoutSummary(metaSave.equipped);
+      expect(rareLoadout.installedCount).toBe(4);
+      expect(rareLoadout.emptySlots).toEqual(['frame', 'tank']);
+      expect(rareLoadout.highestRarity).toBe(2);
+      expect(rareLoadout.rarityCounts[2]).toBe(4);
+      expect(rareLoadout.totalPowerScore).toBeGreaterThan(0);
+      expect(rareLoadout.nextSetGoalText).toBe('4pc Rare Tuning Set Active (+12% Dmg, +8% Spd)');
+      expect(rareLoadout.summaryLine).toContain('4pc Rare Tuning Set Active (+12% Dmg, +8% Spd)');
+
+      // 3. Upgrading 3 slots (tires, engine, tank) to Legendary (rarity: 3, OMEGA tier models TR-04 HELLFIRE RIPPER, EN-04 VALHALLA CORE, TK-04 BLOOD SIPHON)
+      const legendaryTires: EquipmentItem = {
+        slot: 'tires',
+        rarity: 3,
+        name: 'TR-04 Hellfire Ripper',
+        stats: { speed: 0.21 }
+      };
+      const legendaryEngine: EquipmentItem = {
+        slot: 'engine',
+        rarity: 3,
+        name: 'EN-04 Valhalla Core',
+        stats: { dmg: 0.252 }
+      };
+      const legendaryTank: EquipmentItem = {
+        slot: 'tank',
+        rarity: 3,
+        name: 'TK-04 Blood Siphon',
+        stats: { siphon: 0.126 }
+      };
+
+      metaSave.equipped = {
+        ...metaSave.equipped,
+        tires: legendaryTires,
+        engine: legendaryEngine,
+        tank: legendaryTank
+      };
+
+      // Verifying both the 3pc Valhalla Set (+15% Dmg, +10% Spd) and 4pc Rare Tuning Set are active
+      const hybridBonus = getEquippedSetBonus(metaSave.equipped);
+      expect(hybridBonus.rareCount).toBe(5);
+      expect(hybridBonus.legendaryCount).toBe(3);
+      expect(hybridBonus.dmgBonus).toBeCloseTo(0.27);
+      expect(hybridBonus.speedBonus).toBeCloseTo(0.18);
+      expect(hybridBonus.label).toBe('4pc Rare Tuning (+12% Dmg, +8% Spd) • 3pc Valhalla Set (+15% Dmg, +10% Spd)');
+
+      // Verifying OMEGA tier models mounted on bike visual state
+      const hybridVisualState = getEquippedBikeVisualState(metaSave);
+      expect(hybridVisualState.equippedCount).toBe(5);
+      expect(hybridVisualState.parts.tires?.tierBadge).toBe('OMEGA');
+      expect(hybridVisualState.parts.tires?.modelCode).toBe('TR-04 HELLFIRE RIPPER');
+      expect(hybridVisualState.parts.engine?.tierBadge).toBe('OMEGA');
+      expect(hybridVisualState.parts.engine?.modelCode).toBe('EN-04 VALHALLA CORE');
+      expect(hybridVisualState.parts.tank?.tierBadge).toBe('OMEGA');
+      expect(hybridVisualState.parts.tank?.modelCode).toBe('TK-04 BLOOD SIPHON');
+
+      // Remaining Rare slots retain MK-III tier badge
+      expect(hybridVisualState.parts.handlebars?.tierBadge).toBe('MK-III');
+      expect(hybridVisualState.parts.handlebars?.modelCode).toBe('HB-03 APEX RADAR');
+      expect(hybridVisualState.parts.exhaust?.tierBadge).toBe('MK-III');
+      expect(hybridVisualState.parts.exhaust?.modelCode).toBe('EX-03 AKRA-GOLD');
+
+      const hybridLoadout = getEquipmentLoadoutSummary(metaSave.equipped);
+      expect(hybridLoadout.installedCount).toBe(5);
+      expect(hybridLoadout.emptySlots).toEqual(['frame']);
+      expect(hybridLoadout.highestRarity).toBe(3);
+      expect(hybridLoadout.rarityCounts[3]).toBe(3);
+      expect(hybridLoadout.rarityCounts[2]).toBe(2);
+      expect(hybridLoadout.nextSetGoalText).toBe('3pc Valhalla Set Active (+15% Dmg, +10% Spd)');
+
+      // Verifying all 24-model visual codes across all 6 slots and 4 rarity tiers remain consistent
+      const CANONICAL_24_MODELS: Record<EquipSlotId, Record<RarityTier, { code: string; tierBadge: string }>> = {
+        tires: {
+          0: { code: 'TR-01 STREET', tierBadge: 'MK-I' },
+          1: { code: 'TR-02 CRYO-SLICK', tierBadge: 'MK-II' },
+          2: { code: 'TR-03 APEX TURBINE', tierBadge: 'MK-III' },
+          3: { code: 'TR-04 HELLFIRE RIPPER', tierBadge: 'OMEGA' }
+        },
+        engine: {
+          0: { code: 'EN-01 IRON V2', tierBadge: 'MK-I' },
+          1: { code: 'EN-02 TWIN-SCROLL', tierBadge: 'MK-II' },
+          2: { code: 'EN-03 HYPER-BILLET', tierBadge: 'MK-III' },
+          3: { code: 'EN-04 VALHALLA CORE', tierBadge: 'OMEGA' }
+        },
+        handlebars: {
+          0: { code: 'HB-01 STEEL YOKE', tierBadge: 'MK-I' },
+          1: { code: 'HB-02 CYBER-CLIP', tierBadge: 'MK-II' },
+          2: { code: 'HB-03 APEX RADAR', tierBadge: 'MK-III' },
+          3: { code: 'HB-04 NEURAL CROWN', tierBadge: 'OMEGA' }
+        },
+        exhaust: {
+          0: { code: 'EX-01 MEGAPHONE', tierBadge: 'MK-I' },
+          1: { code: 'EX-02 PIE-CUT TI', tierBadge: 'MK-II' },
+          2: { code: 'EX-03 AKRA-GOLD', tierBadge: 'MK-III' },
+          3: { code: 'EX-04 DRAGON JET', tierBadge: 'OMEGA' }
+        },
+        frame: {
+          0: { code: 'FR-01 TRELLIS', tierBadge: 'MK-I' },
+          1: { code: 'FR-02 EXO-STRUT', tierBadge: 'MK-II' },
+          2: { code: 'FR-03 MONOCOQUE', tierBadge: 'MK-III' },
+          3: { code: 'FR-04 JUGGERNAUT', tierBadge: 'OMEGA' }
+        },
+        tank: {
+          0: { code: 'TK-01 TEARDROP', tierBadge: 'MK-I' },
+          1: { code: 'TK-02 CRYO-CELL', tierBadge: 'MK-II' },
+          2: { code: 'TK-03 ENDURANCE', tierBadge: 'MK-III' },
+          3: { code: 'TK-04 BLOOD SIPHON', tierBadge: 'OMEGA' }
+        }
+      };
+
+      let verifiedCodeCount = 0;
+      for (const [slot, tiers] of Object.entries(CANONICAL_24_MODELS) as [EquipSlotId, Record<RarityTier, { code: string; tierBadge: string }>][]) {
+        for (const [rarityStr, spec] of Object.entries(tiers)) {
+          const rarity = Number(rarityStr) as RarityTier;
+          const singleMeta = createDefaultMetaSave();
+          singleMeta.equipped[slot] = {
+            slot,
+            rarity,
+            name: `${spec.code} Unit`,
+            stats: {}
+          };
+          const singleVisual = getEquippedBikeVisualState(singleMeta);
+          expect(singleVisual.parts[slot]?.modelCode).toBe(spec.code);
+          expect(singleVisual.parts[slot]?.tierBadge).toBe(spec.tierBadge);
+          verifiedCodeCount++;
+        }
+      }
+      expect(verifiedCodeCount).toBe(24);
     });
   });
 });
