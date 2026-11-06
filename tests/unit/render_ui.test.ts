@@ -1275,6 +1275,60 @@ describe('Render & UI Subsystems', () => {
       expect(overlay?.getAttribute('data-build-archetype')).toBe('hellfire_gunner');
       expect(overlay?.getAttribute('data-build-archetype-title')).toBe('🔥 HELLFIRE GUNNER');
     });
+
+    it('sets data-career-rank, data-career-title, and data-career-score on #garage-overlay during open() across rookie and veteran profiles', () => {
+      const garage = new GarageController(callbacks);
+
+      // Rookie profile: 0 kills, 0 bosses, floor 1 -> score 0 -> rookie_courier
+      const rookieSave: MetaSaveState = {
+        ...metaSave,
+        totalKills: 0,
+        bossesSlain: 0,
+        bestFloor: 1
+      };
+      garage.open(false, 1, rookieSave, player);
+      const overlay = document.getElementById('garage-overlay');
+      expect(overlay?.getAttribute('data-career-rank')).toBe('rookie_courier');
+      expect(overlay?.getAttribute('data-career-title')).toBe('⚙️ ROOKIE COURIER');
+      expect(overlay?.getAttribute('data-career-score')).toBe('0');
+
+      // Mid-tier profile (Highway Outlaw): 15 kills, 1 boss (25), floor 2 (40) -> 15 + 25 + 40 = 80 -> highway_outlaw
+      const outlawSave: MetaSaveState = {
+        ...metaSave,
+        totalKills: 15,
+        bossesSlain: 1,
+        bestFloor: 2
+      };
+      garage.open(false, 2, outlawSave, player);
+      expect(overlay?.getAttribute('data-career-rank')).toBe('highway_outlaw');
+      expect(overlay?.getAttribute('data-career-title')).toBe('🔥 HIGHWAY OUTLAW');
+      expect(overlay?.getAttribute('data-career-score')).toBe('80');
+
+      // Veteran / Legend profile: 300 kills, 8 bosses (200), floor 6 (200) -> 300 + 200 + 200 = 700 -> legend_of_valhalla
+      const veteranSave: MetaSaveState = {
+        ...metaSave,
+        totalKills: 300,
+        bossesSlain: 8,
+        bestFloor: 6
+      };
+      garage.open(false, 6, veteranSave, player);
+      expect(overlay?.getAttribute('data-career-rank')).toBe('legend_of_valhalla');
+      expect(overlay?.getAttribute('data-career-title')).toBe('👑 LEGEND OF VALHALLA');
+      expect(overlay?.getAttribute('data-career-score')).toBe('700');
+
+      // Also verify render() updates the career rank attributes dynamically
+      const enforcerSave: MetaSaveState = {
+        ...metaSave,
+        totalKills: 80,
+        bossesSlain: 2,
+        bestFloor: 3
+      };
+      // score: 80 + 2*25 + (3-1)*40 = 80 + 50 + 80 = 210 -> syndicate_enforcer
+      garage.render(enforcerSave, player);
+      expect(overlay?.getAttribute('data-career-rank')).toBe('syndicate_enforcer');
+      expect(overlay?.getAttribute('data-career-title')).toBe('⚡ SYNDICATE ENFORCER');
+      expect(overlay?.getAttribute('data-career-score')).toBe('210');
+    });
   });
 
   describe('Garage Build Archetype Classification (getBuildArchetypeSummary)', () => {

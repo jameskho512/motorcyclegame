@@ -1198,7 +1198,8 @@ export class MotoRogueApp {
               () => {
                 this.dismissedPickup = p;
               },
-              player.coins
+              player.coins,
+              player
             );
           }
         } else if ((p as any).type === 'hub_npc') {

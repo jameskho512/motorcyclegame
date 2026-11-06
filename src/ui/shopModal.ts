@@ -207,12 +207,19 @@ export class ShopModalController {
    * renders its "NOT ENOUGH COINS" state (confirm still routes to onConfirm so
    * the caller keeps ownership of the purchase/error logic).
    */
-  public open(pickup: Pickup, onConfirm: () => void, onCancel?: () => void, playerCoins?: number): void {
+  public open(
+    pickup: Pickup,
+    onConfirm: () => void,
+    onCancel?: () => void,
+    playerCoins?: number,
+    player?: Partial<PlayerState> | null
+  ): void {
     this.activePickup = pickup;
     this.pendingConfirm = onConfirm;
     this.pendingCancel = onCancel || null;
 
     const appraisal = getShopItemAppraisal(pickup, playerCoins);
+    const syn = getShopBuildSynergyHint(pickup, player);
 
     let title = 'Mysterious Crate';
     let desc = 'Unknown item contents.';
@@ -305,6 +312,8 @@ export class ShopModalController {
       this.overlay.setAttribute('aria-hidden', 'false');
       this.overlay.setAttribute('data-appraisal-tier', appraisal.tierLabel);
       this.overlay.setAttribute('data-is-bargain', String(appraisal.isBargain));
+      this.overlay.setAttribute('data-shop-synergy', syn.synergyType);
+      this.overlay.setAttribute('data-shop-synergy-hint', syn.hintText);
     }
     this.visible = true;
 

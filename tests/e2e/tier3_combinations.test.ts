@@ -19,21 +19,31 @@ import {
   PlayerState,
   Room,
   EquipmentItem,
-  EquipSlot
+  EquipSlot,
+  Pickup
 } from '@/types/game';
 
-import { WEAPONS, isWeaponEvolved } from '@/data/weapons';
+import {
+  WEAPONS,
+  WEAPON_EVOLUTIONS,
+  WeaponId,
+  isWeaponEvolved
+} from '@/data/weapons';
 import { RUN_MOD_POOL, KISS_CURSE_MOD_POOL, getActiveDuoSynergies } from '@/data/upgrades';
 import {
   LEGENDARY_SLOT_PASSIVES,
   getEquippedSetBonus
 } from '@/data/equipment';
-import { buildRunPostMortemSummary } from '@/ui/garage';
+import {
+  buildRunPostMortemSummary,
+  getWeaponMasteryTier
+} from '@/ui/garage';
 import {
   createDefaultPlayerState,
   createDefaultMetaSave,
   resetPlayerStatsForRun,
-  applyMetaStats
+  applyMetaStats,
+  getCareerOutlawRank
 } from '@/core/state';
 
 import {
@@ -46,10 +56,16 @@ import {
   updatePlayerBullets,
   updateGrenades,
   updateEnemyCollisions,
-  handleEnemyDeath
+  handleEnemyDeath,
+  getCombatOffenseSummary
 } from '@/systems/combat';
 
 import { createEnemy } from '@/systems/enemyAI';
+import { getRiderMobilitySummary } from '@/systems/physics';
+import { getShopBuildSynergyHint } from '@/ui/shopModal';
+import { getPortalHeatBriefing } from '@/ui/portalModal';
+import { getHubStationPromptInfo } from '@/ui/hubStationModal';
+import { getHubNpcGreeting } from '@/world/dungeon';
 
 describe('Tier 3: Cross-Feature Combinations & Synergies', () => {
   let player: PlayerState;
@@ -894,6 +910,299 @@ describe('Tier 3: Cross-Feature Combinations & Synergies', () => {
       expect(summaryF6.statsLine).toContain('FLOOR 6');
       expect(summaryF6.statsLine).toContain('150 KILLS');
       expect(summaryF6.statsLine).toContain('GRADE S');
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Combination 17: Cross-System Telemetry & Synergy Matrix (Wave 20 - M84)
+  // --------------------------------------------------------------------------
+  describe('Cross-System Telemetry & Synergy Matrix (Wave 20 - M84)', () => {
+    // Test 1: All 7 weapons with signature mod on mod_pedestal vs unrelated mod
+    it('verifies getShopBuildSynergyHint returns EVOLUTION_KEY for all 7 weapon signature mods and STANDARD for unrelated mods', () => {
+      const WEAPON_ORDER: WeaponId[] = [
+        'pistol',
+        'machine_gun',
+        'flamethrower',
+        'grenade_launcher',
+        'shotgun',
+        'railgun',
+        'arc_coil'
+      ];
+
+      for (const weaponId of WEAPON_ORDER) {
+        const evo = WEAPON_EVOLUTIONS[weaponId];
+        expect(evo).toBeDefined();
+
+        // 1. Signature mod pedestal offered in shop
+        const signaturePedestal: Pickup = {
+          x: 100,
+          y: 100,
+          radius: 20,
+          type: 'mod_pedestal',
+          cost: 25,
+          mod: {
+            id: evo.signatureModId,
+            name: evo.signatureModDisplayName,
+            desc: evo.desc
+          } as any
+        };
+
+        const evoHint = getShopBuildSynergyHint(signaturePedestal, { weapon: weaponId });
+        expect(evoHint.hasSynergy).toBe(true);
+        expect(evoHint.synergyType).toBe('EVOLUTION_KEY');
+        expect(evoHint.hintText).toContain('EVOLUTION');
+        expect(evoHint.hintText).toContain(evo.evolvedName.toUpperCase());
+
+        // 2. Unrelated mod pedestal offered in shop
+        const unrelatedPedestal: Pickup = {
+          x: 100,
+          y: 100,
+          radius: 20,
+          type: 'mod_pedestal',
+          cost: 25,
+          mod: {
+            id: 'unrelated_irrelevant_mod',
+            name: 'Heavy Steel Muffler',
+            desc: 'Cosmetic exhaust cover'
+          } as any
+        };
+
+        const standardHint = getShopBuildSynergyHint(unrelatedPedestal, { weapon: weaponId });
+        expect(standardHint.hasSynergy).toBe(false);
+        expect(standardHint.synergyType).toBe('STANDARD');
+        expect(standardHint.hintText).toBe('Standard Black Market Ordnance');
+      }
+    });
+
+    // Test 2: getPortalHeatBriefing(0..3) combined with getHubStationPromptInfo('bounty', ...) and getHubNpcGreeting('bounty', ...)
+    it('verifies getPortalHeatBriefing(0..3) combined with getHubStationPromptInfo and getHubNpcGreeting across all 4 Heat levels', () => {
+      const expectedHeatData = [
+        {
+          heat: 0,
+          label: 'HEAT 0 // STANDARD',
+          enemyScale: 'Standard Enemy HP & Speed',
+          scrapBonus: '+0% Bonus Scrap',
+          greetingQuote: 'Raise the Bounty Heat for massive Scrap payouts, outlaw!'
+        },
+        {
+          heat: 1,
+          label: 'HEAT 1 // OVERCLOCKED',
+          enemyScale: '+24% Enemy HP · +12% Speed',
+          scrapBonus: '+25% Bonus Scrap',
+          greetingQuote: 'HEAT 1 ACTIVE! +25% Scrap from all hostiles.'
+        },
+        {
+          heat: 2,
+          label: 'HEAT 2 // BLOOD PACT',
+          enemyScale: '+48% Enemy HP · +24% Speed',
+          scrapBonus: '+50% Bonus Scrap',
+          greetingQuote: 'HEAT 2 ACTIVE! +50% Scrap from all hostiles.'
+        },
+        {
+          heat: 3,
+          label: 'HEAT 3 // VALHALLA INFERNO',
+          enemyScale: '+72% Enemy HP · +36% Speed',
+          scrapBonus: '+75% Bonus Scrap',
+          greetingQuote: 'HEAT 3 ACTIVE! +75% Scrap from all hostiles.'
+        }
+      ];
+
+      for (const expected of expectedHeatData) {
+        // Portal Heat Briefing
+        const briefing = getPortalHeatBriefing(expected.heat);
+        expect(briefing.heatLevel).toBe(expected.heat);
+        expect(briefing.label).toBe(expected.label);
+        expect(briefing.enemyScaleText).toBe(expected.enemyScale);
+        expect(briefing.scrapBonusText).toBe(expected.scrapBonus);
+
+        // Hub Station Bounty Prompt Info (unclaimed vs claimed cache)
+        const unclaimedPrompt = getHubStationPromptInfo('bounty', undefined, undefined, { bountyClaimed: false });
+        expect(unclaimedPrompt.title).toBe('🎖️ OUTLAW WAR ROOM & BOUNTIES');
+        expect(unclaimedPrompt.actionLabel).toBe('OPEN WAR ROOM [E]');
+        expect(unclaimedPrompt.accentColor).toBe('#06d6a0');
+        expect(unclaimedPrompt.summary).toContain('Claim FREE +15 Coins');
+
+        const claimedPrompt = getHubStationPromptInfo('bounty', undefined, undefined, { bountyClaimed: true });
+        expect(claimedPrompt.summary).toContain('Configure Threat Heat Level (0–3)');
+        expect(claimedPrompt.summary).toContain('Free Cache Claimed!');
+
+        // Hub NPC Bounty Greeting
+        const greeting = getHubNpcGreeting('bounty', 1, expected.heat);
+        expect(greeting.npcId).toBe('bounty');
+        expect(greeting.speaker).toBe('VALKYRIE BROKER');
+        expect(greeting.accentColor).toBe('#06d6a0');
+        expect(greeting.quote).toBe(expected.greetingQuote);
+      }
+    });
+
+    // Test 3: getCareerOutlawRank combined with getWeaponMasteryTier across progressive career checkpoints (0 kills -> 150 kills + 6 bosses on Floor 6)
+    it('verifies getCareerOutlawRank combined with getWeaponMasteryTier across progressive career checkpoints (0 kills to 150 kills + 6 bosses on Floor 6)', () => {
+      interface CareerCheckpoint {
+        totalKills: number;
+        bossesSlain: number;
+        bestFloor: number;
+        expectedRankId: string;
+        expectedRankTier: number;
+        expectedRankTitle: string;
+        expectedMasteryTier: number;
+        expectedMasteryLabel: string;
+        expectedMasteryDmgPct: number;
+      }
+
+      const checkpoints: CareerCheckpoint[] = [
+        {
+          totalKills: 0,
+          bossesSlain: 0,
+          bestFloor: 1,
+          expectedRankId: 'rookie_courier',
+          expectedRankTier: 1,
+          expectedRankTitle: '⚙️ ROOKIE COURIER',
+          expectedMasteryTier: 0,
+          expectedMasteryLabel: 'UNRANKED',
+          expectedMasteryDmgPct: 0
+        },
+        {
+          totalKills: 15,
+          bossesSlain: 0,
+          bestFloor: 2,
+          expectedRankId: 'highway_outlaw',
+          expectedRankTier: 2,
+          expectedRankTitle: '🔥 HIGHWAY OUTLAW',
+          expectedMasteryTier: 1,
+          expectedMasteryLabel: 'ROOKIE I',
+          expectedMasteryDmgPct: 5
+        },
+        {
+          totalKills: 45,
+          bossesSlain: 1,
+          bestFloor: 3,
+          expectedRankId: 'syndicate_enforcer',
+          expectedRankTier: 3,
+          expectedRankTitle: '⚡ SYNDICATE ENFORCER',
+          expectedMasteryTier: 2,
+          expectedMasteryLabel: 'ADEPT II',
+          expectedMasteryDmgPct: 10
+        },
+        {
+          totalKills: 105,
+          bossesSlain: 3,
+          bestFloor: 5,
+          expectedRankId: 'apex_roadlord',
+          expectedRankTier: 4,
+          expectedRankTitle: '☠️ APEX ROADLORD',
+          expectedMasteryTier: 3,
+          expectedMasteryLabel: 'MASTER III',
+          expectedMasteryDmgPct: 15
+        },
+        {
+          totalKills: 150,
+          bossesSlain: 6,
+          bestFloor: 6,
+          expectedRankId: 'legend_of_valhalla',
+          expectedRankTier: 5,
+          expectedRankTitle: '👑 LEGEND OF VALHALLA',
+          expectedMasteryTier: 3,
+          expectedMasteryLabel: 'MASTER III',
+          expectedMasteryDmgPct: 15
+        }
+      ];
+
+      for (const cp of checkpoints) {
+        const meta = {
+          totalKills: cp.totalKills,
+          bossesSlain: cp.bossesSlain,
+          bestFloor: cp.bestFloor
+        };
+
+        const rank = getCareerOutlawRank(meta);
+        expect(rank.rankId).toBe(cp.expectedRankId);
+        expect(rank.tierNumber).toBe(cp.expectedRankTier);
+        expect(rank.title).toBe(cp.expectedRankTitle);
+
+        const mastery = getWeaponMasteryTier(cp.totalKills);
+        expect(mastery.tier).toBe(cp.expectedMasteryTier);
+        expect(mastery.label).toBe(cp.expectedMasteryLabel);
+        expect(mastery.dmgBonusPct).toBe(cp.expectedMasteryDmgPct);
+      }
+
+      // Check max rank milestone text at final checkpoint
+      const finalRank = getCareerOutlawRank({ totalKills: 150, bossesSlain: 6, bestFloor: 6 });
+      expect(finalRank.nextMilestoneText).toBe('MAX CAREER RANK ACHIEVED');
+    });
+
+    // Test 4: getRiderMobilitySummary and getCombatOffenseSummary simultaneous scaling when applying all 5 Duo Synergies (getActiveDuoSynergies)
+    it('verifies getRiderMobilitySummary and getCombatOffenseSummary simultaneous scaling when applying all 5 Duo Synergies', () => {
+      const p = createDefaultPlayerState();
+
+      // Initial baseline check: standard rider mobility & standard combat offense
+      const baselineMobility = getRiderMobilitySummary(p);
+      expect(baselineMobility.mobilityTier).toBe('STANDARD');
+      expect(baselineMobility.topSpeedRating).toBe(265);
+      expect(baselineMobility.driftChargePct).toBe(0);
+      expect(baselineMobility.nosReservePct).toBe(100);
+
+      const baselineOffense = getCombatOffenseSummary(p);
+      expect(baselineOffense.isEvolved).toBe(false);
+      expect(baselineOffense.siphonStatus).toBe('NONE');
+      expect(baselineOffense.effectiveDpsMult).toBeCloseTo(1.0, 2);
+
+      // Now activate all 5 Duo Synergies:
+      // 1. thermal_shock: Cryo ('Cryo-Jacketed Shells') + Fire ('Thermobaric Mix')
+      // 2. superconductor: Cryo ('Cryo-Jacketed Shells') + Volt ('tesla_capacitor')
+      // 3. void_vortex: Magnet ('magnet_coil') + Blast ('Thermobaric Mix')
+      // 4. juggernaut_overdrive: Spikes ('titanium_spikes') + NOS ('adrenaline_injector')
+      // 5. voltaic_wake: Afterburner ('exhaust_afterburner') + Secondary ('tesla_capacitor')
+      p.weapon = 'pistol';
+      p.items.push(
+        'Cryo-Jacketed Shells',
+        'Thermobaric Mix',
+        'Rubberized Casings' // Evolved Ricochet Revolver
+      );
+      p.itemStacks = {
+        tesla_capacitor: 1,
+        magnet_coil: 1,
+        titanium_spikes: 1,
+        adrenaline_injector: 1,
+        exhaust_afterburner: 1
+      };
+
+      const activeDuos = getActiveDuoSynergies(p);
+      expect(activeDuos).toHaveLength(5);
+      const activeIds = activeDuos.map(d => d.id).sort();
+      expect(activeIds).toEqual([
+        'juggernaut_overdrive',
+        'superconductor',
+        'thermal_shock',
+        'void_vortex',
+        'voltaic_wake'
+      ]);
+
+      // Apply simultaneous mobility & combat stat escalations
+      p.speedMult = 1.45; // Triggers HYPER-DRIFTER (>= 1.35)
+      p.driftCharge = 0.85;
+      p.nos = 90;
+      p.nosMax = 100;
+
+      p.dmgMult = 1.6;
+      p.fireRateMult = 1.25;
+      p.multiShot = 2;
+      p.vampChance = 0.20; // Triggers VAMPIRIC OVERDRIVE (>= 15%)
+
+      const scaledMobility = getRiderMobilitySummary(p);
+      expect(scaledMobility.mobilityTier).toBe('HYPER-DRIFTER');
+      const expectedTopSpeed = Math.round(p.baseSpeed * p.speedMult); // 265 * 1.45 = 384
+      expect(scaledMobility.topSpeedRating).toBe(expectedTopSpeed);
+      expect(scaledMobility.driftChargePct).toBe(85);
+      expect(scaledMobility.nosReservePct).toBe(90);
+      expect(scaledMobility.summaryText).toBe(`HYPER-DRIFTER · ${expectedTopSpeed} MPH RATING · 85% DRIFT · 90% NOS`);
+
+      const scaledOffense = getCombatOffenseSummary(p);
+      expect(scaledOffense.isEvolved).toBe(true);
+      // Effective DPS: dmgMult (1.6) * fireRateMult (1.25) * multiShot (2) * evoBonus (1.35) = 5.40
+      expect(scaledOffense.effectiveDpsMult).toBeCloseTo(5.40, 2);
+      expect(scaledOffense.siphonPct).toBe(20);
+      expect(scaledOffense.siphonStatus).toBe('VAMPIRIC OVERDRIVE');
+      expect(scaledOffense.summaryLine).toBe('DPS x5.40 · VAMPIRIC OVERDRIVE (20% Siphon) · OVERCLOCKED');
     });
   });
 });

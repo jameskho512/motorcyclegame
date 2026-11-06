@@ -40,6 +40,7 @@ import {
 } from '../data/equipment';
 import { EQUIP_SLOT_HI_FI_SVG, WEAPON_HI_FI_SVG } from './icons';
 import { SET08_ASSETS } from './set08Assets';
+import { getCareerOutlawRank } from '@/core/state';
 
 export interface BikeLiveryDef {
   id: BikeLiveryId;
@@ -465,6 +466,11 @@ export class GarageController {
     this.overlayEl?.setAttribute('data-build-archetype', archetype.id);
     this.overlayEl?.setAttribute('data-build-archetype-title', archetype.title);
 
+    const careerRank = getCareerOutlawRank(this.metaSave);
+    this.overlayEl?.setAttribute('data-career-rank', careerRank.rankId);
+    this.overlayEl?.setAttribute('data-career-title', careerRank.title);
+    this.overlayEl?.setAttribute('data-career-score', String(careerRank.careerScore));
+
     if (this.modalTitle) {
       this.modalTitle.textContent = 'GARAGE BAY';
     }
@@ -597,6 +603,11 @@ export class GarageController {
     const archetype = getBuildArchetypeSummary(curPlayer, this.metaSave);
     this.overlayEl?.setAttribute('data-build-archetype', archetype.id);
     this.overlayEl?.setAttribute('data-build-archetype-title', archetype.title);
+
+    const careerRank = getCareerOutlawRank(this.metaSave);
+    this.overlayEl?.setAttribute('data-career-rank', careerRank.rankId);
+    this.overlayEl?.setAttribute('data-career-title', careerRank.title);
+    this.overlayEl?.setAttribute('data-career-score', String(careerRank.careerScore));
 
     this.renderHeader(metaSave, curPlayer);
     this.renderEquipmentBay(metaSave, curPlayer);

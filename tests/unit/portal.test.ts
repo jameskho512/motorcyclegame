@@ -38,6 +38,7 @@ import {
   getHubStationPromptInfo,
   HubStationOpenOptions
 } from '../../src/ui/hubStationModal';
+import { getCareerOutlawRank } from '../../src/core/state';
 import { ARENA_WIDTH, ARENA_HEIGHT, Pickup } from '../../src/types/game';
 
 const MARKUP = `
@@ -704,6 +705,31 @@ describe('ShopModalController appraisal DOM attributes & pills', () => {
     expect(pill).not.toBeNull();
     expect(pill?.textContent).toBe('⚡ HIGH-GRADE ORDNANCE · AFFORDABLE');
   });
+
+  it('sets data-shop-synergy and data-shop-synergy-hint attributes on open', () => {
+    const pickup: Pickup = {
+      x: 100,
+      y: 100,
+      radius: 20,
+      type: 'shop_heart',
+      name: 'Emergency Repair',
+      cost: 15
+    };
+    // Hull <= 50% maxHp triggers LOW_HULL_REPAIR synergy
+    const lowHullPlayer = { hp: 2, maxHp: 6 };
+
+    modal.open(pickup, vi.fn(), undefined, 30, lowHullPlayer);
+
+    expect(overlay.getAttribute('data-shop-synergy')).toBe('LOW_HULL_REPAIR');
+    expect(overlay.getAttribute('data-shop-synergy-hint')).toBe('⚠️ CRITICAL HULL REPAIR RECOMMENDED!');
+
+    // Player with full health defaults to STANDARD synergy
+    const fullHullPlayer = { hp: 6, maxHp: 6 };
+    modal.open(pickup, vi.fn(), undefined, 30, fullHullPlayer);
+
+    expect(overlay.getAttribute('data-shop-synergy')).toBe('STANDARD');
+    expect(overlay.getAttribute('data-shop-synergy-hint')).toBe('Standard Black Market Ordnance');
+  });
 });
 
 describe('getShopBuildSynergyHint pure helper', () => {
@@ -1231,6 +1257,27 @@ describe('HubStationModalController & getHubStationPromptInfo (Wave 14-15)', () 
       expect(document.activeElement).toBe(primaryBtn);
     });
 
+    it('sets data-career-rank, data-career-title, and data-career-score attributes on #hub-station-overlay on open', () => {
+      const options = createHubOptions({
+        npcId: 'garage',
+        metaSave: {
+          totalKills: 160,
+          bossesSlain: 2,
+          bestFloor: 3
+        }
+      });
+      // careerScore = 160 + 2*25 + (3-1)*40 = 290 -> apex_roadlord
+      const expectedRank = getCareerOutlawRank(options.metaSave);
+
+      modal.open(options);
+
+      const hubOverlay = document.getElementById('hub-station-overlay')!;
+      expect(hubOverlay.getAttribute('data-career-rank')).toBe(expectedRank.rankId);
+      expect(hubOverlay.getAttribute('data-career-title')).toBe(expectedRank.title);
+      expect(hubOverlay.getAttribute('data-career-score')).toBe(String(expectedRank.careerScore));
+      expect(modal.overlay?.getAttribute('data-career-rank')).toBe('apex_roadlord');
+    });
+
     it('operates safely in headless mode when DOM elements are absent', () => {
       document.body.innerHTML = '';
       const headless = new HubStationModalController();
@@ -1346,6 +1393,36 @@ describe('HubStationModalController & getHubStationPromptInfo (Wave 14-15)', () 
       // Clicking again when active closes the dialog
       primaryBtn.click();
       expect(modal.isOpen()).toBe(false);
+    });
+
+    it('renders codex station with career rank banner showing title, score, and next milestone text', () => {
+      const options = createHubOptions({
+        npcId: 'codex',
+        metaSave: {
+          bestFloor: 2,
+          totalKills: 60,
+          bossesSlain: 1,
+          totalRuns: 6
+        }
+      });
+      // careerScore = 60 + 25 + 40 = 125 -> syndicate_enforcer
+      const expectedRank = getCareerOutlawRank(options.metaSave);
+
+      modal.open(options);
+
+      const overlayEl = document.getElementById('hub-station-overlay')!;
+      expect(overlayEl.getAttribute('data-career-rank')).toBe(expectedRank.rankId);
+      expect(overlayEl.getAttribute('data-career-title')).toBe(expectedRank.title);
+      expect(overlayEl.getAttribute('data-career-score')).toBe(String(expectedRank.careerScore));
+
+      const bodyEl = document.getElementById('hub-station-body')!;
+      expect(bodyEl.innerHTML).toContain(expectedRank.title);
+      expect(bodyEl.innerHTML).toContain(`(SCORE: ${expectedRank.careerScore})`);
+      expect(bodyEl.innerHTML).toContain(expectedRank.nextMilestoneText);
+      const banner = bodyEl.querySelector('.hub-career-rank-banner');
+      expect(banner).not.toBeNull();
+      expect(banner?.getAttribute('data-career-rank')).toBe(expectedRank.rankId);
+      expect(banner?.textContent).toContain(`${expectedRank.title} (SCORE: ${expectedRank.careerScore}) — ${expectedRank.nextMilestoneText}`);
     });
 
     it('renders bounty station, claims supply cache, and selects Heat levels 0..3', () => {

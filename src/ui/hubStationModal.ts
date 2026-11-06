@@ -13,6 +13,7 @@
  */
 
 import { RARITY } from '../data/equipment';
+import { getCareerOutlawRank } from '@/core/state';
 
 export type HubStationId = 'garage' | 'blacksmith' | 'codex' | 'bounty' | 'launch';
 
@@ -172,6 +173,13 @@ export class HubStationModalController {
   }
 
   /**
+   * Returns the station modal overlay element.
+   */
+  public get overlay(): HTMLElement | null {
+    return this.overlayEl;
+  }
+
+  /**
    * Displays the bottom-center proximity interaction banner for the given station.
    */
   public showBanner(
@@ -234,9 +242,13 @@ export class HubStationModalController {
     }
 
     this.visible = true;
-    if (this.overlayEl) {
-      this.overlayEl.classList.add('visible');
-      this.overlayEl.setAttribute('aria-hidden', 'false');
+    const careerRank = getCareerOutlawRank(options.metaSave);
+    if (this.overlay) {
+      this.overlay.classList.add('visible');
+      this.overlay.setAttribute('aria-hidden', 'false');
+      this.overlay.setAttribute('data-career-rank', careerRank.rankId);
+      this.overlay.setAttribute('data-career-title', careerRank.title);
+      this.overlay.setAttribute('data-career-score', String(careerRank.careerScore));
     }
 
     this.renderHeaderAndPurpose(options.npcId);
@@ -245,6 +257,31 @@ export class HubStationModalController {
 
     this.attachKeys();
     this.primaryBtn?.focus();
+  }
+
+  /**
+   * Re-renders the current station modal view and synchronizes telemetry attributes.
+   */
+  public render(): void {
+    if (!this.currentOptions) return;
+    const careerRank = getCareerOutlawRank(this.currentOptions.metaSave);
+    if (this.overlay) {
+      this.overlay.setAttribute('data-career-rank', careerRank.rankId);
+      this.overlay.setAttribute('data-career-title', careerRank.title);
+      this.overlay.setAttribute('data-career-score', String(careerRank.careerScore));
+    }
+    this.renderHeaderAndPurpose(this.currentOptions.npcId);
+    this.renderBody();
+  }
+
+  /**
+   * Renders the codex station view.
+   */
+  public renderCodex(options?: HubStationOpenOptions): void {
+    const opts = options || this.currentOptions;
+    if (opts) {
+      this.renderCodexBody(opts.metaSave, opts.scannerClaimed);
+    }
   }
 
   /**
@@ -449,8 +486,14 @@ export class HubStationModalController {
     const totalRuns = metaSave?.totalRuns || 0;
 
     const dmgBonusPct = Math.round((0.08 + Math.min(0.12, bossesSlain * 0.02)) * 100);
+    const careerRank = getCareerOutlawRank(metaSave);
 
     this.bodyEl.innerHTML = `
+      <div class="hub-career-rank-banner" data-career-rank="${careerRank.rankId}">
+        <span class="hub-career-rank-badge">CAREER RANK</span>
+        <span class="hub-career-rank-text">${careerRank.title} (SCORE: ${careerRank.careerScore}) — ${careerRank.nextMilestoneText}</span>
+      </div>
+
       <div class="hub-dossier-grid">
         <div class="hub-dossier-cell">
           <span class="hub-dossier-label">BEST SECTOR</span>
