@@ -143,7 +143,6 @@ export class GarageController {
   private bikeCtx: CanvasRenderingContext2D | null = null;
   private liveryBar: HTMLElement | null = null;
   private eqTotals: HTMLElement | null = null;
-  private equipBonusSummary: HTMLElement | null = null;
   private stashList: HTMLElement | null = null;
   private unlockList: HTMLElement | null = null;
   private metaUpgradeList: HTMLElement | null = null;

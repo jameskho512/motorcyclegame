@@ -38,8 +38,7 @@ import {
   type EnemyBullet,
   type EnemyBomb,
   type Room,
-  type Pickup,
-  type FloorHazard
+  type Pickup
 } from '../types/game';
 import { RUN_MOD_POOL } from '../data/upgrades';
 import { genLoot, rollRarity, type RarityTier } from '../data/equipment';
@@ -314,8 +313,7 @@ export function updateBossAI(ctx: AIContext): void {
     projScale,
     enemyBullets,
     enemyBombs,
-    rng = Math.random,
-    floorNum = 1
+    rng = Math.random
   } = ctx;
   const boss = en as Boss;
   const dx = player.x - en.x;
@@ -673,8 +671,7 @@ export function updateEnemyAI(ctx: AIContext): void {
     projScale,
     enemyBullets,
     enemyBombs,
-    rng = Math.random,
-    floorNum = 1
+    rng = Math.random
   } = ctx;
   const dx = player.x - en.x;
   const dy = player.y - en.y;

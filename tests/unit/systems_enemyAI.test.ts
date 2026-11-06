@@ -23,7 +23,6 @@ import {
   createBoss,
   spawnBossMinions,
   updateEnemyAI,
-  updateBossAI,
   generateBossDefeatRewards,
   BOSS_COLORS
 } from '../../src/systems/enemyAI';
@@ -807,7 +806,7 @@ describe('Systems: EnemyAI — The 3 Boss Variants', () => {
 
     expect(bossP2.state).toBe('dashing');
     expect(bossP2.phase).toBe(2);
-    expect(bossP2.dashVx).toBeCloseTo(phase1DashVx * 1.25, 1);
+    expect(bossP2.dashVx).toBeCloseTo((phase1DashVx || 0) * 1.25, 1);
   });
 
   it('fires extra 4-bullet aimed fan in Phase 2 only when enablePhase2ExtraProjectiles is enabled', () => {
