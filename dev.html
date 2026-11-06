@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MOTO-ROGUE // Modular Roguelite</title>
+  <link rel="stylesheet" href="/src/styles/main.css" />
+</head>
+<body>
+
+<div id="app-layout">
+  <!-- Left Sidebar: Hull Integrity, Fuel Gauge, NOS, Currency & Floor Map -->
+  <aside class="sidebar-col" id="left-sidebar">
+    <div class="panel-section">
+      <div class="section-title">
+        <span>Hull Integrity</span>
+        <span id="hp-text" style="color:#ff4d6d;">6 / 6</span>
+      </div>
+      <canvas id="fuel-gauge" width="240" height="120" style="display:block;margin:0 auto 4px;max-width:100%;height:auto;"></canvas>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;" data-tip="<b style='color:#4cc9f0'>NOS</b><br/>Hold SHIFT while moving for +70% speed. Drains NOS; recharges when not boosting. Empty tank locks until 25%.">
+        <span style="font-size:11px;font-weight:700;color:#4cc9f0;letter-spacing:1px;">NOS</span>
+        <div style="flex:1;height:10px;background:#0e0f14;border:1px solid #3b6e86;border-radius:5px;overflow:hidden;">
+          <div id="nos-fill" style="height:100%;width:100%;background:linear-gradient(90deg,#4895ef,#4cc9f0);"></div>
+        </div>
+      </div>
+      <div class="currency-row">
+        <span>Run Coins: <strong id="coin-count" style="color:#ffd166;">0 🪙</strong></span>
+        <span>Scrap: <strong id="scrap-count" style="color:#7bdff2;">0 ⚙️</strong></span>
+      </div>
+    </div>
+
+    <div class="panel-section" style="flex:1; justify-content:space-between;">
+      <div class="section-title">
+        <span>Floor Map</span>
+        <span style="color:#7bdff2;">FLOOR <strong id="floor-num">1</strong></span>
+      </div>
+      <canvas id="minimap-canvas" width="240" height="150"></canvas>
+      <div style="font-size:10.5px; color:#888; text-align:center; margin-top:4px;">
+        <span style="color:#ffd166;">★ Mod</span> &nbsp;&bull;&nbsp;
+        <span style="color:#06d6a0;">$ Shop</span> &nbsp;&bull;&nbsp;
+        <span style="color:#ff4d6d;">☠ Boss</span>
+      </div>
+    </div>
+
+    <div id="save-status" style="font-size:10px;color:#6b7089;text-align:center;">Autosave: local storage</div>
+    <div style="display:flex; gap:6px;">
+      <button class="sidebar-btn" id="btn-open-garage" style="flex:1;">[G] Garage &amp; Tuning</button>
+      <button class="sidebar-btn" id="btn-toggle-sound" style="padding:8px 10px;" title="Toggle Game Audio [M]">🔊 [M]</button>
+    </div>
+  </aside>
+
+  <!-- Center Square Room Playfield Canvas (Always fits 100% of vertical height!) -->
+  <div id="game-wrapper">
+    <canvas id="canvas" width="720" height="720"></canvas>
+
+    <!-- Shop Purchase Confirmation Overlay -->
+    <div id="shop-confirm-overlay">
+      <div class="shop-confirm-card">
+        <div class="shop-confirm-title">★ ARMORY &amp; SUPPLY PURCHASE ★</div>
+        <div class="shop-item-name" id="shop-modal-name">Item Name</div>
+        <div class="shop-item-desc" id="shop-modal-desc">Item Description</div>
+        <div class="shop-item-cost" id="shop-modal-cost">Cost: 15 Coins</div>
+        <div class="shop-btn-row">
+          <button class="btn-buy" id="btn-confirm-buy">[E] Confirm Purchase</button>
+          <button class="btn-cancel" id="btn-cancel-buy">[ESC] Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Garage / Meta-Progression / Run Over Modal (Widescreen Layout) -->
+    <div id="garage-overlay">
+      <div class="overlay-card garage-card">
+        <div class="garage-door"><span>GARAGE BAY 01</span></div>
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:4px;">
+          <div style="text-align:left;">
+            <h1 id="modal-title" style="margin:0;">MOTO-GARAGE &amp; WORKSHOP</h1>
+            <p class="sub" id="modal-subtitle" style="margin:0;">
+              Earn <strong>Scrap (⚙️)</strong> from enemies &amp; bosses to permanently unlock weapons and chassis upgrades. Collect <strong>Coins (🪙)</strong> for <strong>Shop Rooms ($)</strong>!
+            </p>
+          </div>
+          <div style="font-size:15px; color:#ffd166; font-weight:700; background:rgba(0,0,0,0.45); padding:6px 14px; border-radius:6px; border:1px solid #ffd16655;">
+            Banked Scrap: <span id="modal-scrap">0</span> ⚙️
+          </div>
+        </div>
+
+        <div class="garage-main-grid">
+          <!-- Left Workshop Column: Bike Lift, 6 Equipment Slots & Stash -->
+          <div>
+            <div class="garage-col-title">Bike Equipment (boss loot) - click a slot to remove a part</div>
+            <div class="bay">
+              <div class="slot-col" id="slots-left"></div>
+              <canvas id="bike-canvas" width="300" height="190"></canvas>
+              <div class="slot-col" id="slots-right"></div>
+            </div>
+            <div id="eq-totals" style="font-size:11.5px;color:#7bdff2;margin-bottom:6px;"></div>
+            <div class="garage-col-title">Parts Stash - click to install, right-click to sell for scrap</div>
+            <div class="stash" id="stash-list"></div>
+          </div>
+
+          <!-- Right Workshop Column: Permanent Arsenal Unlocks (6 Weapons) & Bike Tuning -->
+          <div class="garage-columns">
+            <div>
+              <div class="garage-col-title">Permanent Arsenal Unlocks</div>
+              <div class="unlock-list" id="unlock-list"></div>
+            </div>
+            <div>
+              <div class="garage-col-title">Permanent Bike Tuning</div>
+              <div class="unlock-list" id="meta-upgrade-list"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="action-row">
+          <button class="btn" id="btn-resume">Resume Run</button>
+          <button class="btn btn-secondary" id="btn-new-run">Start Fresh Run (Floor 1)</button>
+          <button class="btn btn-secondary" id="btn-reset-save" title="Reset all permanent unlocks & scrap">Full Save Reset</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right Sidebar: 7-Weapon Arsenal, Bike Stats & Installed Run Mods -->
+  <aside class="sidebar-col" id="right-sidebar">
+    <div class="panel-section">
+      <div class="section-title">
+        <span>Arsenal</span>
+        <span style="font-size:10px; color:#777;">[1-7] or Scroll</span>
+      </div>
+      <div class="weapon-list" id="weapon-bar"></div>
+    </div>
+
+    <div class="panel-section">
+      <div class="section-title">Bike &amp; Weapon Stats</div>
+      <div class="stats-grid" id="stats-grid"></div>
+    </div>
+
+    <div class="panel-section" style="flex:1; display:flex; flex-direction:column; min-height:0;">
+      <div class="section-title">Installed Run Mods</div>
+      <div id="items-list">
+        <span style="color:#666; font-size:11px;">None yet — visit ★ or $ rooms!</span>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<div id="tooltip"></div>
+
+<!-- Vite modular application bootstrap -->
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
