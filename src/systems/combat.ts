@@ -202,6 +202,23 @@ export function rollCrit(
   };
 }
 
+export interface OverkillResult {
+  isOverkill: boolean;
+  bonusStyle: number;
+  callout: string | null;
+}
+
+/**
+ * Calculates overkill execution bonus when fatal damage exceeds negative 50% max HP.
+ */
+export function calcOverkillBonus(finalHp: number, maxHp: number): OverkillResult {
+  const safeMax = Math.max(1, Number(maxHp) || 1);
+  if (finalHp <= -safeMax * 0.5) {
+    return { isOverkill: true, bonusStyle: 4, callout: '💀 OVERKILL!' };
+  }
+  return { isOverkill: false, bonusStyle: 0, callout: null };
+}
+
 /**
  * Checks whether the player has Cryo-Jacketed Shells (via mods, items, or itemStacks).
  */
@@ -727,6 +744,20 @@ export function handleEnemyDeath({
     audio.enemyKill(en.type === 'boss');
   }
   spawnMuzzleParticles(state, en.x, en.y, 0, en.color, 12, rng);
+
+  // Overkill execution bonus check
+  const overkill = calcOverkillBonus(en.hp, en.maxHp);
+  if (overkill.isOverkill && overkill.callout) {
+    player.styleScore = Math.min(100, (player.styleScore || 12) + overkill.bonusStyle);
+    state.damageNumbers.push({
+      x: en.x,
+      y: en.y - en.radius - 22,
+      text: overkill.callout,
+      color: '#ff007f',
+      life: 0.95,
+      maxLife: 0.95
+    });
+  }
 
   // Splitter spawns 2 fast mini_swarmers on death
   if (en.type === 'splitter') {

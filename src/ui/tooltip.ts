@@ -82,6 +82,20 @@ export function getModEvolutionTarget(mod: { id?: string; name?: string; [k: str
   return null;
 }
 
+export function formatWeaponMasteryHint(kills: number = 0): string {
+  const safeKills = Math.max(0, Math.floor(Number(kills) || 0));
+  if (safeKills >= 100) {
+    return `Mastery: ★★★ MASTER III (+15% DMG · MAX RANK! · ${safeKills} kills)`;
+  }
+  if (safeKills >= 40) {
+    return `Mastery: ★★☆ ADEPT II (+10% DMG · ${safeKills}/100 kills to ★★★ MASTER III)`;
+  }
+  if (safeKills >= 10) {
+    return `Mastery: ★☆☆ ROOKIE I (+5% DMG · ${safeKills}/40 kills to ★★☆ ADEPT II)`;
+  }
+  return `Mastery: ☆☆☆ UNRANKED (${safeKills}/10 kills to ★☆☆ ROOKIE I +5% DMG)`;
+}
+
 export class TooltipManager {
   private tipEl: HTMLElement | null = null;
   private isVisible: boolean = false;

@@ -14,7 +14,9 @@ import {
   OBSTACLE_PATTERNS,
   resetEntityId,
   enableChoicePedestalsInTreasureRooms,
-  assignBiomeBarrelVariants
+  assignBiomeBarrelVariants,
+  getFloorBountyContract,
+  type FloorBountyContract
 } from '../../src/world/dungeon';
 import {
   ARENA_WIDTH,
@@ -472,6 +474,126 @@ describe('World Module: Procedural Dungeon Generation (src/world/dungeon.ts)', (
 
       assignBiomeBarrelVariants(dungeonGraph.rooms, 4);
       expect(testRoom.obstacles[0].variant).toBe('cryo_barrel');
+    });
+  });
+
+  describe('Floor Bounty Contracts: getFloorBountyContract', () => {
+    it('returns specific bounty contracts for floors 1 to 5', () => {
+      const f1 = getFloorBountyContract(1);
+      expect(f1).toEqual({
+        id: 'GRAZE_INITIATE',
+        floor: 1,
+        title: 'NEON DAREDEVIL',
+        desc: 'Graze 3 enemy projectiles or clear Floor 1 Boss',
+        targetCount: 3,
+        scrapReward: 8,
+        coinReward: 10
+      });
+
+      const f2 = getFloorBountyContract(2);
+      expect(f2).toEqual({
+        id: 'DRIFT_DEMON',
+        floor: 2,
+        title: 'ASPHALT DRIFTER',
+        desc: 'Trigger 2 Handbrake Drift Boosts or clear Floor 2 Boss',
+        targetCount: 2,
+        scrapReward: 10,
+        coinReward: 14
+      });
+
+      const f3 = getFloorBountyContract(3);
+      expect(f3).toEqual({
+        id: 'STYLE_HUNTER',
+        floor: 3,
+        title: 'HIGH-OCTANE STYLER',
+        desc: 'Reach Style Rank A in combat or clear Floor 3 Boss',
+        targetCount: 55,
+        scrapReward: 14,
+        coinReward: 18
+      });
+
+      const f4 = getFloorBountyContract(4);
+      expect(f4).toEqual({
+        id: 'CRYO_SHATTER',
+        floor: 4,
+        title: 'CRYO BREAKER',
+        desc: 'Detonate 2 Cryo/Explosive Barrels or clear Floor 4 Boss',
+        targetCount: 2,
+        scrapReward: 18,
+        coinReward: 22
+      });
+
+      const f5 = getFloorBountyContract(5);
+      expect(f5).toEqual({
+        id: 'OVERDRIVE_SLAYER',
+        floor: 5,
+        title: 'FORGE EXECUTIONER',
+        desc: 'Achieve a 5x Rampage Killstreak or clear Floor 5 Boss',
+        targetCount: 5,
+        scrapReward: 22,
+        coinReward: 28
+      });
+    });
+
+    it('returns dynamically scaled VALHALLA_LEGEND contracts for floor 6 and above', () => {
+      const f6 = getFloorBountyContract(6);
+      expect(f6).toEqual({
+        id: 'VALHALLA_LEGEND',
+        floor: 6,
+        title: 'VALHALLA ASCENDANT',
+        desc: 'Reach Style Rank SS or defeat the Sector Boss',
+        targetCount: 85,
+        scrapReward: 30,
+        coinReward: 40
+      });
+
+      const f7 = getFloorBountyContract(7);
+      expect(f7).toEqual({
+        id: 'VALHALLA_LEGEND',
+        floor: 7,
+        title: 'VALHALLA ASCENDANT',
+        desc: 'Reach Style Rank SS or defeat the Sector Boss',
+        targetCount: 85,
+        scrapReward: 35,
+        coinReward: 48
+      });
+
+      const f8 = getFloorBountyContract(8);
+      expect(f8).toEqual({
+        id: 'VALHALLA_LEGEND',
+        floor: 8,
+        title: 'VALHALLA ASCENDANT',
+        desc: 'Reach Style Rank SS or defeat the Sector Boss',
+        targetCount: 85,
+        scrapReward: 40,
+        coinReward: 56
+      });
+    });
+
+    it('safely handles non-positive, zero, NaN, or undefined floor inputs by falling back to floor 1', () => {
+      expect(getFloorBountyContract(0).floor).toBe(1);
+      expect(getFloorBountyContract(0).id).toBe('GRAZE_INITIATE');
+
+      expect(getFloorBountyContract(-5).floor).toBe(1);
+      expect(getFloorBountyContract(-5).id).toBe('GRAZE_INITIATE');
+
+      expect(getFloorBountyContract(NaN).floor).toBe(1);
+      expect(getFloorBountyContract(NaN).id).toBe('GRAZE_INITIATE');
+
+      expect(getFloorBountyContract(undefined).floor).toBe(1);
+      expect(getFloorBountyContract(undefined).id).toBe('GRAZE_INITIATE');
+    });
+
+    it('strictly increases scrapReward and coinReward as floor increases from 1 to 8', () => {
+      const contracts: FloorBountyContract[] = [];
+      for (let floor = 1; floor <= 8; floor++) {
+        contracts.push(getFloorBountyContract(floor));
+      }
+
+      for (let i = 1; i < contracts.length; i++) {
+        expect(contracts[i].scrapReward).toBeGreaterThan(contracts[i - 1].scrapReward);
+        expect(contracts[i].coinReward).toBeGreaterThan(contracts[i - 1].coinReward);
+      }
     });
   });
 });

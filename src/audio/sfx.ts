@@ -43,6 +43,9 @@ export type VolumeKey = (typeof VOLUME_KEYS)[number];
 
 export type VolumeSettings = Record<VolumeKey, number>;
 
+/** Dynamic Synthwave BGM intensity modes. */
+export type MusicIntensityMode = 'calm' | 'combat' | 'boss_phase2';
+
 export const DEFAULT_VOLUME_SETTINGS: Readonly<VolumeSettings> = Object.freeze({
   master: 1,
   music: 0.75,
@@ -84,7 +87,8 @@ export const SOUND_CHANNEL_MAP: Readonly<Record<string, VolumeChannel>> = Object
   driftBoost: 'engine',
   phaseEnrage: 'ui',
   killStreak: 'ui',
-  choiceLock: 'ui'
+  choiceLock: 'ui',
+  masteryUp: 'ui'
 });
 
 function clampUnit(v: number): number {
@@ -168,6 +172,9 @@ export class SoundSynthesizer implements AudioService {
 
   private lastFlameSfx: number = 0;
   private lastHitSfx: number = 0;
+
+  // Dynamic Synthwave BGM intensity mode
+  private musicIntensity: MusicIntensityMode = 'calm';
 
   // Stateful 5-gear motorcycle transmission & synthwave BGM clock
   private gear: number = 1;
@@ -301,6 +308,21 @@ export class SoundSynthesizer implements AudioService {
   // ==========================================================================
   // PER-CATEGORY VOLUME MIXER
   // ==========================================================================
+
+  /** Dynamic Synthwave Music Intensity accessor. */
+  public getMusicIntensity(): MusicIntensityMode {
+    return this.musicIntensity;
+  }
+
+  /** Sets the dynamic synthwave music intensity mode ('calm' | 'combat' | 'boss_phase2'). */
+  public setMusicIntensity(mode: MusicIntensityMode): void {
+    this.musicIntensity = mode;
+  }
+
+  /** Returns effective linear gain for a channel (0..1), respecting mute. */
+  public getEffectiveVolume(channel: VolumeKey): number {
+    return effectiveGain(channel, this.volumes, this.muted);
+  }
 
   /** Returns a copy of the current mixer slider values (0..1). */
   public getVolumes(): VolumeSettings {
@@ -490,18 +512,22 @@ export class SoundSynthesizer implements AudioService {
     this.engFilter.frequency.setTargetAtTime(cutoff, now, 0.05);
     this.engGain.gain.setTargetAtTime(targetGain, now, tc);
 
-    // Procedural Synthwave / Outlaw Dark-Synth Bassline Groove (125 BPM eighth-note pulse)
+    // Procedural Synthwave / Outlaw Dark-Synth Bassline Groove (125 BPM eighth-note pulse, adaptive intensity)
     this.bgmStepTimer += dt;
-    const stepInterval = 0.24; // 125 BPM 8th notes
+    const stepInterval = this.musicIntensity === 'boss_phase2' ? 0.16 : 0.24;
     if (this.bgmStepTimer >= stepInterval) {
       this.bgmStepTimer -= stepInterval;
-      const bassSequence = [55.0, 55.0, 65.41, 55.0, 73.42, 65.41, 82.41, 73.42];
+      const bassSequence = this.musicIntensity === 'boss_phase2'
+        ? [55.0, 73.42, 65.41, 82.41, 55.0, 98.0, 82.41, 110.0]
+        : [55.0, 55.0, 65.41, 55.0, 73.42, 65.41, 82.41, 73.42];
       const noteFreq = bassSequence[this.bgmStepIndex % bassSequence.length];
       this.bgmStepIndex = (this.bgmStepIndex + 1) % 16;
       if (this.volumes.music > 0.01) {
-        this.playTone('music', noteFreq, noteFreq * 0.98, 0.16, 'sawtooth', 0.045);
-        if (this.bgmStepIndex % 4 === 0) {
-          this.playTone('music', noteFreq * 2, noteFreq * 2, 0.11, 'triangle', 0.028);
+        const baseVol = this.musicIntensity === 'boss_phase2' ? 0.065 : (this.musicIntensity === 'combat' ? 0.055 : 0.045);
+        this.playTone('music', noteFreq, noteFreq * 0.98, 0.16, 'sawtooth', baseVol);
+        if (this.musicIntensity !== 'calm' || this.bgmStepIndex % 4 === 0) {
+          const harmVol = this.musicIntensity === 'boss_phase2' ? 0.038 : 0.028;
+          this.playTone('music', noteFreq * 2, noteFreq * 2, 0.11, 'triangle', harmVol);
         }
       }
     }
@@ -802,6 +828,28 @@ export class SoundSynthesizer implements AudioService {
     this.playTone('ui', 520, 780, 0.12, 'square', 0.18, 0.0);
     this.playTone('ui', 520, 780, 0.12, 'triangle', 0.24, 0.0);
     this.playNoise('ui', 0.04, 3200, 'bandpass', 0.12, 2.0);
+  }
+
+  /**
+   * Celebratory 4-note ascending synth arpeggio (523.25Hz -> 659.25Hz -> 783.99Hz -> 1046.50Hz, triangle + sine harmonic)
+   * routed through 'ui' volume channel, respecting this.muted and this.getEffectiveVolume('ui').
+   */
+  public masteryUp(): void {
+    if (this.muted || this.getEffectiveVolume('ui') <= 0 || !this.init() || !this.actx) return;
+
+    const notes = [523.25, 659.25, 783.99, 1046.50];
+    const stepDelay = 0.075;
+    const noteDur = 0.15;
+
+    notes.forEach((freq, idx) => {
+      const delay = idx * stepDelay;
+      const isFinal = idx === notes.length - 1;
+      const dur = isFinal ? 0.30 : noteDur;
+      // Primary triangle synth lead
+      this.playTone('ui', freq, freq, dur, 'triangle', 0.24, delay);
+      // Sine harmonic overtone
+      this.playTone('ui', freq * 2, freq * 2, dur * 0.85, 'sine', 0.14, delay);
+    });
   }
 }
 

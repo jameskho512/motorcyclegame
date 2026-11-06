@@ -7,6 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { formatWeaponMasteryHint } from '@/ui/tooltip';
 import {
   WEAPONS,
   UNLOCKABLE_IDS,
@@ -483,5 +484,33 @@ describe('Data Module: equipment.ts', () => {
     expect(legendarySet.dmgBonus).toBeGreaterThan(0);
     expect(legendarySet.speedBonus).toBeGreaterThan(0);
     expect(legendarySet.label.length).toBeGreaterThan(0);
+  });
+});
+
+describe('Tooltip: formatWeaponMasteryHint', () => {
+  it('formats unranked tier correctly for 0 and 9 kills', () => {
+    expect(formatWeaponMasteryHint(0)).toBe('Mastery: ☆☆☆ UNRANKED (0/10 kills to ★☆☆ ROOKIE I +5% DMG)');
+    expect(formatWeaponMasteryHint(9)).toBe('Mastery: ☆☆☆ UNRANKED (9/10 kills to ★☆☆ ROOKIE I +5% DMG)');
+  });
+
+  it('formats rookie tier I correctly for 10 and 39 kills', () => {
+    expect(formatWeaponMasteryHint(10)).toBe('Mastery: ★☆☆ ROOKIE I (+5% DMG · 10/40 kills to ★★☆ ADEPT II)');
+    expect(formatWeaponMasteryHint(39)).toBe('Mastery: ★☆☆ ROOKIE I (+5% DMG · 39/40 kills to ★★☆ ADEPT II)');
+  });
+
+  it('formats adept tier II correctly for 40 and 99 kills', () => {
+    expect(formatWeaponMasteryHint(40)).toBe('Mastery: ★★☆ ADEPT II (+10% DMG · 40/100 kills to ★★★ MASTER III)');
+    expect(formatWeaponMasteryHint(99)).toBe('Mastery: ★★☆ ADEPT II (+10% DMG · 99/100 kills to ★★★ MASTER III)');
+  });
+
+  it('formats master tier III correctly for 100 and 250 kills', () => {
+    expect(formatWeaponMasteryHint(100)).toBe('Mastery: ★★★ MASTER III (+15% DMG · MAX RANK! · 100 kills)');
+    expect(formatWeaponMasteryHint(250)).toBe('Mastery: ★★★ MASTER III (+15% DMG · MAX RANK! · 250 kills)');
+  });
+
+  it('handles negative numbers and NaN gracefully by falling back to 0', () => {
+    expect(formatWeaponMasteryHint(-1)).toBe('Mastery: ☆☆☆ UNRANKED (0/10 kills to ★☆☆ ROOKIE I +5% DMG)');
+    expect(formatWeaponMasteryHint(-100)).toBe('Mastery: ☆☆☆ UNRANKED (0/10 kills to ★☆☆ ROOKIE I +5% DMG)');
+    expect(formatWeaponMasteryHint(NaN)).toBe('Mastery: ☆☆☆ UNRANKED (0/10 kills to ★☆☆ ROOKIE I +5% DMG)');
   });
 });

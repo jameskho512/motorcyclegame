@@ -31,7 +31,8 @@ import {
   updateBurnDoT,
   updateEnemyCollisions,
   triggerExplosion,
-  handleEnemyDeath
+  handleEnemyDeath,
+  calcOverkillBonus
 } from '../../src/systems/combat';
 import { WEAPONS } from '../../src/data/weapons';
 import type {
@@ -973,4 +974,135 @@ describe('Systems: Combat — Elite Affix Death Payoffs', () => {
     expect(player.nos).toBe(100);
   });
 });
+
+describe('Systems: Combat — Overkill & Execution Bonus', () => {
+  it('calcOverkillBonus correctly calculates overkill at boundary conditions', () => {
+    // maxHp = 30 -> 50% threshold is 15 -> requires finalHp <= -15
+
+    // Exactly 0 (normal kill) -> false
+    expect(calcOverkillBonus(0, 30)).toEqual({
+      isOverkill: false,
+      bonusStyle: 0,
+      callout: null
+    });
+
+    // -10 (insufficient overkill: -10 > -15) -> false
+    expect(calcOverkillBonus(-10, 30)).toEqual({
+      isOverkill: false,
+      bonusStyle: 0,
+      callout: null
+    });
+
+    // Exactly -15 (boundary condition: -15 <= -15) -> true
+    expect(calcOverkillBonus(-15, 30)).toEqual({
+      isOverkill: true,
+      bonusStyle: 4,
+      callout: '💀 OVERKILL!'
+    });
+
+    // -50 (massive overkill) -> true
+    expect(calcOverkillBonus(-50, 30)).toEqual({
+      isOverkill: true,
+      bonusStyle: 4,
+      callout: '💀 OVERKILL!'
+    });
+
+    // Fallback safeMax for 0 or negative maxHp
+    expect(calcOverkillBonus(-1, 0)).toEqual({
+      isOverkill: true,
+      bonusStyle: 4,
+      callout: '💀 OVERKILL!'
+    });
+  });
+
+  it('handleEnemyDeath awards +4 styleScore and spawns overkill floating banner when enemy is killed with massive overkill', () => {
+    const room = createMockRoom();
+    const player = createMockPlayer({ styleScore: 12 });
+    const state = createCombatState();
+    const enemy = createMockEnemy({
+      x: 350,
+      y: 400,
+      radius: 14,
+      hp: -25,
+      maxHp: 30
+    });
+    room.enemies = [enemy];
+
+    handleEnemyDeath({
+      room,
+      enemy,
+      index: 0,
+      player,
+      state
+    });
+
+    // Overkill style bonus: 12 + 4 = 16
+    expect(player.styleScore).toBe(16);
+
+    // Floating text entry
+    const overkillBanner = state.damageNumbers.find(d => d.text === '💀 OVERKILL!');
+    expect(overkillBanner).toBeDefined();
+    expect(overkillBanner?.color).toBe('#ff007f');
+    expect(overkillBanner?.x).toBe(350);
+    expect(overkillBanner?.y).toBe(400 - 14 - 22);
+    expect(overkillBanner?.life).toBe(0.95);
+    expect(overkillBanner?.maxLife).toBe(0.95);
+  });
+
+  it('handleEnemyDeath caps styleScore at 100 on overkill and initializes undefined styleScore to 12 + 4 = 16', () => {
+    const room = createMockRoom();
+    const player1 = createMockPlayer({ styleScore: 98 });
+    const state1 = createCombatState();
+    const enemy1 = createMockEnemy({ hp: -20, maxHp: 30 });
+    room.enemies = [enemy1];
+
+    handleEnemyDeath({
+      room,
+      enemy: enemy1,
+      index: 0,
+      player: player1,
+      state: state1
+    });
+
+    // Capped at 100
+    expect(player1.styleScore).toBe(100);
+
+    // Undefined styleScore defaults to 12 + 4 = 16
+    const player2 = createMockPlayer();
+    delete (player2 as any).styleScore;
+    const state2 = createCombatState();
+    const enemy2 = createMockEnemy({ hp: -20, maxHp: 30 });
+    room.enemies = [enemy2];
+
+    handleEnemyDeath({
+      room,
+      enemy: enemy2,
+      index: 0,
+      player: player2,
+      state: state2
+    });
+    expect(player2.styleScore).toBe(16);
+  });
+
+  it('handleEnemyDeath does not trigger overkill bonus or banner on normal death (hp > -0.5 * maxHp)', () => {
+    const room = createMockRoom();
+    const player = createMockPlayer({ styleScore: 20 });
+    const state = createCombatState();
+    const enemy = createMockEnemy({ hp: 0, maxHp: 30 });
+    room.enemies = [enemy];
+
+    handleEnemyDeath({
+      room,
+      enemy,
+      index: 0,
+      player,
+      state
+    });
+
+    expect(player.styleScore).toBe(20);
+    const overkillBanner = state.damageNumbers.find(d => d.text === '💀 OVERKILL!');
+    expect(overkillBanner).toBeUndefined();
+  });
+});
+
 

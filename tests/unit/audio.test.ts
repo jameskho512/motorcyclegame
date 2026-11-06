@@ -12,7 +12,8 @@ import {
   DEFAULT_VOLUME_SETTINGS,
   SAVE_KEY_AUDIO,
   SOUND_CHANNEL_MAP,
-  VOLUME_CHANNELS
+  VOLUME_CHANNELS,
+  MusicIntensityMode
 } from '../../src/audio/sfx';
 import { SafeLocalStorage } from '../../src/core/state';
 import { SAVE_KEY_MUTED, WeaponId } from '../../src/types/game';
@@ -479,7 +480,7 @@ describe('Web Audio Procedural Synthesizer', () => {
         'updateEngine', 'updateEngineHum', 'shoot', 'arcChain', 'explosion', 'hit', 'enemyKill',
         'playerHurt', 'gameOverSound', 'pickupFuel', 'pickupItem', 'pickupLoot', 'shopBuy',
         'shopError', 'roomClear', 'doorTransition', 'nextFloor', 'uiClick',
-        'graze', 'driftBoost', 'phaseEnrage', 'killStreak', 'choiceLock'
+        'graze', 'driftBoost', 'phaseEnrage', 'killStreak', 'choiceLock', 'masteryUp'
       ];
       for (const m of methods) {
         expect(VOLUME_CHANNELS).toContain(SOUND_CHANNEL_MAP[m]);
@@ -610,6 +611,155 @@ describe('Web Audio Procedural Synthesizer', () => {
       } finally {
         g.AudioContext = originalAC;
       }
+    });
+  });
+
+  describe('Dynamic Music Intensity & Mastery Fanfare', () => {
+    it('getMusicIntensity defaults to calm and updates via setMusicIntensity', () => {
+      const sfx = new SoundSynthesizer(mockStorage);
+      expect(sfx.getMusicIntensity()).toBe('calm');
+
+      sfx.setMusicIntensity('combat');
+      expect(sfx.getMusicIntensity()).toBe('combat');
+
+      sfx.setMusicIntensity('boss_phase2');
+      expect(sfx.getMusicIntensity()).toBe('boss_phase2');
+
+      sfx.setMusicIntensity('calm');
+      expect(sfx.getMusicIntensity()).toBe('calm');
+    });
+
+    it('masteryUp creates Web Audio oscillators when unmuted and is a no-op when muted', () => {
+      interface FakeParam {
+        value: number;
+        setTargetAtTime: ReturnType<typeof vi.fn>;
+        setValueAtTime: ReturnType<typeof vi.fn>;
+        exponentialRampToValueAtTime: ReturnType<typeof vi.fn>;
+      }
+      interface FakeNode {
+        type?: string;
+        frequency?: FakeParam;
+        gain?: FakeParam;
+        connect: ReturnType<typeof vi.fn>;
+        start?: ReturnType<typeof vi.fn>;
+        stop?: ReturnType<typeof vi.fn>;
+      }
+
+      const param = (): FakeParam => ({
+        value: 0,
+        setTargetAtTime: vi.fn(),
+        setValueAtTime: vi.fn(),
+        exponentialRampToValueAtTime: vi.fn()
+      });
+
+      const oscillators: FakeNode[] = [];
+      const gains: FakeNode[] = [];
+
+      class MockAC {
+        state = 'running';
+        currentTime = 10.0;
+        sampleRate = 44100;
+        destination = { name: 'dest' };
+        createGain = vi.fn(() => {
+          const n: FakeNode = { gain: param(), connect: vi.fn() };
+          gains.push(n);
+          return n;
+        });
+        createOscillator = vi.fn(() => {
+          const n: FakeNode = {
+            type: 'sine',
+            frequency: param(),
+            connect: vi.fn(),
+            start: vi.fn(),
+            stop: vi.fn()
+          };
+          oscillators.push(n);
+          return n;
+        });
+        createBiquadFilter = vi.fn(() => ({
+          type: 'lowpass',
+          frequency: param(),
+          Q: { value: 1 },
+          connect: vi.fn()
+        }));
+        createBuffer = vi.fn(() => ({ getChannelData: () => new Float32Array(150) }));
+        createBufferSource = vi.fn(() => ({ buffer: null, connect: vi.fn(), start: vi.fn() }));
+        resume = vi.fn().mockResolvedValue(undefined);
+      }
+
+      const g = globalThis as unknown as { AudioContext?: unknown };
+      const originalAC = g.AudioContext;
+      g.AudioContext = MockAC;
+
+      try {
+        const sfx = new SoundSynthesizer(mockStorage);
+        expect(sfx.init()).toBe(true);
+
+        const oscCountBefore = oscillators.length;
+
+        // Unmuted execution creates ascending arpeggio oscillators
+        sfx.masteryUp();
+        expect(oscillators.length).toBeGreaterThan(oscCountBefore);
+
+        const fanfareOscs = oscillators.slice(oscCountBefore);
+        // 4 notes * 2 (triangle + sine) = 8 oscillators
+        expect(fanfareOscs.length).toBe(8);
+
+        // Verify triangle and sine waveforms are present
+        const hasTriangle = fanfareOscs.some(o => o.type === 'triangle');
+        const hasSine = fanfareOscs.some(o => o.type === 'sine');
+        expect(hasTriangle).toBe(true);
+        expect(hasSine).toBe(true);
+
+        // Verify ascending pitch frequencies 523.25, 659.25, 783.99, 1046.50 are played
+        const expectedFrequencies = [523.25, 659.25, 783.99, 1046.50];
+        const triangleOscs = fanfareOscs.filter(o => o.type === 'triangle');
+        expect(triangleOscs.length).toBe(4);
+        triangleOscs.forEach((osc, idx) => {
+          expect(osc.frequency?.setValueAtTime).toHaveBeenCalledWith(
+            expect.closeTo(expectedFrequencies[idx], 1),
+            expect.any(Number)
+          );
+        });
+
+        // Verify routing to UI bus channel
+        // Buses: master is gains[0], next 6 are channels ['music', 'engine', 'weapons', 'impacts', 'pickups', 'ui']
+        const uiBus = gains.find((n, idx) => idx > 0 && n.connect.mock.calls.some(c => c[0] === gains[0]) && idx === 6);
+        // All fanfare gains connect to uiBus
+        const fanfareGains = gains.slice(gains.length - 8);
+        for (const fg of fanfareGains) {
+          if (uiBus) {
+            expect(fg.connect).toHaveBeenCalledWith(uiBus);
+          }
+        }
+
+        // Muted execution is a no-op (0 new oscillators)
+        sfx.setMuted(true);
+        const oscCountMuted = oscillators.length;
+        sfx.masteryUp();
+        expect(oscillators.length).toBe(oscCountMuted);
+
+        // Effective volume 0 for UI is also a no-op
+        sfx.setMuted(false);
+        sfx.setVolume('ui', 0);
+        const oscCountZeroVol = oscillators.length;
+        sfx.masteryUp();
+        expect(oscillators.length).toBe(oscCountZeroVol);
+      } finally {
+        g.AudioContext = originalAC;
+      }
+    });
+
+    it('SFX singleton exposes getMusicIntensity, setMusicIntensity, and masteryUp', () => {
+      const extSFX = SFX as unknown as {
+        getMusicIntensity: () => MusicIntensityMode;
+        setMusicIntensity: (mode: MusicIntensityMode) => void;
+        masteryUp: () => void;
+      };
+      expect(typeof extSFX.getMusicIntensity).toBe('function');
+      expect(typeof extSFX.setMusicIntensity).toBe('function');
+      expect(typeof extSFX.masteryUp).toBe('function');
+      expect(() => extSFX.masteryUp()).not.toThrow();
     });
   });
 });

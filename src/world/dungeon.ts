@@ -868,3 +868,40 @@ export function createHomeBaseRoom(): Room {
     trapdoor: false
   };
 }
+
+export interface FloorBountyContract {
+  id: string;
+  floor: number;
+  title: string;
+  desc: string;
+  targetCount: number;
+  scrapReward: number;
+  coinReward: number;
+}
+
+export function getFloorBountyContract(floorNum: number = 1): FloorBountyContract {
+  const safeFloor = Math.max(1, Math.floor(Number(floorNum) || 1));
+  switch (safeFloor) {
+    case 1:
+      return { id: 'GRAZE_INITIATE', floor: 1, title: 'NEON DAREDEVIL', desc: 'Graze 3 enemy projectiles or clear Floor 1 Boss', targetCount: 3, scrapReward: 8, coinReward: 10 };
+    case 2:
+      return { id: 'DRIFT_DEMON', floor: 2, title: 'ASPHALT DRIFTER', desc: 'Trigger 2 Handbrake Drift Boosts or clear Floor 2 Boss', targetCount: 2, scrapReward: 10, coinReward: 14 };
+    case 3:
+      return { id: 'STYLE_HUNTER', floor: 3, title: 'HIGH-OCTANE STYLER', desc: 'Reach Style Rank A in combat or clear Floor 3 Boss', targetCount: 55, scrapReward: 14, coinReward: 18 };
+    case 4:
+      return { id: 'CRYO_SHATTER', floor: 4, title: 'CRYO BREAKER', desc: 'Detonate 2 Cryo/Explosive Barrels or clear Floor 4 Boss', targetCount: 2, scrapReward: 18, coinReward: 22 };
+    case 5:
+      return { id: 'OVERDRIVE_SLAYER', floor: 5, title: 'FORGE EXECUTIONER', desc: 'Achieve a 5x Rampage Killstreak or clear Floor 5 Boss', targetCount: 5, scrapReward: 22, coinReward: 28 };
+    default:
+      return {
+        id: 'VALHALLA_LEGEND',
+        floor: safeFloor,
+        title: 'VALHALLA ASCENDANT',
+        desc: 'Reach Style Rank SS or defeat the Sector Boss',
+        targetCount: 85,
+        scrapReward: 30 + (safeFloor - 6) * 5,
+        coinReward: 40 + (safeFloor - 6) * 8
+      };
+  }
+}
+
