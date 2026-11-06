@@ -36,6 +36,7 @@ import {
   getWeaponMasteryTier,
   getStashSalvageSummary,
   getDowngradeStashItems,
+  getBuildArchetypeSummary,
   type StashSalvageSummary
 } from '../../src/ui/garage';
 
@@ -1010,6 +1011,164 @@ describe('Render & UI Subsystems', () => {
       expect(cards?.[2].getAttribute('data-is-downgrade')).toBe('false');
       // card 3: Standard Frame -> unequipped slot
       expect(cards?.[3].getAttribute('data-is-downgrade')).toBe('false');
+    });
+
+    it('sets data-build-archetype and data-build-archetype-title on #garage-overlay during open() and renders archetype badge', () => {
+      const garage = new GarageController(callbacks);
+      // With default player (maxHp: 6, speedMult: 1, dmgMult: 1, fireRateMult: 1, vampChance: 0)
+      garage.open(false, 1, metaSave, player);
+      const overlay = document.getElementById('garage-overlay');
+      expect(overlay?.getAttribute('data-build-archetype')).toBe('road_freelancer');
+      expect(overlay?.getAttribute('data-build-archetype-title')).toBe('⚙️ ROAD FREELANCER');
+
+      const badge = document.querySelector('.gx-archetype-badge');
+      expect(badge).not.toBeNull();
+      expect(badge?.textContent).toContain('ROAD FREELANCER');
+
+      // Now with vampiric build
+      const vampPlayer = { ...player, vampChance: 0.15 };
+      garage.open(false, 2, metaSave, vampPlayer);
+      expect(overlay?.getAttribute('data-build-archetype')).toBe('vampiric_reaper');
+      expect(overlay?.getAttribute('data-build-archetype-title')).toBe('🩸 VAMPIRIC REAPER');
+
+      // Now with iron juggernaut build
+      const tankPlayer = { ...player, maxHp: 12 };
+      garage.open(false, 3, metaSave, tankPlayer);
+      expect(overlay?.getAttribute('data-build-archetype')).toBe('iron_juggernaut');
+      expect(overlay?.getAttribute('data-build-archetype-title')).toBe('🛡️ IRON JUGGERNAUT');
+
+      // Now with nitro drifter build
+      const speedPlayer = { ...player, speedMult: 1.3 };
+      garage.open(false, 4, metaSave, speedPlayer);
+      expect(overlay?.getAttribute('data-build-archetype')).toBe('nitro_drifter');
+      expect(overlay?.getAttribute('data-build-archetype-title')).toBe('🏎️ NITRO DRIFTER');
+
+      // Now with hellfire gunner build
+      const gunnerPlayer = { ...player, dmgMult: 1.4 };
+      garage.open(false, 5, metaSave, gunnerPlayer);
+      expect(overlay?.getAttribute('data-build-archetype')).toBe('hellfire_gunner');
+      expect(overlay?.getAttribute('data-build-archetype-title')).toBe('🔥 HELLFIRE GUNNER');
+    });
+  });
+
+  describe('Garage Build Archetype Classification (getBuildArchetypeSummary)', () => {
+    it('classifies as vampiric_reaper when siphon >= 0.12 or vampChance >= 0.12', () => {
+      const res1 = getBuildArchetypeSummary({ siphon: 0.15 } as any);
+      expect(res1.id).toBe('vampiric_reaper');
+      expect(res1.title).toBe('🩸 VAMPIRIC REAPER');
+      expect(res1.badgeColor).toBe('#ff1f4b');
+      expect(res1.description).toContain('High-siphon hull regeneration');
+
+      const res2 = getBuildArchetypeSummary({ vampChance: 0.12 } as any);
+      expect(res2.id).toBe('vampiric_reaper');
+      expect(res2.title).toBe('🩸 VAMPIRIC REAPER');
+    });
+
+    it('classifies as iron_juggernaut when maxHp >= 10', () => {
+      const res = getBuildArchetypeSummary({ maxHp: 10 } as any);
+      expect(res.id).toBe('iron_juggernaut');
+      expect(res.title).toBe('🛡️ IRON JUGGERNAUT');
+      expect(res.badgeColor).toBe('#00f5d4');
+      expect(res.description).toContain('Heavy-armored tank chassis');
+
+      const resHigh = getBuildArchetypeSummary({ maxHp: 14 } as any);
+      expect(resHigh.id).toBe('iron_juggernaut');
+    });
+
+    it('classifies as nitro_drifter when speedMult >= 1.25', () => {
+      const res = getBuildArchetypeSummary({ speedMult: 1.25 } as any);
+      expect(res.id).toBe('nitro_drifter');
+      expect(res.title).toBe('🏎️ NITRO DRIFTER');
+      expect(res.badgeColor).toBe('#ffd60a');
+      expect(res.description).toContain('High-velocity powerslide specialist');
+
+      const resBoosted = getBuildArchetypeSummary({ speedMult: 1.4 } as any);
+      expect(resBoosted.id).toBe('nitro_drifter');
+    });
+
+    it('classifies as hellfire_gunner when dmgMult >= 1.35 or fireRateMult >= 1.35', () => {
+      const resDmg = getBuildArchetypeSummary({ dmgMult: 1.35 } as any);
+      expect(resDmg.id).toBe('hellfire_gunner');
+      expect(resDmg.title).toBe('🔥 HELLFIRE GUNNER');
+      expect(resDmg.badgeColor).toBe('#ff5400');
+      expect(resDmg.description).toContain('Overclocked ordnance build');
+
+      const resFire = getBuildArchetypeSummary({ fireRateMult: 1.35 } as any);
+      expect(resFire.id).toBe('hellfire_gunner');
+
+      const resBoth = getBuildArchetypeSummary({ dmgMult: 1.4, fireRateMult: 1.5 } as any);
+      expect(resBoth.id).toBe('hellfire_gunner');
+    });
+
+    it('classifies as road_freelancer for baseline, sub-threshold, empty, or undefined player', () => {
+      const resDefault = getBuildArchetypeSummary();
+      expect(resDefault.id).toBe('road_freelancer');
+      expect(resDefault.title).toBe('⚙️ ROAD FREELANCER');
+      expect(resDefault.badgeColor).toBe('#a8dadc');
+      expect(resDefault.description).toContain('Balanced outlaw interceptor');
+
+      const resNull = getBuildArchetypeSummary(null);
+      expect(resNull.id).toBe('road_freelancer');
+
+      const resEmpty = getBuildArchetypeSummary({} as any);
+      expect(resEmpty.id).toBe('road_freelancer');
+
+      const resSubThreshold = getBuildArchetypeSummary({
+        maxHp: 8,
+        speedMult: 1.2,
+        dmgMult: 1.25,
+        fireRateMult: 1.1,
+        siphon: 0.05
+      } as any);
+      expect(resSubThreshold.id).toBe('road_freelancer');
+    });
+
+    describe('Precedence Rules', () => {
+      it('prioritizes vampiric_reaper over iron_juggernaut, nitro_drifter, and hellfire_gunner', () => {
+        const omniPlayer = {
+          siphon: 0.15,
+          maxHp: 12,
+          speedMult: 1.5,
+          dmgMult: 1.5,
+          fireRateMult: 1.5
+        } as any;
+        const res = getBuildArchetypeSummary(omniPlayer);
+        expect(res.id).toBe('vampiric_reaper');
+      });
+
+      it('prioritizes iron_juggernaut over nitro_drifter and hellfire_gunner when siphon < 0.12', () => {
+        const tankSpeedPlayer = {
+          siphon: 0.05,
+          maxHp: 10,
+          speedMult: 1.35,
+          dmgMult: 1.5
+        } as any;
+        const res = getBuildArchetypeSummary(tankSpeedPlayer);
+        expect(res.id).toBe('iron_juggernaut');
+      });
+
+      it('prioritizes nitro_drifter over hellfire_gunner when siphon < 0.12 and maxHp < 10', () => {
+        const speedGunnerPlayer = {
+          siphon: 0,
+          maxHp: 8,
+          speedMult: 1.25,
+          dmgMult: 1.5,
+          fireRateMult: 1.5
+        } as any;
+        const res = getBuildArchetypeSummary(speedGunnerPlayer);
+        expect(res.id).toBe('nitro_drifter');
+      });
+
+      it('prioritizes hellfire_gunner over road_freelancer when speedMult < 1.25 and maxHp < 10', () => {
+        const gunnerPlayer = {
+          siphon: 0,
+          maxHp: 6,
+          speedMult: 1.1,
+          dmgMult: 1.35
+        } as any;
+        const res = getBuildArchetypeSummary(gunnerPlayer);
+        expect(res.id).toBe('hellfire_gunner');
+      });
     });
   });
 

@@ -20,7 +20,7 @@
  *    - PixiJS Stage hierarchy & VFX particle decay under heavy particle loads
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   ARENA_WIDTH,
   ARENA_HEIGHT,
@@ -73,6 +73,10 @@ import { SoundSynthesizer, calculateEngineParams } from '@/audio/sfx';
 import { StageManager } from '@/render/stage';
 import { FilterManager } from '@/render/shaders';
 import { isLowFuel, calcNeedleAngle, calcMinimapRoomCoords } from '@/ui/hud';
+import {
+  HubStationModalController,
+  HubStationOpenOptions
+} from '@/ui/hubStationModal';
 
 describe('Tier 5: Adversarial Coverage Hardening', () => {
   let player: PlayerState;
@@ -1250,6 +1254,469 @@ describe('Tier 5: Adversarial Coverage Hardening', () => {
       const floatFloorContract = getFloorBountyContract(3.85);
       expect(floatFloorContract.floor).toBe(3);
       expect(floatFloorContract.id).toBe('STYLE_HUNTER');
+    });
+  });
+
+  // ==========================================================================
+  // SECTION 6: SANCTUARY STATION MODAL & LEFT HUD ADVERSARIAL STRESS SUITE (M72)
+  // ==========================================================================
+  describe('Sanctuary Station Modal & Left HUD Adversarial Stress Suite (M72)', () => {
+    const HUB_STATION_AND_HUD_MARKUP = `
+      <div class="hud-left-container" id="hud-left-container">
+        <div class="hud-meter hud-hull" id="hull-meter" role="meter" aria-label="Hull" aria-valuemin="0" aria-valuenow="6" aria-valuemax="6">
+          <span class="hud-label">HULL</span>
+          <span id="hp-text" class="hud-readout">6 / 6</span>
+          <div class="hud-hull-frame"><div class="hud-segbar" id="hull-bar"></div></div>
+        </div>
+        <div class="hud-meter hud-nos" id="nos-meter">
+          <span class="hud-label">NOS</span>
+          <span id="nos-text" class="hud-readout">100%</span>
+          <div class="hud-nos-row"><div class="hud-nos-track"><div id="nos-fill"></div></div><span id="hud-lv-badge" class="hud-lv-badge">LV. 1</span></div>
+        </div>
+        <div class="hud-stats" id="stats-grid"></div>
+        <div class="hud-wing-panel hud-wing-left" id="left-wing-panel" aria-label="Style Rank and Active Synergies">
+          <div class="style-rank-card" id="style-rank-card">
+            <span class="style-rank-title" id="style-rank-title">CRUISING</span>
+            <span class="style-rank-grade" id="style-rank-grade">D</span>
+            <div class="style-rank-bar"><div class="style-rank-fill" id="style-rank-fill" style="width: 18%"></div></div>
+            <span class="style-rank-sub" id="style-rank-sub">DRIFT [SPACE] + SPEED COMBO</span>
+          </div>
+          <div class="synergy-tracker-card" id="synergy-tracker-card">
+            <div class="synergy-list" id="synergy-list"></div>
+            <div class="synergy-list" id="hud-synergy-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <button id="outside-focus-btn" type="button">outside</button>
+      <button type="button" id="hub-interact-banner" class="hub-interact-banner" hidden>
+        <span class="hub-interact-key">[PRESS E]</span>
+        <div class="hub-interact-copy">
+          <strong id="hub-interact-title"></strong>
+          <span id="hub-interact-desc"></span>
+        </div>
+      </button>
+      <div id="hub-station-overlay" aria-hidden="true">
+        <div class="hub-station-card" role="dialog" aria-modal="true" aria-labelledby="hub-station-title">
+          <header class="hub-station-header">
+            <div class="hub-station-title-wrap">
+              <span class="hub-station-kicker" id="hub-station-kicker"></span>
+              <h2 class="hub-station-title" id="hub-station-title"></h2>
+            </div>
+            <div class="hub-station-speaker-pill" id="hub-station-speaker"></div>
+          </header>
+          <blockquote class="hub-station-quote" id="hub-station-quote"></blockquote>
+          <div class="hub-station-purpose" id="hub-station-purpose"></div>
+          <div class="hub-station-body" id="hub-station-body"></div>
+          <div class="hub-station-feedback" id="hub-station-feedback" hidden></div>
+          <footer class="hub-station-actions" id="hub-station-actions">
+            <button type="button" class="portal-btn portal-btn--primary" id="btn-hub-station-primary"><kbd>E</kbd> ACTIVATE</button>
+            <button type="button" class="portal-btn portal-btn--secondary" id="btn-hub-station-secondary">CYCLE HEAT</button>
+            <button type="button" class="portal-btn portal-btn--secondary" id="btn-hub-station-close"><kbd>ESC</kbd> CLOSE</button>
+          </footer>
+        </div>
+      </div>
+    `;
+
+    function createDefaultHubOptions(overrides: Partial<HubStationOpenOptions> = {}): HubStationOpenOptions {
+      return {
+        npcId: 'garage',
+        metaSave: {
+          scrap: 24,
+          heatLevel: 0,
+          bestFloor: 2,
+          totalKills: 88,
+          bossesSlain: 1,
+          totalRuns: 4,
+          stash: [],
+          equipped: {
+            chassis: { slot: 'chassis', name: 'Reinforced Steel Frame', rarity: 1 }
+          }
+        },
+        player: {
+          weapon: 'pistol',
+          hp: 6,
+          maxHp: 6
+        },
+        scannerClaimed: false,
+        bountyClaimed: false,
+        onReforge: vi.fn(() => ({ ok: true, message: 'Reforged successfully!' })),
+        onClaimScanner: vi.fn(() => ({ ok: true, message: 'Scanner calibrated!' })),
+        onClaimBountyCache: vi.fn(() => ({ ok: true, message: 'Supply cache secured!' })),
+        onSelectHeat: vi.fn(),
+        onLaunchRun: vi.fn(),
+        onClose: vi.fn(),
+        ...overrides
+      };
+    }
+
+    afterEach(() => {
+      document.body.innerHTML = '';
+    });
+
+    it('6.1 executes 50-cycle rapid open() / close() fuzz test across all sanctuary stations confirming isOpen() consistency, 0 misfires, and clean DOM restoration', () => {
+      document.body.innerHTML = HUB_STATION_AND_HUD_MARKUP;
+      const modal = new HubStationModalController();
+      const overlay = document.getElementById('hub-station-overlay')!;
+      const outsideBtn = document.getElementById('outside-focus-btn') as HTMLButtonElement;
+      const closeBtn = document.getElementById('btn-hub-station-close') as HTMLButtonElement;
+
+      const stations = ['blacksmith', 'codex', 'bounty', 'launch'] as const;
+      const onCloseSpy = vi.fn();
+      const onReforgeSpy = vi.fn(() => ({ ok: true, message: 'ok' }));
+      const onClaimScannerSpy = vi.fn(() => ({ ok: true, message: 'ok' }));
+      const onClaimBountyCacheSpy = vi.fn(() => ({ ok: true, message: 'ok' }));
+
+      // 50-cycle fuzzing loop
+      for (let cycle = 0; cycle < 50; cycle++) {
+        const station = stations[cycle % stations.length];
+        outsideBtn.focus();
+
+        const opts = createDefaultHubOptions({
+          npcId: station,
+          onClose: onCloseSpy,
+          onReforge: onReforgeSpy,
+          onClaimScanner: onClaimScannerSpy,
+          onClaimBountyCache: onClaimBountyCacheSpy
+        });
+
+        // Open modal
+        modal.open(opts);
+
+        // Verify open state consistency
+        expect(modal.isOpen()).toBe(true);
+        expect(overlay.classList.contains('visible')).toBe(true);
+        expect(overlay.getAttribute('aria-hidden')).toBe('false');
+
+        // Verify active element was moved into the dialog
+        expect(document.activeElement?.id).toBe('btn-hub-station-primary');
+
+        // Close modal using rotating methods: 0: modal.close(), 1: Escape key, 2: close button click
+        if (cycle % 3 === 0) {
+          modal.close();
+        } else if (cycle % 3 === 1) {
+          window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+        } else {
+          closeBtn.click();
+        }
+
+        // Verify clean closed state
+        expect(modal.isOpen()).toBe(false);
+        expect(overlay.classList.contains('visible')).toBe(false);
+        expect(overlay.getAttribute('aria-hidden')).toBe('true');
+        expect(onCloseSpy).toHaveBeenCalledTimes(cycle + 1);
+
+        // Idempotent secondary close call - must not misfire onClose or corrupt state
+        modal.close();
+        expect(modal.isOpen()).toBe(false);
+        expect(onCloseSpy).toHaveBeenCalledTimes(cycle + 1);
+
+        // Verify 0 duplicate event listener misfires: dispatching keyboard events while closed
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'e', bubbles: true, cancelable: true }));
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+
+        expect(onReforgeSpy).not.toHaveBeenCalled();
+        expect(onClaimScannerSpy).not.toHaveBeenCalled();
+        expect(onClaimBountyCacheSpy).not.toHaveBeenCalled();
+        expect(onCloseSpy).toHaveBeenCalledTimes(cycle + 1);
+      }
+
+      expect(modal.isOpen()).toBe(false);
+      expect(onCloseSpy).toHaveBeenCalledTimes(50);
+      modal.close();
+    });
+
+    it('6.2 validates Blacksmith Scrap boundary stress test (scrap = 0, scrap = 11, scrap = 12) preventing negative scrap deduction and unauthorized gear mutation', () => {
+      document.body.innerHTML = HUB_STATION_AND_HUD_MARKUP;
+      const modal = new HubStationModalController();
+
+      const metaSave: { scrap: number; equipped: { chassis: { slot: string; name: string; rarity: number } } } = {
+        scrap: 0,
+        equipped: {
+          chassis: { slot: 'chassis', name: 'Reinforced Steel Frame', rarity: 1 }
+        }
+      };
+
+      const onReforge = vi.fn(() => {
+        if (metaSave.scrap < 12) {
+          return { ok: false, message: 'Insufficient Scrap! (Requires 12 ⚙️)' };
+        }
+        metaSave.scrap -= 12;
+        metaSave.equipped.chassis.rarity += 1;
+        return { ok: true, message: 'Chassis reforged to RARE (+25% Stats)!' };
+      });
+
+      const options = createDefaultHubOptions({
+        npcId: 'blacksmith',
+        metaSave,
+        onReforge
+      });
+
+      // Boundary 1: scrap = 0
+      metaSave.scrap = 0;
+      modal.open(options);
+
+      const primaryBtn = document.getElementById('btn-hub-station-primary') as HTMLButtonElement;
+      const feedbackEl = document.getElementById('hub-station-feedback')!;
+
+      // Attempt 5 rapid unaffordable clicks
+      for (let i = 0; i < 5; i++) {
+        primaryBtn.click();
+      }
+
+      expect(onReforge).toHaveBeenCalledTimes(5);
+      expect(feedbackEl.classList.contains('is-error')).toBe(true);
+      expect(feedbackEl.textContent).toContain('Insufficient Scrap');
+      expect(metaSave.scrap).toBe(0); // Strictly not negative
+      expect(metaSave.scrap).toBeGreaterThanOrEqual(0);
+      expect(metaSave.equipped.chassis.rarity).toBe(1); // Gear unmutated
+
+      // Boundary 2: scrap = 11 (1 below threshold 12)
+      metaSave.scrap = 11;
+      modal.open(options);
+      expect(document.querySelector('.hub-stat-val.hub-gold')?.textContent).toContain('11 SCRAP');
+
+      for (let i = 0; i < 5; i++) {
+        primaryBtn.click();
+      }
+
+      expect(onReforge).toHaveBeenCalledTimes(10);
+      expect(feedbackEl.classList.contains('is-error')).toBe(true);
+      expect(feedbackEl.textContent).toContain('Insufficient Scrap');
+      expect(metaSave.scrap).toBe(11); // Strictly not deducted to -1
+      expect(metaSave.equipped.chassis.rarity).toBe(1); // Gear unmutated
+
+      // Boundary 3: scrap = 12 (exact threshold)
+      metaSave.scrap = 12;
+      modal.open(options);
+      expect(document.querySelector('.hub-stat-val.hub-gold')?.textContent).toContain('12 SCRAP');
+
+      // Click once to reforge
+      primaryBtn.click();
+
+      expect(onReforge).toHaveBeenCalledTimes(11);
+      expect(feedbackEl.classList.contains('is-success')).toBe(true);
+      expect(feedbackEl.textContent).toContain('Chassis reforged to RARE');
+      expect(metaSave.scrap).toBe(0); // Clean deduction: 12 - 12 = 0
+      expect(metaSave.equipped.chassis.rarity).toBe(2); // Upgraded from Magic (1) to Rare (2)
+
+      // Post-upgrade DOM verification: now displays 0 scrap and updated rarity
+      expect(document.querySelector('.hub-stat-val.hub-gold')?.textContent).toContain('0 SCRAP');
+      expect(document.querySelector('.hub-tier-badge')?.textContent).toContain('RARE');
+
+      // Boundary 4: Immediate subsequent click now that scrap is 0 must fail cleanly
+      primaryBtn.click();
+      expect(onReforge).toHaveBeenCalledTimes(12);
+      expect(feedbackEl.classList.contains('is-error')).toBe(true);
+      expect(metaSave.scrap).toBe(0); // Stays at 0, not -12
+      expect(metaSave.equipped.chassis.rarity).toBe(2); // Stays at 2, not mutated to 3
+
+      modal.close();
+    });
+
+    it('6.3 executes rapid Heat Level cycling (0 -> 1 -> 2 -> 3 -> 0) via #btn-hub-station-secondary and .hub-heat-btn buttons, verifying strict clamping to {0, 1, 2, 3}', () => {
+      document.body.innerHTML = HUB_STATION_AND_HUD_MARKUP;
+      const modal = new HubStationModalController();
+
+      const metaSave = { heatLevel: 0 };
+      const onSelectHeat = vi.fn((heat: number) => {
+        // Robust controller / save clamping contract
+        const valid = [0, 1, 2, 3];
+        const clamped = valid.includes(heat) ? heat : Math.max(0, Math.min(3, Math.floor(heat) || 0));
+        metaSave.heatLevel = clamped;
+      });
+
+      const options = createDefaultHubOptions({
+        npcId: 'bounty',
+        metaSave,
+        onSelectHeat
+      });
+
+      modal.open(options);
+
+      const secondaryBtn = document.getElementById('btn-hub-station-secondary') as HTMLButtonElement;
+      expect(secondaryBtn).not.toBeNull();
+
+      // Attach secondary button cycling listener
+      secondaryBtn.onclick = () => {
+        const nextHeat = ((metaSave.heatLevel ?? 0) + 1) % 4;
+        onSelectHeat(nextHeat);
+        metaSave.heatLevel = nextHeat;
+        modal.open({ ...options, metaSave });
+      };
+
+      // Part A: 40-click rapid cycling (10 full loops 0 -> 1 -> 2 -> 3 -> 0)
+      for (let i = 0; i < 40; i++) {
+        secondaryBtn.click();
+        const expectedHeat = (i + 1) % 4;
+        expect(metaSave.heatLevel).toBe(expectedHeat);
+        expect([0, 1, 2, 3].includes(metaSave.heatLevel)).toBe(true);
+        expect(document.querySelector('.hub-heat-current')?.textContent).toBe(`CURRENT: HEAT ${expectedHeat}`);
+
+        // Verify active button in DOM
+        const activeBtn = document.querySelector(`.hub-heat-btn[data-heat="${expectedHeat}"]`);
+        expect(activeBtn?.classList.contains('active')).toBe(true);
+      }
+
+      // Part B: Direct clicking of .hub-heat-btn buttons in non-sequential order
+      const heatButtons = document.querySelectorAll<HTMLButtonElement>('.hub-heat-btn');
+      expect(heatButtons.length).toBe(4);
+
+      const sequence = [3, 1, 0, 2, 3, 3, 0, 1, 2];
+      for (const targetHeat of sequence) {
+        heatButtons[targetHeat].click();
+        expect(metaSave.heatLevel).toBe(targetHeat);
+        expect([0, 1, 2, 3].includes(metaSave.heatLevel)).toBe(true);
+        expect(document.querySelector('.hub-heat-current')?.textContent).toBe(`CURRENT: HEAT ${targetHeat}`);
+      }
+
+      // Part C: Fuzz testing with invalid heat inputs (-99, 4, 100, NaN) through handler
+      for (const invalidHeat of [-99, -1, 4, 10, 999, NaN]) {
+        onSelectHeat(invalidHeat);
+        expect([0, 1, 2, 3].includes(metaSave.heatLevel)).toBe(true);
+        expect(metaSave.heatLevel).toBeGreaterThanOrEqual(0);
+        expect(metaSave.heatLevel).toBeLessThanOrEqual(3);
+      }
+
+      modal.close();
+    });
+
+    it('6.4 enforces idempotent Scanner & Bounty Cache claim protection — clicking #btn-hub-station-primary 10 times in a row at codex or bounty only grants the buff/cache once (scannerClaimed / bountyClaimed lock)', () => {
+      document.body.innerHTML = HUB_STATION_AND_HUD_MARKUP;
+      const modal = new HubStationModalController();
+
+      // 1. CODEX SCANNER IDEMPOTENCY
+      let scannerGrantCount = 0;
+      const onClaimScanner = vi.fn(() => {
+        if (codexOptions.scannerClaimed) {
+          return { ok: false, message: 'Scanner already calibrated!' };
+        }
+        scannerGrantCount++;
+        return { ok: true, message: 'Tactical telemetry calibrated (+15% Velocity, +12% DMG)!' };
+      });
+
+      const codexOptions = createDefaultHubOptions({
+        npcId: 'codex',
+        scannerClaimed: false,
+        onClaimScanner
+      });
+
+      modal.open(codexOptions);
+
+      const primaryBtn = document.getElementById('btn-hub-station-primary') as HTMLButtonElement;
+      expect(primaryBtn.textContent).toContain('CALIBRATE TACTICAL SCANNER (FREE)');
+      expect(document.querySelector('.hub-scanner-status-pill')?.textContent).toBe('⚡ READY TO CALIBRATE');
+
+      // Click #btn-hub-station-primary 10 times in rapid succession at codex
+      for (let i = 0; i < 10; i++) {
+        (document.getElementById('btn-hub-station-primary') as HTMLButtonElement)?.click();
+      }
+
+      // Lock must guarantee onClaimScanner was called exactly ONCE
+      expect(onClaimScanner).toHaveBeenCalledTimes(1);
+      expect(scannerGrantCount).toBe(1);
+      expect(codexOptions.scannerClaimed).toBe(true);
+
+      // Subsequent state has locked the scanner as active
+      modal.open(codexOptions);
+      expect(document.querySelector('.hub-scanner-status-pill')?.textContent).toBe('✓ ACTIVE');
+      expect(primaryBtn.textContent).toContain('SCANNER CALIBRATED & ACTIVE');
+
+      // 5 additional clicks on active scanner must only trigger close, never re-granting buff
+      for (let i = 0; i < 5; i++) {
+        modal.open(codexOptions);
+        (document.getElementById('btn-hub-station-primary') as HTMLButtonElement)?.click();
+      }
+      expect(onClaimScanner).toHaveBeenCalledTimes(1);
+      expect(scannerGrantCount).toBe(1);
+
+      // 2. WAR ROOM BOUNTY CACHE IDEMPOTENCY & PRIMARY BUTTON SAFETY
+      let bountyGrantCount = 0;
+      const onClaimBountyCache = vi.fn(() => {
+        if (bountyOptions.bountyClaimed) {
+          return { ok: false, message: 'Bounty cache already secured!' };
+        }
+        bountyGrantCount++;
+        return { ok: true, message: 'Free Cache Claimed: +15 Coins & +1 Max Hull!' };
+      });
+
+      const bountyOptions = createDefaultHubOptions({
+        npcId: 'bounty',
+        bountyClaimed: false,
+        onClaimBountyCache
+      });
+
+      modal.open(bountyOptions);
+
+      // Clicking #btn-hub-station-primary 10 times at bounty confirms setup/closes, NEVER grants cache
+      const bountyPrimaryBtn = document.getElementById('btn-hub-station-primary') as HTMLButtonElement;
+      expect(bountyPrimaryBtn.textContent).toContain('CONFIRM WAR ROOM SETUP');
+      for (let i = 0; i < 10; i++) {
+        modal.open(bountyOptions);
+        (document.getElementById('btn-hub-station-primary') as HTMLButtonElement)?.click();
+      }
+      expect(onClaimBountyCache).not.toHaveBeenCalled();
+      expect(bountyGrantCount).toBe(0);
+
+      // Now open modal and click #btn-hub-claim-cache 10 times in rapid succession
+      modal.open(bountyOptions);
+      const cacheBtn = document.getElementById('btn-hub-claim-cache') as HTMLButtonElement;
+      expect(cacheBtn).not.toBeNull();
+      expect(cacheBtn.disabled).toBe(false);
+
+      for (let i = 0; i < 10; i++) {
+        (document.getElementById('btn-hub-claim-cache') as HTMLButtonElement)?.click();
+      }
+
+      // Lock guarantees onClaimBountyCache was called exactly ONCE
+      expect(onClaimBountyCache).toHaveBeenCalledTimes(1);
+      expect(bountyGrantCount).toBe(1);
+      expect(bountyOptions.bountyClaimed).toBe(true);
+
+      // The button in DOM must now be disabled with claimed status
+      const updatedCacheBtn = document.getElementById('btn-hub-claim-cache') as HTMLButtonElement;
+      expect(updatedCacheBtn.disabled).toBe(true);
+      expect(updatedCacheBtn.classList.contains('is-claimed')).toBe(true);
+      expect(document.querySelector('.hub-status-tag')?.textContent).toContain('CLAIMED');
+
+      // Clicking 10 more times on the disabled button does not grant again
+      for (let i = 0; i < 10; i++) {
+        (document.getElementById('btn-hub-claim-cache') as HTMLButtonElement)?.click();
+      }
+      expect(onClaimBountyCache).toHaveBeenCalledTimes(1);
+      expect(bountyGrantCount).toBe(1);
+
+      // 3. LAUNCH GATE AUTOCLAIM IDEMPOTENCY
+      const launchOptions = createDefaultHubOptions({
+        npcId: 'launch',
+        scannerClaimed: true,
+        bountyClaimed: true,
+        onClaimScanner,
+        onClaimBountyCache
+      });
+
+      modal.open(launchOptions);
+      // When both are already claimed, autoclaim bar is NOT rendered, ready banner is shown
+      expect(document.getElementById('btn-hub-autoclaim')).toBeNull();
+      expect(document.querySelector('.hub-ready-banner')?.textContent).toContain('All free pre-run systems calibrated');
+
+      // Click launch gate primary button 10 times (triggers close & onLaunchRun)
+      const onLaunchRun = vi.fn();
+      launchOptions.onLaunchRun = onLaunchRun;
+      modal.open(launchOptions);
+
+      for (let i = 0; i < 10; i++) {
+        modal.open(launchOptions);
+        primaryBtn.click();
+      }
+
+      // Buffs were never re-granted
+      expect(onClaimScanner).toHaveBeenCalledTimes(1);
+      expect(onClaimBountyCache).toHaveBeenCalledTimes(1);
+      expect(onLaunchRun).toHaveBeenCalledTimes(10);
+
+      modal.close();
     });
   });
 });

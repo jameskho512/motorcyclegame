@@ -29,6 +29,7 @@ import {
 } from './icons';
 import { formatWeaponMasteryHint, formatStyleRankTooltip } from './tooltip';
 import { getFloorBountyContract, getRoomHazardSummary, type RoomHazardSummary } from '@/world/dungeon';
+import { getCombatOffenseSummary } from '@/systems/combat';
 
 export type DungeonGrid = Dungeon;
 export type { RoomHazardSummary };
@@ -1394,13 +1395,27 @@ export class HUDController {
     const statsGrid = document.getElementById('stats-grid');
     if (statsGrid) {
       statsGrid.innerHTML = `
-        <div class="stat-item" title="Damage"><span>DMG</span><strong>${Math.round(player.dmgMult * 100)}%</strong></div>
+        <div class="stat-item" id="stat-dmg" title="Damage"><span>DMG</span><strong>${Math.round(player.dmgMult * 100)}%</strong></div>
         <div class="stat-item" title="Fire Rate"><span>RATE</span><strong>${Math.round(player.fireRateMult * 100)}%</strong></div>
         <div class="stat-item" title="Bike Speed"><span>SPD</span><strong>${Math.round(player.speedMult * 100)}%</strong></div>
         <div class="stat-item" title="Projectiles"><span>PROJ</span><strong>x${player.multiShot}</strong></div>
         <div class="stat-item" title="Pierce / Bounce"><span>PRC/BNC</span><strong>${player.pierce}/${player.bounce}</strong></div>
         <div class="stat-item" title="Siphon"><span>SIPHON</span><strong>${Math.round(player.vampChance * 100)}%</strong></div>
       `;
+    }
+
+    // Combat offense & siphon sustain telemetry attributes (M70)
+    const offense = getCombatOffenseSummary(player);
+    const offenseTargets = [
+      document.getElementById('hud-left'),
+      document.getElementById('stat-dmg')
+    ];
+    for (const el of offenseTargets) {
+      if (el) {
+        el.setAttribute('data-effective-dps', String(offense.effectiveDpsMult));
+        el.setAttribute('data-siphon-status', offense.siphonStatus);
+        el.setAttribute('data-offense-summary', offense.summaryLine);
+      }
     }
 
     // 6. Installed Run Mods & RoR2 Item Stacks (High-Fidelity Die-Cut Vinyl Stickers)

@@ -44,6 +44,7 @@ import {
   getPortalRiskAssessment,
   getNextSectorBriefing
 } from '@/ui/portalModal';
+import { HUDController } from '@/ui/hud';
 
 describe('Adversarial Challenge 1: Type Strictness & Untyped Any Audit', () => {
   it('scans all src/ TypeScript files for ts-ignore, ts-expect-error, and ts-nocheck directives', () => {
@@ -818,5 +819,155 @@ describe('Adversarial Challenge 4: Stress Testing Run Mod Clamps', () => {
       // 95 + 0.5 * 12 = 101, capped at 100
       expect(player.nos).toBe(100);
     });
+  });
+});
+
+describe('Adversarial Challenge 8: HUD Combat Offense Telemetry Attributes (M70)', () => {
+  function createTestPlayer(overrides: Partial<PlayerState> = {}): PlayerState {
+    return {
+      x: ARENA_WIDTH / 2,
+      y: ARENA_HEIGHT / 2,
+      vx: 0,
+      vy: 0,
+      radius: 17,
+      bikeAngle: 0,
+      aimAngle: 0,
+      baseSpeed: 210,
+      hp: 6,
+      maxHp: 6,
+      coins: 0,
+      invuln: 0,
+      weapon: 'pistol',
+      runWeapons: {},
+      fireTimer: 0,
+      dmgMult: 1.0,
+      fireRateMult: 1.0,
+      speedMult: 1.0,
+      projSpeedMult: 1.0,
+      blastMult: 1.0,
+      pierce: 0,
+      bounce: 0,
+      multiShot: 1,
+      vampChance: 0.0,
+      items: [],
+      itemStacks: {},
+      killCount: 0,
+      nos: 100,
+      nosMax: 100,
+      nosLock: false,
+      nosDelay: 0,
+      ...overrides
+    };
+  }
+
+  it('sets baseline telemetry attributes on #hud-left and #stat-dmg elements', () => {
+    document.body.innerHTML = `
+      <div id="hud-left"></div>
+      <div id="stat-dmg"></div>
+    `;
+    const hud = new HUDController();
+    const player = createTestPlayer({
+      weapon: 'pistol',
+      dmgMult: 1.0,
+      fireRateMult: 1.0,
+      multiShot: 1,
+      vampChance: 0
+    });
+
+    hud.updateSidebar(player, 1);
+
+    const hudLeft = document.getElementById('hud-left')!;
+    const statDmg = document.getElementById('stat-dmg')!;
+
+    expect(hudLeft.getAttribute('data-effective-dps')).toBe('1');
+    expect(hudLeft.getAttribute('data-siphon-status')).toBe('NONE');
+    expect(hudLeft.getAttribute('data-offense-summary')).toBe('DPS x1.00 · NONE (0% Siphon)');
+
+    expect(statDmg.getAttribute('data-effective-dps')).toBe('1');
+    expect(statDmg.getAttribute('data-siphon-status')).toBe('NONE');
+    expect(statDmg.getAttribute('data-offense-summary')).toBe('DPS x1.00 · NONE (0% Siphon)');
+  });
+
+  it('sets high-siphon telemetry attributes with VAMPIRIC OVERDRIVE (>= 15%)', () => {
+    document.body.innerHTML = `
+      <div id="hud-left"></div>
+      <div id="stats-grid"></div>
+    `;
+    const hud = new HUDController();
+    const player = createTestPlayer({
+      weapon: 'shotgun',
+      dmgMult: 1.5,
+      fireRateMult: 1.2,
+      multiShot: 2,
+      vampChance: 0.20
+    });
+
+    hud.updateSidebar(player, 2);
+
+    const hudLeft = document.getElementById('hud-left')!;
+    const statDmg = document.getElementById('stat-dmg')!;
+
+    // 1.5 * 1.2 * 2 = 3.6
+    expect(hudLeft.getAttribute('data-effective-dps')).toBe('3.6');
+    expect(hudLeft.getAttribute('data-siphon-status')).toBe('VAMPIRIC OVERDRIVE');
+    expect(hudLeft.getAttribute('data-offense-summary')).toBe('DPS x3.60 · VAMPIRIC OVERDRIVE (20% Siphon)');
+
+    expect(statDmg.getAttribute('data-effective-dps')).toBe('3.6');
+    expect(statDmg.getAttribute('data-siphon-status')).toBe('VAMPIRIC OVERDRIVE');
+    expect(statDmg.getAttribute('data-offense-summary')).toBe('DPS x3.60 · VAMPIRIC OVERDRIVE (20% Siphon)');
+  });
+
+  it('sets evolved weapon overclock telemetry attributes (1.35x bonus and OVERCLOCKED tag)', () => {
+    document.body.innerHTML = `
+      <div id="hud-left"></div>
+      <div id="stat-dmg"></div>
+    `;
+    const hud = new HUDController();
+    // Evolution triggered via 3 passive item stacks
+    const player = createTestPlayer({
+      weapon: 'pistol',
+      dmgMult: 2.0,
+      fireRateMult: 1.0,
+      multiShot: 1,
+      vampChance: 0.08,
+      itemStacks: { item_plating: 3 }
+    });
+
+    hud.updateSidebar(player, 3);
+
+    const hudLeft = document.getElementById('hud-left')!;
+    const statDmg = document.getElementById('stat-dmg')!;
+
+    // 2.0 * 1.0 * 1 * 1.35 = 2.7
+    expect(hudLeft.getAttribute('data-effective-dps')).toBe('2.7');
+    expect(hudLeft.getAttribute('data-siphon-status')).toBe('LIGHT SIPHON');
+    expect(hudLeft.getAttribute('data-offense-summary')).toBe('DPS x2.70 · LIGHT SIPHON (8% Siphon) · OVERCLOCKED');
+
+    expect(statDmg.getAttribute('data-effective-dps')).toBe('2.7');
+    expect(statDmg.getAttribute('data-siphon-status')).toBe('LIGHT SIPHON');
+    expect(statDmg.getAttribute('data-offense-summary')).toBe('DPS x2.70 · LIGHT SIPHON (8% Siphon) · OVERCLOCKED');
+  });
+
+  it('handles DOM permutations defensively (isolated hud-left, isolated stat-dmg, neither present)', () => {
+    const hud = new HUDController();
+    const player = createTestPlayer({ dmgMult: 2.0, fireRateMult: 1.0, multiShot: 1, vampChance: 0.05 });
+
+    // Case 1: only hud-left present
+    document.body.innerHTML = '<div id="hud-left"></div>';
+    expect(() => hud.updateSidebar(player, 1)).not.toThrow();
+    const hudLeft = document.getElementById('hud-left')!;
+    expect(hudLeft.getAttribute('data-effective-dps')).toBe('2');
+    expect(hudLeft.getAttribute('data-siphon-status')).toBe('LIGHT SIPHON');
+
+    // Case 2: only stat-dmg present
+    document.body.innerHTML = '<div id="stat-dmg"></div>';
+    expect(() => hud.updateSidebar(player, 1)).not.toThrow();
+    const statDmg = document.getElementById('stat-dmg')!;
+    expect(statDmg.getAttribute('data-effective-dps')).toBe('2');
+    expect(statDmg.getAttribute('data-siphon-status')).toBe('LIGHT SIPHON');
+
+    // Case 3: neither present
+    document.body.innerHTML = '<div></div>';
+    expect(() => hud.updateSidebar(player, 1)).not.toThrow();
   });
 });

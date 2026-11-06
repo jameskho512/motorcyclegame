@@ -28,7 +28,9 @@ import {
   BOSS_NAMES,
   getEliteAffixTacticalInfo,
   type EliteAffix,
-  type EliteAffixTacticalInfo
+  type EliteAffixTacticalInfo,
+  getRoomThreatAssessment,
+  type RoomThreatAssessment
 } from '../../src/systems/enemyAI';
 import { handleEnemyDeath, createCombatState } from '../../src/systems/combat';
 import type {
@@ -1259,5 +1261,173 @@ describe('Systems: EnemyAI — Elite Affix Tactical Intelligence (M59)', () => {
     expect(info?.colorHex).toBe('#ff5400');
   });
 });
+
+describe('Systems: EnemyAI — Room Combat Threat Assessment (M71)', () => {
+  it('returns CLEAR threat assessment for undefined, null, or empty rooms', () => {
+    const fromUndef = getRoomThreatAssessment(undefined);
+    expect(fromUndef).toEqual<RoomThreatAssessment>({
+      threatScore: 0,
+      threatTier: 'CLEAR',
+      livingCount: 0,
+      eliteCount: 0,
+      hasBoss: false,
+      advisory: 'Sector clear — no active hostiles detected.'
+    });
+
+    const fromNull = getRoomThreatAssessment(null);
+    expect(fromNull.threatTier).toBe('CLEAR');
+    expect(fromNull.threatScore).toBe(0);
+
+    const emptyRoom = createMockRoom({ enemies: [] });
+    const fromEmpty = getRoomThreatAssessment(emptyRoom, 1);
+    expect(fromEmpty.threatTier).toBe('CLEAR');
+    expect(fromEmpty.livingCount).toBe(0);
+    expect(fromEmpty.hasBoss).toBe(false);
+  });
+
+  it('evaluates cleared rooms with dead hostiles as CLEAR threat tier', () => {
+    const deadEnemy1 = createEnemy('swarmer', 100, 100, 1, false, 1);
+    deadEnemy1.hp = 0;
+    const deadEnemy2 = createEnemy('turret', 200, 200, 1, true, 2);
+    deadEnemy2.hp = -15;
+
+    const clearedRoom = createMockRoom({
+      cleared: true,
+      enemies: [deadEnemy1, deadEnemy2]
+    });
+
+    const assessment = getRoomThreatAssessment(clearedRoom, 2);
+    expect(assessment.threatTier).toBe('CLEAR');
+    expect(assessment.threatScore).toBe(0);
+    expect(assessment.livingCount).toBe(0);
+    expect(assessment.eliteCount).toBe(0);
+    expect(assessment.hasBoss).toBe(false);
+    expect(assessment.advisory).toContain('Sector clear');
+  });
+
+  it('treats hub rooms containing only training dummies as CLEAR threat', () => {
+    const dummy1 = createEnemy('swarmer', 300, 300, 1, false, 10);
+    dummy1.isDummy = true;
+    dummy1.hp = 1000;
+
+    const dummy2 = createEnemy('brute', 400, 400, 1, false, 11);
+    dummy2.isDummy = true;
+    dummy2.hp = 5000;
+
+    const hubRoom = createMockRoom({
+      type: 'hub',
+      enemies: [dummy1, dummy2]
+    });
+
+    const assessment = getRoomThreatAssessment(hubRoom, 1);
+    expect(assessment.threatTier).toBe('CLEAR');
+    expect(assessment.threatScore).toBe(0);
+    expect(assessment.livingCount).toBe(0);
+    expect(assessment.eliteCount).toBe(0);
+    expect(assessment.hasBoss).toBe(false);
+  });
+
+  it('evaluates standard skirmishes with proper floor scaling and tier assignment', () => {
+    const swarmer1 = createEnemy('swarmer', 100, 100, 1, false, 101);
+    const swarmer2 = createEnemy('swarmer', 200, 200, 1, false, 102);
+
+    const room = createMockRoom({ enemies: [swarmer1, swarmer2] });
+
+    // Floor 1: livingCount = 2, floorNum = 1 -> score = 2 * (10 + 1 * 2) = 24 -> LOW tier
+    const assessmentF1 = getRoomThreatAssessment(room, 1);
+    expect(assessmentF1.threatTier).toBe('LOW');
+    expect(assessmentF1.livingCount).toBe(2);
+    expect(assessmentF1.eliteCount).toBe(0);
+    expect(assessmentF1.hasBoss).toBe(false);
+    expect(assessmentF1.threatScore).toBe(24);
+    expect(assessmentF1.advisory).toContain('Low threat');
+
+    // Floor 3: score = 2 * (10 + 3 * 2) = 2 * 16 = 32 -> LOW tier
+    const assessmentF3 = getRoomThreatAssessment(room, 3);
+    expect(assessmentF3.threatScore).toBe(32);
+    expect(assessmentF3.threatTier).toBe('LOW');
+
+    // High enemy count without elites pushes score >= 45 -> HIGH tier
+    const swarmers = [1, 2, 3, 4].map((id) => createEnemy('swarmer', 100 * id, 100, 1, false, 200 + id));
+    const denseRoom = createMockRoom({ enemies: swarmers });
+    // Floor 1: 4 * (10 + 2) = 48 >= 45 -> HIGH tier
+    const denseAssessment = getRoomThreatAssessment(denseRoom, 1);
+    expect(denseAssessment.threatScore).toBe(48);
+    expect(denseAssessment.threatTier).toBe('HIGH');
+    expect(denseAssessment.eliteCount).toBe(0);
+    expect(denseAssessment.advisory).toContain('High threat');
+  });
+
+  it('evaluates elite packs and affix enemies as HIGH or APEX threat tier', () => {
+    const eliteSwarmer = createEnemy('swarmer', 150, 150, 1, true, 301);
+    expect(eliteSwarmer.isElite).toBe(true);
+
+    const singleEliteRoom = createMockRoom({ enemies: [eliteSwarmer] });
+    // Floor 1: livingCount = 1, eliteCount = 1 -> score = 1 * 12 + 25 = 37. Since eliteCount > 0 -> HIGH tier
+    const assessmentSingleElite = getRoomThreatAssessment(singleEliteRoom, 1);
+    expect(assessmentSingleElite.threatTier).toBe('HIGH');
+    expect(assessmentSingleElite.livingCount).toBe(1);
+    expect(assessmentSingleElite.eliteCount).toBe(1);
+    expect(assessmentSingleElite.threatScore).toBe(37);
+    expect(assessmentSingleElite.advisory).toContain('elite');
+
+    // Elite detected via eliteAffix property even if isElite is false
+    const affixEnemy = createEnemy('turret', 200, 200, 1, false, 302);
+    (affixEnemy as any).eliteAffix = 'overclocked';
+    const affixRoom = createMockRoom({ enemies: [affixEnemy] });
+    const assessmentAffix = getRoomThreatAssessment(affixRoom, 1);
+    expect(assessmentAffix.eliteCount).toBe(1);
+    expect(assessmentAffix.threatTier).toBe('HIGH');
+
+    // Dangerous elite pack pushing threatScore >= 90 -> APEX tier
+    const elite1 = createEnemy('brute', 100, 100, 1, true, 303);
+    const elite2 = createEnemy('pyro', 200, 200, 1, true, 304);
+    const minion1 = createEnemy('swarmer', 300, 300, 1, false, 305);
+    const minion2 = createEnemy('swarmer', 400, 400, 1, false, 306);
+    // livingCount = 4, eliteCount = 2 on Floor 1:
+    // threatScore = 4 * 12 + 2 * 25 = 48 + 50 = 98 >= 90 -> APEX tier
+    const packRoom = createMockRoom({ enemies: [elite1, elite2, minion1, minion2] });
+    const packAssessment = getRoomThreatAssessment(packRoom, 1);
+    expect(packAssessment.threatScore).toBe(98);
+    expect(packAssessment.threatTier).toBe('APEX');
+    expect(packAssessment.eliteCount).toBe(2);
+    expect(packAssessment.hasBoss).toBe(false);
+    expect(packAssessment.advisory).toContain('Apex threat');
+  });
+
+  it('evaluates boss rooms as APEX threat and handles boss elimination transitions', () => {
+    const boss = createBoss(0, 360, 360, 1);
+    const bossRoom = createMockRoom({ type: 'boss', enemies: [boss] });
+
+    // Solo boss on floor 1: livingCount = 1, hasBoss = true -> threatScore = 1 * 12 + 100 = 112 -> APEX
+    const bossAssessment = getRoomThreatAssessment(bossRoom, 1);
+    expect(bossAssessment.threatTier).toBe('APEX');
+    expect(bossAssessment.hasBoss).toBe(true);
+    expect(bossAssessment.livingCount).toBe(1);
+    expect(bossAssessment.threatScore).toBe(112);
+    expect(bossAssessment.advisory).toContain('Boss');
+
+    // Boss on floor 2 with 2 minions:
+    const minionA = createEnemy('swarmer', 300, 300, 2, false, 401);
+    const minionB = createEnemy('swarmer', 420, 300, 2, false, 402);
+    bossRoom.enemies.push(minionA, minionB);
+    // livingCount = 3, floorNum = 2: 3 * (10 + 4) + 100 = 42 + 100 = 142
+    const reinforcedBossAssessment = getRoomThreatAssessment(bossRoom, 2);
+    expect(reinforcedBossAssessment.threatTier).toBe('APEX');
+    expect(reinforcedBossAssessment.livingCount).toBe(3);
+    expect(reinforcedBossAssessment.threatScore).toBe(142);
+
+    // After defeating the boss, with 1 remaining live minion:
+    boss.hp = 0;
+    minionA.hp = 0;
+    const postBossAssessment = getRoomThreatAssessment(bossRoom, 2);
+    // livingCount = 1, hasBoss = false -> score = 1 * 14 = 14 -> LOW tier
+    expect(postBossAssessment.hasBoss).toBe(false);
+    expect(postBossAssessment.livingCount).toBe(1);
+    expect(postBossAssessment.threatTier).toBe('LOW');
+    expect(postBossAssessment.threatScore).toBe(14);
+  });
+});
+
 
 

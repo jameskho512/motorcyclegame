@@ -1051,3 +1051,109 @@ export function getEliteAffixTacticalInfo(affix?: EliteAffix | null): EliteAffix
   return ELITE_AFFIX_TACTICAL_INFO[affix] ?? null;
 }
 
+// ============================================================================
+// 6. ROOM COMBAT THREAT ASSESSMENT (M71)
+// ============================================================================
+
+export interface RoomThreatAssessment {
+  threatScore: number;
+  threatTier: 'CLEAR' | 'LOW' | 'HIGH' | 'APEX';
+  livingCount: number;
+  eliteCount: number;
+  hasBoss: boolean;
+  advisory: string;
+}
+
+/**
+ * Evaluates the combat threat profile of a room given its active hostiles and current floor number.
+ * Computes living enemy count, elite count, boss presence, threat score, threat tier, and advisory text.
+ * Pure helper function used by tactical HUD, room navigation, and combat telemetry systems.
+ */
+export function getRoomThreatAssessment(
+  room?: Room | null,
+  floorNum: number = 1
+): RoomThreatAssessment {
+  if (!room || !Array.isArray(room.enemies) || room.enemies.length === 0) {
+    return {
+      threatScore: 0,
+      threatTier: 'CLEAR',
+      livingCount: 0,
+      eliteCount: 0,
+      hasBoss: false,
+      advisory: 'Sector clear — no active hostiles detected.'
+    };
+  }
+
+  let livingCount = 0;
+  let eliteCount = 0;
+  let hasBoss = false;
+
+  for (const en of room.enemies) {
+    if (!en) continue;
+    const isLiving = (typeof en.hp === 'number' ? en.hp > 0 : true) && !en.isDummy;
+    if (!isLiving) continue;
+
+    livingCount++;
+    if (en.type === 'boss') {
+      hasBoss = true;
+    }
+    if (Boolean(en.isElite || (en as any).eliteAffix)) {
+      eliteCount++;
+    }
+  }
+
+  if (livingCount === 0) {
+    return {
+      threatScore: 0,
+      threatTier: 'CLEAR',
+      livingCount: 0,
+      eliteCount: 0,
+      hasBoss: false,
+      advisory: 'Sector clear — no active hostiles detected.'
+    };
+  }
+
+  const safeFloor = Math.max(1, Math.floor(floorNum || 1));
+  const threatScore = livingCount * (10 + safeFloor * 2) + eliteCount * 25 + (hasBoss ? 100 : 0);
+
+  let threatTier: 'CLEAR' | 'LOW' | 'HIGH' | 'APEX';
+  if (hasBoss || threatScore >= 90) {
+    threatTier = 'APEX';
+  } else if (eliteCount > 0 || threatScore >= 45) {
+    threatTier = 'HIGH';
+  } else {
+    threatTier = 'LOW';
+  }
+
+  let advisory: string;
+  if (threatTier === 'APEX') {
+    if (hasBoss) {
+      advisory = eliteCount > 0
+        ? `Apex threat: Boss entity engaged with ${eliteCount} elite minion${eliteCount > 1 ? 's' : ''} (${livingCount} total hostile${livingCount === 1 ? '' : 's'}). Maximum evasion advised.`
+        : `Apex threat: Boss encounter active (${livingCount} total hostile${livingCount === 1 ? '' : 's'}). Maximum evasion advised.`;
+    } else {
+      advisory = eliteCount > 0
+        ? `Apex threat: Heavy combat swarm with ${eliteCount} elite${eliteCount > 1 ? 's' : ''} (${livingCount} hostiles). Extreme caution advised.`
+        : `Apex threat: Overwhelming hostile swarm (${livingCount} hostiles). Extreme caution advised.`;
+    }
+  } else if (threatTier === 'HIGH') {
+    if (eliteCount > 0) {
+      advisory = `High threat: ${eliteCount} elite unit${eliteCount > 1 ? 's' : ''} detected (${livingCount} total hostile${livingCount === 1 ? '' : 's'}). Prioritize hardened hostiles.`;
+    } else {
+      advisory = `High threat: Elevated hostile concentration (${livingCount} hostiles). Maintain evasive drift.`;
+    }
+  } else {
+    advisory = `Low threat: Minor skirmish (${livingCount} hostile${livingCount === 1 ? '' : 's'}). Sweep and clear sector.`;
+  }
+
+  return {
+    threatScore,
+    threatTier,
+    livingCount,
+    eliteCount,
+    hasBoss,
+    advisory
+  };
+}
+
+
