@@ -1019,9 +1019,13 @@ export class StageManager {
         const sweep = Math.PI * 1.5;
         const arcColor = (driftCharge >= 0.95 || driftBoostTimer > 0) ? 0x00f5d4 : 0xffd60a;
 
-        g.arc(player.x, player.y, 30, startAngle, startAngle + sweep)
+        const arcStartX = player.x + Math.cos(startAngle) * 30;
+        const arcStartY = player.y + Math.sin(startAngle) * 30;
+        g.moveTo(arcStartX, arcStartY)
+          .arc(player.x, player.y, 30, startAngle, startAngle + sweep)
           .stroke({ color: 0x0a0b10, width: 6, alpha: 0.85 });
-        g.arc(player.x, player.y, 30, startAngle, startAngle + sweep * prog)
+        g.moveTo(arcStartX, arcStartY)
+          .arc(player.x, player.y, 30, startAngle, startAngle + sweep * prog)
           .stroke({ color: arcColor, width: 3.5, alpha: 0.95 });
       }
 
