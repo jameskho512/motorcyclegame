@@ -22,10 +22,12 @@ import {
   HUDController,
   getModStackTierClass,
   updateWeaponDeck,
+  updateModDeck,
   type ModStackTierClass,
   type MinimapFloorSummary,
   type DungeonGrid
 } from '../../src/ui/hud';
+import { getRunModDeckSummary } from '../../src/data/upgrades';
 import { parseColor, drawObstacle } from '../../src/render/vectorArt';
 import { TooltipManager } from '../../src/ui/tooltip';
 import { ShopModalController } from '../../src/ui/shopModal';
@@ -3218,6 +3220,217 @@ describe('Render & UI Subsystems', () => {
       expect(customHud.bossBar?.getAttribute('data-boss-enraged')).toBe('true');
       expect(customHud.bossBar?.getAttribute('data-boss-hp-pct')).toBe('40');
       expect(customHud.bossBar?.getAttribute('data-boss-briefing')).toContain('40% HP');
+    });
+  });
+
+  describe('HUD Active Mod Deck & Duo Synergy Readiness Telemetry (M118)', () => {
+    type TestPlayer = PlayerState & { modStacks?: Record<string, number> };
+    const createBasePlayer = (overrides?: Partial<PlayerState> & { modStacks?: Record<string, number> }): TestPlayer => ({
+      hp: 6,
+      maxHp: 6,
+      coins: 20,
+      nos: 100,
+      nosMax: 100,
+      nosLock: false,
+      items: [],
+      itemStacks: {},
+      modStacks: {},
+      weapon: 'pistol',
+      runWeapons: {},
+      dmgMult: 1.0,
+      fireRateMult: 1.0,
+      speedMult: 1.0,
+      multiShot: 1,
+      pierce: 0,
+      bounce: 0,
+      vampChance: 0,
+      killCount: 0,
+      ...overrides
+    } as unknown as TestPlayer);
+
+    it('populates telemetry on #hud-mods-bar, #hud-synergy-list, and #sidebar for empty mod deck', () => {
+      document.body.innerHTML = `
+        <div id="hud-mods-bar"></div>
+        <div id="hud-synergy-list"></div>
+        <aside id="sidebar"></aside>
+      `;
+
+      const hud = new HUDController();
+      const player = createBasePlayer();
+      const summary = getRunModDeckSummary(player);
+
+      hud.updateModDeckTelemetry(player);
+
+      const modsBar = document.getElementById('hud-mods-bar')!;
+      const synergyEl = document.getElementById('hud-synergy-list')!;
+      const sidebarEl = document.getElementById('sidebar')!;
+
+      for (const el of [modsBar, synergyEl, sidebarEl]) {
+        expect(el.getAttribute('data-mod-total-picks')).toBe('0');
+        expect(el.getAttribute('data-mod-unique-count')).toBe('0');
+        expect(el.getAttribute('data-mod-evo-ready')).toBe('false');
+        expect(el.getAttribute('data-mod-active-duos')).toBe('0');
+        expect(el.getAttribute('data-mod-deck-summary')).toBe(summary.summaryLine);
+        expect(el.getAttribute('data-mod-deck-summary')).toContain('MODS: 0 PICKS (0 UNIQUE)');
+        expect(el.getAttribute('data-mod-deck-summary')).toContain('0/3 MAX STACK');
+        expect(el.getAttribute('data-mod-deck-summary')).toContain('DUOS: 0 ACTIVE');
+      }
+    });
+
+    it('populates telemetry for 2/3 STACK NEAR EVO mod deck state via updateSidebar and updateModDeckTelemetry', () => {
+      document.body.innerHTML = `
+        <div id="mod-bar"></div>
+        <div id="synergy-list"></div>
+        <aside id="hud-sidebar"></aside>
+      `;
+
+      const hud = new HUDController();
+      const player = createBasePlayer({
+        modStacks: {
+          hollow_point: 2,
+          turbo_charger: 1
+        }
+      });
+      const summary = getRunModDeckSummary(player);
+      expect(summary.maxStackCount).toBe(2);
+      expect(summary.evoStackReady).toBe(false);
+      expect(summary.totalModPicks).toBe(3);
+      expect(summary.uniqueModsCount).toBe(2);
+
+      hud.updateSidebar(player, 1);
+
+      const modsBar = document.getElementById('mod-bar')!;
+      const synergyEl = document.getElementById('synergy-list')!;
+      const sidebarEl = document.getElementById('hud-sidebar')!;
+
+      for (const el of [modsBar, synergyEl, sidebarEl]) {
+        expect(el.getAttribute('data-mod-total-picks')).toBe('3');
+        expect(el.getAttribute('data-mod-unique-count')).toBe('2');
+        expect(el.getAttribute('data-mod-evo-ready')).toBe('false');
+        expect(el.getAttribute('data-mod-active-duos')).toBe('0');
+        expect(el.getAttribute('data-mod-deck-summary')).toBe(summary.summaryLine);
+        expect(el.getAttribute('data-mod-deck-summary')).toContain('2/3 STACK NEAR EVO');
+      }
+    });
+
+    it('populates telemetry for 3+ STACK EVO READY mod deck state', () => {
+      document.body.innerHTML = `
+        <div id="hud-mods-bar"></div>
+        <div id="synergy-list"></div>
+      `;
+
+      const hud = new HUDController();
+      const player = createBasePlayer({
+        modStacks: {
+          armor_plate: 3,
+          hair_trigger: 2
+        }
+      });
+      const summary = getRunModDeckSummary(player);
+      expect(summary.evoStackReady).toBe(true);
+      expect(summary.totalModPicks).toBe(5);
+      expect(summary.uniqueModsCount).toBe(2);
+
+      hud.updateModDeckTelemetry(player);
+
+      const modsBar = document.getElementById('hud-mods-bar')!;
+      const synergyEl = document.getElementById('synergy-list')!;
+
+      expect(modsBar.getAttribute('data-mod-total-picks')).toBe('5');
+      expect(modsBar.getAttribute('data-mod-unique-count')).toBe('2');
+      expect(modsBar.getAttribute('data-mod-evo-ready')).toBe('true');
+      expect(modsBar.getAttribute('data-mod-deck-summary')).toContain('3+ STACK EVO READY');
+
+      expect(synergyEl.getAttribute('data-mod-evo-ready')).toBe('true');
+      expect(synergyEl.getAttribute('data-mod-deck-summary')).toContain('3+ STACK EVO READY');
+    });
+
+    it('populates active Duo Synergy telemetry count and summary when synergy conditions are met', () => {
+      document.body.innerHTML = `
+        <div id="hud-mods-bar"></div>
+        <div id="hud-synergy-list"></div>
+      `;
+
+      const hud = new HUDController();
+      // thermal_shock requires cryo (e.g. cryo_rounds) and fire (e.g. high_explosive)
+      const player = createBasePlayer({
+        modStacks: {
+          cryo_rounds: 1,
+          high_explosive: 1
+        }
+      });
+      const summary = getRunModDeckSummary(player);
+      expect(summary.activeDuoCount).toBeGreaterThanOrEqual(1);
+
+      hud.updateModDeckTelemetry(player);
+
+      const modsBar = document.getElementById('hud-mods-bar')!;
+      const synergyEl = document.getElementById('hud-synergy-list')!;
+
+      expect(modsBar.getAttribute('data-mod-active-duos')).toBe(String(summary.activeDuoCount));
+      expect(modsBar.getAttribute('data-mod-deck-summary')).toContain(`DUOS: ${summary.activeDuoCount} ACTIVE`);
+      expect(synergyEl.getAttribute('data-mod-active-duos')).toBe(String(summary.activeDuoCount));
+    });
+
+    it('updates directly assigned modBarEl, synergyListEl, and sidebarEl instances via updateModDeckTelemetry and updateEvolutionMatrix', () => {
+      const customHud = new HUDController();
+      const customModBar = document.createElement('section');
+      const customSynergyList = document.createElement('div');
+      const customSidebar = document.createElement('aside');
+
+      customHud.modBarEl = customModBar;
+      customHud.synergyListEl = customSynergyList;
+      customHud.sidebarEl = customSidebar;
+
+      const player = createBasePlayer({
+        modStacks: {
+          nanite_repair: 3
+        }
+      });
+
+      customHud.updateEvolutionMatrix(player);
+
+      for (const el of [customModBar, customSynergyList, customSidebar]) {
+        expect(el.getAttribute('data-mod-total-picks')).toBe('3');
+        expect(el.getAttribute('data-mod-unique-count')).toBe('1');
+        expect(el.getAttribute('data-mod-evo-ready')).toBe('true');
+        expect(el.getAttribute('data-mod-active-duos')).toBe('0');
+        expect(el.getAttribute('data-mod-deck-summary')).toContain('3+ STACK EVO READY');
+      }
+    });
+
+    it('standalone updateModDeck helper and hud.updateModDeck method update DOM telemetry attributes seamlessly', () => {
+      document.body.innerHTML = `
+        <div id="hud-mods-bar"></div>
+        <div id="hud-synergy-list"></div>
+      `;
+
+      const player = createBasePlayer({
+        modStacks: {
+          split_chamber: 1
+        }
+      });
+
+      updateModDeck(player);
+
+      const modsBar = document.getElementById('hud-mods-bar')!;
+      expect(modsBar.getAttribute('data-mod-total-picks')).toBe('1');
+      expect(modsBar.getAttribute('data-mod-unique-count')).toBe('1');
+      expect(modsBar.getAttribute('data-mod-evo-ready')).toBe('false');
+
+      const hud = new HUDController();
+      hud.updateModDeck(player);
+      expect(modsBar.getAttribute('data-mod-total-picks')).toBe('1');
+    });
+
+    it('handles null / empty DOM gracefully without throwing', () => {
+      document.body.innerHTML = '';
+      const hud = new HUDController();
+      const player = createBasePlayer();
+
+      expect(() => {
+        hud.updateModDeckTelemetry(player);
+      }).not.toThrow();
     });
   });
 });

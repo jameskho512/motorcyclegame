@@ -22,7 +22,7 @@ import {
 } from '../types/game';
 
 import { WEAPONS, WEAPON_EVOLUTIONS, isWeaponEvolved } from '../data/weapons';
-import { DROP_ITEMS, RUN_MOD_POOL, ALL_RUN_MOD_POOL, getActiveDuoSynergies } from '../data/upgrades';
+import { DROP_ITEMS, RUN_MOD_POOL, ALL_RUN_MOD_POOL, getActiveDuoSynergies, getRunModDeckSummary } from '../data/upgrades';
 import {
   WEAPON_HI_FI_SVG,
   DROP_ITEM_HI_FI_SVG,
@@ -276,6 +276,8 @@ export class HUDController {
   public bossHudEl: HTMLElement | null = null;
   public bossSubEl: HTMLElement | null = null;
   public synergyListEl: HTMLElement | null = null;
+  public modBarEl: HTMLElement | null = null;
+  public sidebarEl: HTMLElement | null = null;
 
   constructor(callbacks?: { onSelectWeapon?: (id: WeaponId) => void }) {
     this.onSelectWeapon = callbacks?.onSelectWeapon;
@@ -284,6 +286,8 @@ export class HUDController {
       this.bossBar = (document.getElementById('boss-bar') || document.getElementById('boss-hud')) as HTMLElement | null;
       this.bossSubEl = document.getElementById('boss-hud-sub');
       this.synergyListEl = (document.getElementById('hud-synergy-list') || document.getElementById('synergy-list')) as HTMLElement | null;
+      this.modBarEl = (document.getElementById('hud-mods-bar') || document.getElementById('mod-bar')) as HTMLElement | null;
+      this.sidebarEl = (document.getElementById('sidebar') || document.getElementById('hud-sidebar')) as HTMLElement | null;
       this.fuelGaugeCanvas = document.getElementById('fuel-gauge') as HTMLCanvasElement | null;
       if (this.fuelGaugeCanvas) {
         this.fuelGaugeCtx = this.fuelGaugeCanvas.getContext('2d');
@@ -1377,6 +1381,39 @@ export class HUDController {
   }
 
   /**
+   * Updates Mod Deck & Duo Synergy readiness telemetry attributes (M118) on:
+   * - modsBar (this.modBarEl || #hud-mods-bar || #mod-bar)
+   * - synergyEl (this.synergyListEl || #hud-synergy-list || #synergy-list)
+   * - sidebarEl (this.sidebarEl || #sidebar || #hud-sidebar)
+   */
+  public updateModDeckTelemetry(player: PlayerState): void {
+    const modDeck = getRunModDeckSummary(player);
+    const modsBar = this.modBarEl || (typeof document !== 'undefined' ? document.getElementById('hud-mods-bar') || document.getElementById('mod-bar') : null);
+    const synergyEl = this.synergyListEl || (typeof document !== 'undefined' ? document.getElementById('hud-synergy-list') || document.getElementById('synergy-list') : null);
+    const sidebar = this.sidebarEl || (typeof document !== 'undefined' ? document.getElementById('sidebar') || document.getElementById('hud-sidebar') : null);
+
+    const targets = [modsBar, synergyEl, sidebar].filter(
+      (el, idx, arr) => Boolean(el) && arr.indexOf(el) === idx
+    ) as HTMLElement[];
+
+    for (const el of targets) {
+      el.setAttribute('data-mod-total-picks', String(modDeck.totalModPicks));
+      el.setAttribute('data-mod-unique-count', String(modDeck.uniqueModsCount));
+      el.setAttribute('data-mod-evo-ready', modDeck.evoStackReady ? 'true' : 'false');
+      el.setAttribute('data-mod-active-duos', String(modDeck.activeDuoCount));
+      el.setAttribute('data-mod-deck-summary', modDeck.summaryLine);
+    }
+  }
+
+  public updateModDeck(player: PlayerState): void {
+    this.updateModDeckTelemetry(player);
+  }
+
+  public updateEvolutionMatrix(player: PlayerState): void {
+    this.updateModDeckTelemetry(player);
+  }
+
+  /**
    * Updates HUD DOM widgets: Hull meter, NOS meter, LV badge, stats, currency,
    * high-fidelity weapon cards, die-cut mod stickers, boss bar, and isometric minimap.
    */
@@ -1494,6 +1531,7 @@ export class HUDController {
 
     // 6. Installed Run Mods & RoR2 Item Stacks (High-Fidelity Die-Cut Vinyl Stickers)
     this.updateMods(player);
+    this.updateModDeckTelemetry(player);
 
     // 7. Minimap & Automatic Boss Bar Sync
     if (dun && rx !== undefined && ry !== undefined) {
@@ -1727,6 +1765,8 @@ export class HUDController {
     if (killEl) {
       killEl.textContent = `${player.killCount || 0} CONFIRMED`;
     }
+
+    this.updateModDeckTelemetry(player);
   }
 }
 
@@ -1738,5 +1778,13 @@ export function updateWeaponDeck(player: PlayerState, metaSave?: any): void {
   if (!bar) return;
   const tempHud = new HUDController();
   tempHud.updateWeaponDeck(player, metaSave);
+}
+
+/**
+ * Standalone helper to render or update mod deck telemetry attributes.
+ */
+export function updateModDeck(player: PlayerState): void {
+  const tempHud = new HUDController();
+  tempHud.updateModDeckTelemetry(player);
 }
 

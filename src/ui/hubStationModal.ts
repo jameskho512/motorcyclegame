@@ -12,7 +12,8 @@
  * dialogs with capture-phase keyboard ownership (ESC, E/Enter, Tab trapping).
  */
 
-import { RARITY } from '../data/equipment';
+import { RARITY, getEquipmentLoadoutSummary } from '../data/equipment';
+import { META_UPGRADES, getMetaTuningSummary } from '../data/upgrades';
 import { getCareerOutlawRank } from '@/core/state';
 import { WEAPONS, WeaponId, getWeaponTacticalProfile } from '@/data/weapons';
 import type { MetaSaveState, PlayerState } from '@/types/game';
@@ -214,6 +215,81 @@ export function getLaunchGateAdvisor(
   };
 }
 
+export interface GarageStationAdvisor {
+  equippedCount: number;
+  powerScore: number;
+  tuningRanks: number;
+  tuningMaxRanks: number;
+  tuningCompletionPct: number;
+  canAffordNextTuning: boolean;
+  summaryLine: string;
+}
+
+/**
+ * Computes sanctuary garage workbench chassis loadout and meta tuning advisor intelligence.
+ */
+export function getGarageStationAdvisor(metaSave?: any): GarageStationAdvisor {
+  const loadoutEquipped = (metaSave && typeof metaSave === 'object' && metaSave.equipped)
+    ? metaSave.equipped
+    : metaSave;
+  const rawLoadout = getEquipmentLoadoutSummary(loadoutEquipped);
+  const equippedCount = typeof (rawLoadout as any)?.equippedCount === 'number'
+    ? (rawLoadout as any).equippedCount
+    : (rawLoadout?.installedCount ?? (metaSave && typeof (metaSave as any).equippedCount === 'number' ? (metaSave as any).equippedCount : 0));
+  const powerScore = typeof (rawLoadout as any)?.powerScore === 'number'
+    ? (rawLoadout as any).powerScore
+    : (rawLoadout?.totalPowerScore ?? (metaSave && typeof (metaSave as any).powerScore === 'number' ? (metaSave as any).powerScore : 0));
+  const loadout = {
+    ...rawLoadout,
+    equippedCount,
+    powerScore
+  };
+
+  const baseTuning = getMetaTuningSummary(metaSave);
+  const isFullyMaxed = (baseTuning as any)?.isFullyMaxed ?? (baseTuning.totalRanks >= baseTuning.maxPossibleRanks || baseTuning.cheapestNextCost === null);
+  const rawScrap = metaSave?.scrap;
+  const scrap = typeof rawScrap === 'number' && !Number.isNaN(rawScrap) ? Math.max(0, rawScrap) : 0;
+  const canAffordCheapest = (baseTuning as any)?.canAffordCheapest ?? (!isFullyMaxed && baseTuning.cheapestNextCost !== null && scrap >= baseTuning.cheapestNextCost);
+  const cheapestNextUpgradeName = (baseTuning as any)?.cheapestNextUpgradeName ?? (baseTuning.cheapestNextUpgradeId ? (META_UPGRADES[baseTuning.cheapestNextUpgradeId]?.name || String(baseTuning.cheapestNextUpgradeId)) : '');
+
+  const tuning = {
+    ...baseTuning,
+    isFullyMaxed,
+    canAffordCheapest,
+    cheapestNextUpgradeName
+  };
+
+  const nextAction = tuning.isFullyMaxed
+    ? 'TUNING MAXED'
+    : tuning.canAffordCheapest
+      ? 'READY TO UPGRADE ' + (tuning.cheapestNextUpgradeName || '').toUpperCase() + ' (' + tuning.cheapestNextCost + ' ⚙️)'
+      : 'NEED ' + tuning.cheapestNextCost + ' ⚙️ FOR NEXT TUNE';
+
+  const summaryLine =
+    'CHASSIS: ' +
+    loadout.equippedCount +
+    '/6 EQUIPPED (PWR ' +
+    loadout.powerScore +
+    ') // TUNING: ' +
+    tuning.totalRanks +
+    '/' +
+    tuning.maxPossibleRanks +
+    ' RANKS (' +
+    tuning.completionPct +
+    '%) // ' +
+    nextAction;
+
+  return {
+    equippedCount: loadout.equippedCount,
+    powerScore: loadout.powerScore,
+    tuningRanks: tuning.totalRanks,
+    tuningMaxRanks: tuning.maxPossibleRanks,
+    tuningCompletionPct: tuning.completionPct,
+    canAffordNextTuning: tuning.canAffordCheapest,
+    summaryLine
+  };
+}
+
 export interface HubStationPromptInfo {
   title: string;
   summary: string;
@@ -349,6 +425,8 @@ export class HubStationModalController {
   public getWarRoomStationAdvisor = getWarRoomStationAdvisor;
   public static getLaunchGateAdvisor = getLaunchGateAdvisor;
   public getLaunchGateAdvisor = getLaunchGateAdvisor;
+  public static getGarageStationAdvisor = getGarageStationAdvisor;
+  public getGarageStationAdvisor = getGarageStationAdvisor;
 
   constructor() {
     if (typeof document !== 'undefined') {
@@ -532,6 +610,13 @@ export class HubStationModalController {
         this.overlay.setAttribute('data-launch-fully-prepped', launchAdv.isFullyPrepped ? 'true' : 'false');
         this.overlay.setAttribute('data-launch-advisor', launchAdv.summaryLine);
       }
+
+      if (options.npcId === 'garage') {
+        const advisor = getGarageStationAdvisor(options.metaSave);
+        this.overlay.setAttribute('data-garage-equipped-count', String(advisor.equippedCount));
+        this.overlay.setAttribute('data-garage-tuning-pct', String(advisor.tuningCompletionPct));
+        this.overlay.setAttribute('data-garage-advisor', advisor.summaryLine);
+      }
     }
 
     this.renderHeaderAndPurpose(options.npcId);
@@ -582,6 +667,13 @@ export class HubStationModalController {
         this.overlay.setAttribute('data-launch-ready-count', String(launchAdv.readyCount));
         this.overlay.setAttribute('data-launch-fully-prepped', launchAdv.isFullyPrepped ? 'true' : 'false');
         this.overlay.setAttribute('data-launch-advisor', launchAdv.summaryLine);
+      }
+
+      if (this.currentOptions.npcId === 'garage') {
+        const advisor = getGarageStationAdvisor(this.currentOptions.metaSave);
+        this.overlay.setAttribute('data-garage-equipped-count', String(advisor.equippedCount));
+        this.overlay.setAttribute('data-garage-tuning-pct', String(advisor.tuningCompletionPct));
+        this.overlay.setAttribute('data-garage-advisor', advisor.summaryLine);
       }
     }
     this.renderHeaderAndPurpose(this.currentOptions.npcId);
@@ -667,6 +759,19 @@ export class HubStationModalController {
         this.currentOptions.bountyClaimed = options.bountyClaimed;
       }
       this.renderLaunchBody(opts.metaSave, opts.player, opts.scannerClaimed, opts.bountyClaimed);
+    }
+  }
+
+  /**
+   * Renders the garage station view.
+   */
+  public renderGarage(options?: HubStationOpenOptions): void {
+    const opts = options || this.currentOptions;
+    if (opts) {
+      if (options?.metaSave && this.currentOptions) {
+        this.currentOptions.metaSave = options.metaSave;
+      }
+      this.renderGarageBody(opts.metaSave);
     }
   }
 
@@ -829,6 +934,12 @@ export class HubStationModalController {
         break;
       case 'garage':
       default:
+        if (this.overlayEl && npcId === 'garage') {
+          const advisor = getGarageStationAdvisor(metaSave);
+          this.overlayEl.setAttribute('data-garage-equipped-count', String(advisor.equippedCount));
+          this.overlayEl.setAttribute('data-garage-tuning-pct', String(advisor.tuningCompletionPct));
+          this.overlayEl.setAttribute('data-garage-advisor', advisor.summaryLine);
+        }
         this.renderGarageBody(metaSave);
         break;
     }
@@ -1191,7 +1302,13 @@ export class HubStationModalController {
     }
   }
 
-  private renderGarageBody(metaSave: any): void {
+  public renderGarageBody(metaSave: any): void {
+    const advisor = getGarageStationAdvisor(metaSave);
+    if (this.overlayEl) {
+      this.overlayEl.setAttribute('data-garage-equipped-count', String(advisor.equippedCount));
+      this.overlayEl.setAttribute('data-garage-tuning-pct', String(advisor.tuningCompletionPct));
+      this.overlayEl.setAttribute('data-garage-advisor', advisor.summaryLine);
+    }
     if (!this.bodyEl) return;
     const scrap = metaSave?.scrap || 0;
     const stashCount = (metaSave?.stash || []).length;
@@ -1207,6 +1324,9 @@ export class HubStationModalController {
             <span class="hub-stat-label">STASH INVENTORY</span>
             <span class="hub-stat-val hub-cyan">${stashCount} PARTS STORED</span>
           </div>
+        </div>
+        <div class="hub-garage-advisor-banner" data-equipped="${advisor.equippedCount}" data-tuning-pct="${advisor.tuningCompletionPct}">
+          <span class="hub-garage-advisor-text">${advisor.summaryLine.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>
         </div>
         <div class="hub-garage-card">
           <strong>WORKBENCH TUNING &amp; ARMORY</strong>

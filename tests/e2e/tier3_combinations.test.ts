@@ -28,9 +28,16 @@ import {
   WEAPONS,
   WEAPON_EVOLUTIONS,
   WeaponId,
-  isWeaponEvolved
+  isWeaponEvolved,
+  getWeaponEvolutionProgress
 } from '@/data/weapons';
-import { RUN_MOD_POOL, KISS_CURSE_MOD_POOL, getActiveDuoSynergies } from '@/data/upgrades';
+import {
+  RUN_MOD_POOL,
+  KISS_CURSE_MOD_POOL,
+  getActiveDuoSynergies,
+  getRunModDeckSummary,
+  getMetaTuningSummary
+} from '@/data/upgrades';
 import {
   LEGENDARY_SLOT_PASSIVES,
   getEquippedSetBonus
@@ -44,7 +51,8 @@ import {
   createDefaultMetaSave,
   resetPlayerStatsForRun,
   applyMetaStats,
-  getCareerOutlawRank
+  getCareerOutlawRank,
+  getFloorBountyContractStatus
 } from '@/core/state';
 
 import {
@@ -65,8 +73,12 @@ import { createEnemy } from '@/systems/enemyAI';
 import { getRiderMobilitySummary } from '@/systems/physics';
 import { getShopBuildSynergyHint } from '@/ui/shopModal';
 import { getPortalHeatBriefing } from '@/ui/portalModal';
-import { getHubStationPromptInfo } from '@/ui/hubStationModal';
-import { getHubNpcGreeting } from '@/world/dungeon';
+import {
+  getHubStationPromptInfo,
+  getLaunchGateAdvisor,
+  getWarRoomStationAdvisor
+} from '@/ui/hubStationModal';
+import { getHubNpcGreeting, getFloorBountyContract } from '@/world/dungeon';
 
 import { getBossEncounterBriefing } from '../../src/systems/enemyAI';
 import { getForgeStationAdvisor } from '../../src/ui/hubStationModal';
@@ -1515,6 +1527,391 @@ describe('Tier 3: Cross-Feature Combinations & Synergies', () => {
         expect(briefingP2Deep.hpPct).toBe(20);
         expect(briefingP2Deep.bossTitle).toBe(expectedTitle);
       }
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Combination 8: Launch Gate Pre-Flight, War Room Readiness, Active Mod Deck & Duo Synergy Matrix (M120)
+  // --------------------------------------------------------------------------
+  describe('Combination 8: Launch Gate Pre-Flight, War Room Readiness, Active Mod Deck & Duo Synergy Matrix (M120)', () => {
+    // Test 1: Verifies coordinated progression across getWarRoomStationAdvisor and getLaunchGateAdvisor as a player equips 6 armor pieces, upgrades all 4 meta tuning stats (19/19 ranks), claims the Tactical Scanner buff and War Room Supply Cache (0/2 -> 1/2 -> 2/2 pre-flight ready), and locks in HEAT 3 (+75% SCRAP).
+    it('verifies coordinated progression across getWarRoomStationAdvisor and getLaunchGateAdvisor as player equips 6 armor pieces, upgrades all 4 meta stats (19/19 ranks), claims pre-flight buffs (0/2 -> 1/2 -> 2/2), and locks in HEAT 3 (+75% SCRAP)', () => {
+      const metaSave = createDefaultMetaSave();
+      metaSave.heatLevel = 0;
+      metaSave.equipped = {};
+      metaSave.ranks = { dmg: 0, fireRate: 0, speed: 0, maxHp: 0 };
+
+      const p = createDefaultPlayerState();
+      p.weapon = 'pistol';
+      p.scannerBuff = false;
+
+      // 1. Initial State: 0 equipped, 0 ranks, 0 heat, no buffs claimed
+      const initialWarRoom = getWarRoomStationAdvisor(metaSave, false);
+      expect(initialWarRoom.bountyClaimed).toBe(false);
+      expect(initialWarRoom.currentHeat).toBe(0);
+      expect(initialWarRoom.scrapBonusPct).toBe(0);
+      expect(initialWarRoom.recommendedMaxHeat).toBe(0);
+      expect(initialWarRoom.summaryLine).toBe(
+        'CACHE: ⚡ FREE DROP READY (+15 🪙 / +1 ❤️) // HEAT 0 (+0% SCRAP) // REC HEAT: <= 0'
+      );
+
+      const initialLaunchGate = getLaunchGateAdvisor(metaSave, p, false, false);
+      expect(initialLaunchGate.readyCount).toBe(0);
+      expect(initialLaunchGate.totalChecks).toBe(2);
+      expect(initialLaunchGate.isFullyPrepped).toBe(false);
+      expect(initialLaunchGate.missingBuffs).toEqual(['SCANNER BUFF', 'WAR ROOM CACHE']);
+      expect(initialLaunchGate.summaryLine).toBe(
+        'PRE-FLIGHT: ⚠️ MISSING SCANNER BUFF & WAR ROOM CACHE // WEAPON: PISTOL // HEAT 0'
+      );
+
+      // 2. Equip all 6 armor pieces (readiness score: 6 * 2 + 0 = 12 -> recommended heat 2)
+      metaSave.equipped = {
+        frame: { name: 'Alloy Frame', slot: 'frame', rarity: 1, stats: {} },
+        engine: { name: 'Twin Engine', slot: 'engine', rarity: 1, stats: {} },
+        exhaust: { name: 'Twin Pipes', slot: 'exhaust', rarity: 1, stats: {} },
+        tires: { name: 'Street Tires', slot: 'tires', rarity: 1, stats: {} },
+        handlebars: { name: 'Clip-on Bars', slot: 'handlebars', rarity: 1, stats: {} },
+        tank: { name: 'Reinforced Tank', slot: 'tank', rarity: 1, stats: {} }
+      };
+
+      const equippedWarRoom = getWarRoomStationAdvisor(metaSave, false);
+      expect(equippedWarRoom.recommendedMaxHeat).toBe(2);
+
+      // 3. Upgrade all 4 meta tuning stats to maximum (19/19 ranks: 5 dmg, 5 fireRate, 5 speed, 4 maxHp)
+      // Readiness score: 6 * 2 + 19 = 31 >= 18 -> recommended heat 3
+      metaSave.ranks = { dmg: 5, fireRate: 5, speed: 5, maxHp: 4 };
+      metaSave.heatLevel = 3;
+
+      const maxedWarRoom = getWarRoomStationAdvisor(metaSave, false);
+      expect(maxedWarRoom.currentHeat).toBe(3);
+      expect(maxedWarRoom.scrapBonusPct).toBe(75);
+      expect(maxedWarRoom.recommendedMaxHeat).toBe(3);
+      expect(maxedWarRoom.summaryLine).toBe(
+        'CACHE: ⚡ FREE DROP READY (+15 🪙 / +1 ❤️) // HEAT 3 (+75% SCRAP) // REC HEAT: <= 3'
+      );
+
+      // 4. Claim Tactical Scanner Buff (0/2 -> 1/2 ready)
+      const scannerLaunchGate = getLaunchGateAdvisor(metaSave, p, true, false);
+      expect(scannerLaunchGate.readyCount).toBe(1);
+      expect(scannerLaunchGate.totalChecks).toBe(2);
+      expect(scannerLaunchGate.isFullyPrepped).toBe(false);
+      expect(scannerLaunchGate.missingBuffs).toEqual(['WAR ROOM CACHE']);
+      expect(scannerLaunchGate.summaryLine).toBe(
+        'PRE-FLIGHT: ⚠️ MISSING WAR ROOM CACHE // WEAPON: PISTOL // HEAT 3'
+      );
+
+      // 5. Claim War Room Supply Cache (1/2 -> 2/2 ready, pre-flight fully locked)
+      const claimedWarRoom = getWarRoomStationAdvisor(metaSave, true);
+      expect(claimedWarRoom.bountyClaimed).toBe(true);
+      expect(claimedWarRoom.summaryLine).toBe(
+        'CACHE: ✓ CLAIMED (+15 🪙 / +1 ❤️) // HEAT 3 (+75% SCRAP) // REC HEAT: <= 3'
+      );
+
+      const readyLaunchGate = getLaunchGateAdvisor(metaSave, p, true, true);
+      expect(readyLaunchGate.readyCount).toBe(2);
+      expect(readyLaunchGate.totalChecks).toBe(2);
+      expect(readyLaunchGate.isFullyPrepped).toBe(true);
+      expect(readyLaunchGate.missingBuffs).toEqual([]);
+      expect(readyLaunchGate.summaryLine).toBe(
+        'PRE-FLIGHT: ✓ 2/2 BUFFS LOCKED // WEAPON: PISTOL // HEAT 3'
+      );
+    });
+
+    // Test 2: Verifies getRunModDeckSummary, getWeaponEvolutionProgress, and getActiveDuoSynergies working together as a player acquires mod stacks (1/3 MAX STACK -> 2/3 STACK NEAR EVO -> 3+ STACK EVO READY) and unlocks multiple Duo Synergies (PLASMA SHRAPNEL, CRYO SHATTER, VAMPIRIC OVERDRIVE).
+    it('verifies getRunModDeckSummary, getWeaponEvolutionProgress, and getActiveDuoSynergies working together as player acquires mod stacks (1/3 -> 2/3 -> 3+ EVO READY) and unlocks multiple Duo Synergies', () => {
+      const p = createDefaultPlayerState();
+      p.weapon = 'pistol';
+      p.items = [];
+      p.itemStacks = {};
+      (p as any).modStacks = {};
+
+      // Baseline: 0 mod picks, 0/3 MAX STACK, 0 evolved progress, 0 active duos
+      const deck0 = getRunModDeckSummary(p);
+      expect(deck0.totalModPicks).toBe(0);
+      expect(deck0.uniqueModsCount).toBe(0);
+      expect(deck0.maxStackCount).toBe(0);
+      expect(deck0.evoStackReady).toBe(false);
+      expect(deck0.activeDuoCount).toBe(0);
+      expect(deck0.summaryLine).toBe(
+        'MODS: 0 PICKS (0 UNIQUE) // 0/3 MAX STACK // DUOS: 0 ACTIVE, 0 NEAR'
+      );
+
+      const evoProg0 = getWeaponEvolutionProgress('pistol', p);
+      expect(evoProg0.evolved).toBe(false);
+      expect(evoProg0.maxStackCount).toBe(0);
+      expect(evoProg0.progressPct).toBe(0);
+      expect(evoProg0.statusText).toBe('[✗ Ricochet Rounds] + [0/3 Mod Stack]');
+
+      // Step 1: Pick 1 stack of cryo_rounds (1/3 MAX STACK)
+      (p as any).modStacks = { cryo_rounds: 1 };
+      p.itemStacks = { cryo_rounds: 1 };
+      p.items = ['cryo_rounds'];
+
+      const deck1 = getRunModDeckSummary(p);
+      expect(deck1.totalModPicks).toBe(1);
+      expect(deck1.uniqueModsCount).toBe(1);
+      expect(deck1.maxStackCount).toBe(1);
+      expect(deck1.evoStackReady).toBe(false);
+      expect(deck1.activeDuoCount).toBe(0);
+      expect(deck1.potentialDuoCount).toBe(2); // thermal_shock & superconductor
+      expect(deck1.summaryLine).toBe(
+        'MODS: 1 PICKS (1 UNIQUE) // 1/3 MAX STACK // DUOS: 0 ACTIVE, 2 NEAR'
+      );
+
+      const evoProg1 = getWeaponEvolutionProgress('pistol', p);
+      expect(evoProg1.evolved).toBe(false);
+      expect(evoProg1.maxStackCount).toBe(1);
+      expect(evoProg1.progressPct).toBe(17);
+      expect(evoProg1.statusText).toBe('[✗ Ricochet Rounds] + [1/3 Mod Stack]');
+
+      // Step 2: Pick 2nd stack of cryo_rounds + pick high_explosive (2/3 STACK NEAR EVO, unlocks THERMAL SHOCK duo synergy)
+      (p as any).modStacks = { cryo_rounds: 2, high_explosive: 1 };
+      p.itemStacks = { cryo_rounds: 2, high_explosive: 1 };
+      p.items = ['cryo_rounds', 'high_explosive'];
+
+      const deck2 = getRunModDeckSummary(p);
+      expect(deck2.totalModPicks).toBe(3);
+      expect(deck2.uniqueModsCount).toBe(2);
+      expect(deck2.maxStackCount).toBe(2);
+      expect(deck2.evoStackReady).toBe(false);
+      expect(deck2.activeDuoCount).toBe(1);
+      expect(deck2.summaryLine).toBe(
+        'MODS: 3 PICKS (2 UNIQUE) // 2/3 STACK NEAR EVO // DUOS: 1 ACTIVE, 2 NEAR'
+      );
+
+      const duos2 = getActiveDuoSynergies(p);
+      expect(duos2.length).toBe(1);
+      expect(duos2[0].id).toBe('thermal_shock');
+      expect(duos2[0].name).toBe('THERMAL SHOCK');
+
+      const evoProg2 = getWeaponEvolutionProgress('pistol', p);
+      expect(evoProg2.evolved).toBe(false);
+      expect(evoProg2.maxStackCount).toBe(2);
+      expect(evoProg2.progressPct).toBe(33);
+      expect(evoProg2.statusText).toBe('[✗ Ricochet Rounds] + [2/3 Mod Stack]');
+
+      // Step 3: Pick 3rd stack of cryo_rounds (3+ STACK EVO READY) + turbo_charger + nanite_repair
+      // Also equips drop items tesla_capacitor + exhaust_afterburner to unlock SUPERCONDUCTOR and VOLTAIC WAKE
+      (p as any).modStacks = {
+        cryo_rounds: 3,
+        high_explosive: 1,
+        turbo_charger: 1,
+        nanite_repair: 1
+      };
+      p.itemStacks = {
+        cryo_rounds: 3,
+        high_explosive: 1,
+        turbo_charger: 1,
+        nanite_repair: 1,
+        tesla_capacitor: 1,
+        exhaust_afterburner: 1
+      };
+      p.items = [
+        'cryo_rounds',
+        'high_explosive',
+        'turbo_charger',
+        'nanite_repair',
+        'tesla_capacitor',
+        'exhaust_afterburner'
+      ];
+
+      const deck3 = getRunModDeckSummary(p);
+      expect(deck3.totalModPicks).toBe(6);
+      expect(deck3.uniqueModsCount).toBe(4);
+      expect(deck3.maxStackCount).toBe(3);
+      expect(deck3.evoStackReady).toBe(true);
+      expect(deck3.activeDuoCount).toBe(3);
+      expect(deck3.potentialDuoCount).toBe(2);
+      expect(deck3.summaryLine).toBe(
+        'MODS: 6 PICKS (4 UNIQUE) // 3+ STACK EVO READY // DUOS: 3 ACTIVE, 2 NEAR'
+      );
+
+      const duos3 = getActiveDuoSynergies(p);
+      const activeIds = duos3.map(d => d.id);
+      expect(activeIds).toContain('thermal_shock');
+      expect(activeIds).toContain('superconductor');
+      expect(activeIds).toContain('voltaic_wake');
+
+      // Weapon evolution with 3 stacks + signature mod pickup achieves 100% evolved status
+      p.items.push('Rubberized Casings');
+      const evoProg3 = getWeaponEvolutionProgress('pistol', p);
+      expect(evoProg3.hasSignatureMod).toBe(true);
+      expect(evoProg3.maxStackCount).toBe(3);
+      expect(evoProg3.progressPct).toBe(100);
+      expect(evoProg3.evolved).toBe(true);
+      expect(evoProg3.statusText).toBe('⚡ OVERCLOCK EVOLVED: RICOCHET REVOLVER');
+
+      // Sustain synergy: Nanite Siphon raises vampChance to 20% triggering VAMPIRIC OVERDRIVE
+      p.vampChance = 0.20;
+      const combatSummary = getCombatOffenseSummary(p);
+      expect(combatSummary.siphonStatus).toBe('VAMPIRIC OVERDRIVE');
+      expect(combatSummary.siphonPct).toBe(20);
+      expect(combatSummary.isEvolved).toBe(true);
+      expect(combatSummary.summaryLine).toContain('VAMPIRIC OVERDRIVE (20% Siphon) · OVERCLOCKED');
+    });
+
+    // Test 3: Verifies getCombatOffenseSummary, getRiderMobilitySummary, and getMetaTuningSummary scaling together as permanent garage tuning ranks (dmg, fireRate, speed, maxHp) are applied via applyMetaStats on top of in-run mod stacks.
+    it('verifies getCombatOffenseSummary, getRiderMobilitySummary, and getMetaTuningSummary scaling together as permanent tuning ranks are applied on top of in-run mod stacks', () => {
+      const metaSave = createDefaultMetaSave();
+      metaSave.ranks = { dmg: 0, fireRate: 0, speed: 0, maxHp: 0 };
+
+      // 1. Garage meta tuning at Rank 0
+      const tuning0 = getMetaTuningSummary(metaSave);
+      expect(tuning0.totalRanks).toBe(0);
+      expect(tuning0.maxPossibleRanks).toBe(19);
+      expect(tuning0.completionPct).toBe(0);
+      expect(tuning0.cheapestNextUpgradeId).toBe('speed');
+      expect(tuning0.cheapestNextCost).toBe(20);
+      expect(tuning0.summaryLine).toBe(
+        'TUNING: 0/19 RANKS (0%) · NEXT: TWIN-CAM ENGINE TUNE (20 SCRAP)'
+      );
+
+      const p = createDefaultPlayerState();
+      p.weapon = 'pistol';
+      applyMetaStats(p, metaSave);
+
+      expect(p.dmgMult).toBeCloseTo(1.0, 2);
+      expect(p.fireRateMult).toBeCloseTo(1.0, 2);
+      expect(p.speedMult).toBeCloseTo(1.0, 2);
+      expect(p.maxHp).toBe(6);
+
+      const offense0 = getCombatOffenseSummary(p);
+      expect(offense0.effectiveDpsMult).toBeCloseTo(1.0, 2);
+      expect(offense0.siphonStatus).toBe('NONE');
+      expect(offense0.isEvolved).toBe(false);
+      expect(offense0.summaryLine).toBe('DPS x1.00 · NONE (0% Siphon)');
+
+      const mobility0 = getRiderMobilitySummary(p);
+      expect(mobility0.topSpeedRating).toBe(265);
+      expect(mobility0.mobilityTier).toBe('STANDARD');
+
+      // 2. Max out all 4 permanent Garage tuning ranks (19/19 ranks: 5 dmg, 5 fireRate, 5 speed, 4 maxHp)
+      metaSave.ranks = { dmg: 5, fireRate: 5, speed: 5, maxHp: 4 };
+
+      const tuningMax = getMetaTuningSummary(metaSave);
+      expect(tuningMax.totalRanks).toBe(19);
+      expect(tuningMax.maxPossibleRanks).toBe(19);
+      expect(tuningMax.completionPct).toBe(100);
+      expect(tuningMax.cheapestNextUpgradeId).toBeNull();
+      expect(tuningMax.cheapestNextCost).toBeNull();
+      expect(tuningMax.summaryLine).toBe(
+        'TUNING: 19/19 RANKS (100%) · ALL SYSTEMS MAXED'
+      );
+
+      applyMetaStats(p, metaSave);
+      expect(p.dmgMult).toBeCloseTo(1.50, 2); // 1 + 5 * 0.10
+      expect(p.fireRateMult).toBeCloseTo(1.40, 2); // 1 + 5 * 0.08
+      expect(p.speedMult).toBeCloseTo(1.30, 2); // 1 + 5 * 0.06
+      expect(p.maxHp).toBe(10); // 6 + 4
+      expect(p.hp).toBe(10);
+
+      const offenseTuned = getCombatOffenseSummary(p);
+      expect(offenseTuned.effectiveDpsMult).toBeCloseTo(2.10, 2); // 1.50 * 1.40 = 2.10
+      expect(offenseTuned.summaryLine).toBe('DPS x2.10 · NONE (0% Siphon)');
+
+      const mobilityTuned = getRiderMobilitySummary(p);
+      expect(mobilityTuned.topSpeedRating).toBe(345); // Math.round(265 * 1.30)
+      expect(mobilityTuned.mobilityTier).toBe('INTERCEPTOR'); // 1.30 >= 1.15
+
+      // 3. Layer in-run mod stacks on top of permanent meta stats
+      p.speedMult = Number((p.speedMult + 0.15).toFixed(2)); // 1.45 (>= 1.35 -> HYPER-DRIFTER)
+      p.multiShot = 2; // projCount = 2
+      p.vampChance = 0.18; // 18% siphon (>= 15% -> VAMPIRIC OVERDRIVE)
+      p.items.push('Rubberized Casings'); // Evolves weapon -> 1.35x evo dps bonus
+
+      const offenseModded = getCombatOffenseSummary(p);
+      // effectiveDps = 1.50 * 1.40 * 2 * 1.35 = 5.67
+      expect(offenseModded.effectiveDpsMult).toBeCloseTo(5.67, 2);
+      expect(offenseModded.siphonStatus).toBe('VAMPIRIC OVERDRIVE');
+      expect(offenseModded.siphonPct).toBe(18);
+      expect(offenseModded.isEvolved).toBe(true);
+      expect(offenseModded.summaryLine).toBe('DPS x5.67 · VAMPIRIC OVERDRIVE (18% Siphon) · OVERCLOCKED');
+
+      const mobilityModded = getRiderMobilitySummary(p);
+      expect(mobilityModded.topSpeedRating).toBe(384); // Math.round(265 * 1.45)
+      expect(mobilityModded.mobilityTier).toBe('HYPER-DRIFTER');
+
+      // Permanent meta tuning progression remains unaffected by in-run mods
+      expect(getMetaTuningSummary(metaSave).completionPct).toBe(100);
+    });
+
+    // Test 4: Verifies all 6 Floor Bounty Contracts (Floors 1..6) interacting with Heat 0..3 scrap multipliers and Career Outlaw Rank progression (getCareerOutlawRank).
+    it('verifies all 6 Floor Bounty Contracts (Floors 1..6) interacting with Heat 0..3 scrap multipliers and Career Outlaw Rank progression', () => {
+      const expectedContracts = [
+        { floor: 1, id: 'GRAZE_INITIATE', title: 'NEON DAREDEVIL', baseScrap: 8, baseCoins: 10 },
+        { floor: 2, id: 'DRIFT_DEMON', title: 'ASPHALT DRIFTER', baseScrap: 10, baseCoins: 14 },
+        { floor: 3, id: 'STYLE_HUNTER', title: 'HIGH-OCTANE STYLER', baseScrap: 14, baseCoins: 18 },
+        { floor: 4, id: 'CRYO_SHATTER', title: 'CRYO BREAKER', baseScrap: 18, baseCoins: 22 },
+        { floor: 5, id: 'OVERDRIVE_SLAYER', title: 'FORGE EXECUTIONER', baseScrap: 22, baseCoins: 28 },
+        { floor: 6, id: 'VALHALLA_LEGEND', title: 'VALHALLA ASCENDANT', baseScrap: 30, baseCoins: 40 }
+      ];
+
+      // 1. Verify all 6 floor contracts and Heat 0..3 scaled scrap rewards
+      for (const expected of expectedContracts) {
+        const contract = getFloorBountyContract(expected.floor);
+        expect(contract.id).toBe(expected.id);
+        expect(contract.floor).toBe(expected.floor);
+        expect(contract.title).toBe(expected.title);
+        expect(contract.scrapReward).toBe(expected.baseScrap);
+        expect(contract.coinReward).toBe(expected.baseCoins);
+
+        const status = getFloorBountyContractStatus(expected.floor, { styleRank: 'A', styleScore: 50 });
+        expect(status.isStyleMilestoneMet).toBe(true);
+
+        // Verify Heat 0..3 scrap multipliers (+0%, +25%, +50%, +75%)
+        for (let heat = 0; heat <= 3; heat++) {
+          const scrapMultiplier = 1 + heat * 0.25;
+          const scaledScrap = Math.round(contract.scrapReward * scrapMultiplier);
+          expect(scaledScrap).toBeGreaterThanOrEqual(contract.scrapReward);
+          if (heat === 0) {
+            expect(scaledScrap).toBe(expected.baseScrap);
+          } else if (heat === 3) {
+            expect(scaledScrap).toBe(Math.round(expected.baseScrap * 1.75));
+          }
+        }
+      }
+
+      // 2. Verify Career Outlaw Rank progression across all 5 career tiers as player advances through Floors 1..6
+      // Tier 1: Rookie Courier (career score < 40, Floor 1)
+      const metaRank1 = { totalKills: 0, bossesSlain: 0, bestFloor: 1 };
+      const rank1 = getCareerOutlawRank(metaRank1);
+      expect(rank1.rankId).toBe('rookie_courier');
+      expect(rank1.tierNumber).toBe(1);
+      expect(rank1.title).toBe('⚙️ ROOKIE COURIER');
+      expect(rank1.careerScore).toBe(0);
+
+      // Tier 2: Highway Outlaw (career score >= 40 or Floor 2)
+      const metaRank2 = { totalKills: 20, bossesSlain: 1, bestFloor: 2 };
+      const rank2 = getCareerOutlawRank(metaRank2);
+      expect(rank2.rankId).toBe('highway_outlaw');
+      expect(rank2.tierNumber).toBe(2);
+      expect(rank2.title).toBe('🔥 HIGHWAY OUTLAW');
+      expect(rank2.careerScore).toBe(20 + 25 + 40); // 85
+
+      // Tier 3: Syndicate Enforcer (career score >= 120 or Floor 3)
+      const metaRank3 = { totalKills: 45, bossesSlain: 2, bestFloor: 3 };
+      const rank3 = getCareerOutlawRank(metaRank3);
+      expect(rank3.rankId).toBe('syndicate_enforcer');
+      expect(rank3.tierNumber).toBe(3);
+      expect(rank3.title).toBe('⚡ SYNDICATE ENFORCER');
+      expect(rank3.careerScore).toBe(45 + 50 + 80); // 175
+
+      // Tier 4: Apex Roadlord (career score >= 250 or Floor 5)
+      const metaRank4 = { totalKills: 90, bossesSlain: 4, bestFloor: 5 };
+      const rank4 = getCareerOutlawRank(metaRank4);
+      expect(rank4.rankId).toBe('apex_roadlord');
+      expect(rank4.tierNumber).toBe(4);
+      expect(rank4.title).toBe('☠️ APEX ROADLORD');
+      expect(rank4.careerScore).toBe(90 + 100 + 160); // 350
+
+      // Tier 5: Legend of Valhalla (career score >= 500 or Floor 6 + 6 bosses)
+      const metaRank5 = { totalKills: 200, bossesSlain: 6, bestFloor: 6 };
+      const rank5 = getCareerOutlawRank(metaRank5);
+      expect(rank5.rankId).toBe('legend_of_valhalla');
+      expect(rank5.tierNumber).toBe(5);
+      expect(rank5.title).toBe('👑 LEGEND OF VALHALLA');
+      expect(rank5.careerScore).toBe(200 + 150 + 200); // 550
+      expect(rank5.nextMilestoneText).toBe('MAX CAREER RANK ACHIEVED');
     });
   });
 });

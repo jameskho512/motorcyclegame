@@ -43,7 +43,9 @@ import {
   ScannerStationAdvisor,
   getWarRoomStationAdvisor,
   WarRoomStationAdvisor,
-  getLaunchGateAdvisor
+  getLaunchGateAdvisor,
+  getGarageStationAdvisor,
+  GarageStationAdvisor
 } from '../../src/ui/hubStationModal';
 import { WEAPONS, WeaponId, getWeaponTacticalProfile } from '../../src/data/weapons';
 import { getCareerOutlawRank } from '../../src/core/state';
@@ -2018,6 +2020,78 @@ describe('HubStationModalController & getHubStationPromptInfo (Wave 14-15)', () 
         'CACHE: ⚡ FREE DROP READY (+15 🪙 / +1 ❤️) // HEAT 1 (+25% SCRAP) // REC HEAT: <= 0'
       );
     });
+
+    it('renders garage station and sets data-garage-equipped-count, data-garage-tuning-pct, and data-garage-advisor DOM attributes on overlay across stock, partial, and maxed states', () => {
+      // 1. Stock state
+      const stockOpts = createHubOptions({
+        npcId: 'garage',
+        metaSave: {
+          scrap: 0,
+          ranks: {},
+          equipped: {}
+        }
+      });
+      modal.open(stockOpts);
+      const overlayEl = document.getElementById('hub-station-overlay')!;
+      expect(overlayEl.getAttribute('data-garage-equipped-count')).toBe('0');
+      expect(overlayEl.getAttribute('data-garage-tuning-pct')).toBe('0');
+      expect(overlayEl.getAttribute('data-garage-advisor')).toBe(
+        'CHASSIS: 0/6 EQUIPPED (PWR 0) // TUNING: 0/19 RANKS (0%) // NEED 20 ⚙️ FOR NEXT TUNE'
+      );
+      expect(document.querySelector('.hub-garage-advisor-text')?.textContent).toBe(
+        'CHASSIS: 0/6 EQUIPPED (PWR 0) // TUNING: 0/19 RANKS (0%) // NEED 20 ⚙️ FOR NEXT TUNE'
+      );
+
+      // 2. Partial state with affordable scrap
+      const partialOpts = createHubOptions({
+        npcId: 'garage',
+        metaSave: {
+          scrap: 30,
+          ranks: { speed: 1 },
+          equipped: {
+            engine: { slot: 'engine', rarity: 1, name: 'Engine Mk1', stats: { hp: 2 } },
+            tires: { slot: 'tires', rarity: 1, name: 'Tires Mk1', stats: { hp: 1 } }
+          }
+        }
+      });
+      modal.open(partialOpts);
+      expect(overlayEl.getAttribute('data-garage-equipped-count')).toBe('2');
+      expect(overlayEl.getAttribute('data-garage-tuning-pct')).toBe('5');
+      expect(overlayEl.getAttribute('data-garage-advisor')).toBe(
+        'CHASSIS: 2/6 EQUIPPED (PWR 3) // TUNING: 1/19 RANKS (5%) // READY TO UPGRADE ORDNANCE CALIBRATION (25 ⚙️)'
+      );
+
+      // Verify modal.render() resynchronizes attributes when scrap becomes unaffordable
+      partialOpts.metaSave.scrap = 10;
+      modal.render();
+      expect(overlayEl.getAttribute('data-garage-equipped-count')).toBe('2');
+      expect(overlayEl.getAttribute('data-garage-tuning-pct')).toBe('5');
+      expect(overlayEl.getAttribute('data-garage-advisor')).toBe(
+        'CHASSIS: 2/6 EQUIPPED (PWR 3) // TUNING: 1/19 RANKS (5%) // NEED 25 ⚙️ FOR NEXT TUNE'
+      );
+
+      // 3. Maxed state
+      modal.renderGarage({
+        ...modal['currentOptions']!,
+        metaSave: {
+          scrap: 500,
+          ranks: { dmg: 5, fireRate: 5, speed: 5, maxHp: 4 },
+          equipped: {
+            tires: { slot: 'tires', rarity: 3, name: 'Tires', stats: { hp: 2 } },
+            engine: { slot: 'engine', rarity: 3, name: 'Engine', stats: { hp: 2 } },
+            handlebars: { slot: 'handlebars', rarity: 3, name: 'Handlebars', stats: { hp: 2 } },
+            exhaust: { slot: 'exhaust', rarity: 3, name: 'Exhaust', stats: { hp: 2 } },
+            frame: { slot: 'frame', rarity: 3, name: 'Frame', stats: { hp: 2 } },
+            tank: { slot: 'tank', rarity: 3, name: 'Tank', stats: { hp: 2 } }
+          }
+        }
+      });
+      expect(overlayEl.getAttribute('data-garage-equipped-count')).toBe('6');
+      expect(overlayEl.getAttribute('data-garage-tuning-pct')).toBe('100');
+      expect(overlayEl.getAttribute('data-garage-advisor')).toBe(
+        'CHASSIS: 6/6 EQUIPPED (PWR 12) // TUNING: 19/19 RANKS (100%) // TUNING MAXED'
+      );
+    });
   });
 
   describe('getForgeStationAdvisor pure helper (M101)', () => {
@@ -2546,6 +2620,181 @@ describe('HubStationModalController & getHubStationPromptInfo (Wave 14-15)', () 
       const controller = new HubStationModalController();
       expect(controller.getLaunchGateAdvisor(meta, player, false, true)).toEqual(
         getLaunchGateAdvisor(meta, player, false, true)
+      );
+    });
+  });
+
+  describe('getGarageStationAdvisor pure helper (M119)', () => {
+    it('returns stock chassis (0/6, PWR 0) and tuning progress (0/19, 0%) with unaffordable scrap', () => {
+      const adv0: GarageStationAdvisor = getGarageStationAdvisor({
+        scrap: 0,
+        ranks: {},
+        equipped: {}
+      });
+      expect(adv0).toEqual({
+        equippedCount: 0,
+        powerScore: 0,
+        tuningRanks: 0,
+        tuningMaxRanks: 19,
+        tuningCompletionPct: 0,
+        canAffordNextTuning: false,
+        summaryLine: 'CHASSIS: 0/6 EQUIPPED (PWR 0) // TUNING: 0/19 RANKS (0%) // NEED 20 ⚙️ FOR NEXT TUNE'
+      });
+
+      // 10 scrap (< 20 required for cheapest starting upgrade: speed)
+      const adv10 = getGarageStationAdvisor({ scrap: 10, ranks: {} });
+      expect(adv10.canAffordNextTuning).toBe(false);
+      expect(adv10.summaryLine).toBe(
+        'CHASSIS: 0/6 EQUIPPED (PWR 0) // TUNING: 0/19 RANKS (0%) // NEED 20 ⚙️ FOR NEXT TUNE'
+      );
+    });
+
+    it('returns affordable advice when scrap is sufficient for cheapest starting tuning (speed: 20 ⚙️)', () => {
+      // Exactly 20 scrap
+      const adv20 = getGarageStationAdvisor({ scrap: 20, ranks: {} });
+      expect(adv20).toEqual({
+        equippedCount: 0,
+        powerScore: 0,
+        tuningRanks: 0,
+        tuningMaxRanks: 19,
+        tuningCompletionPct: 0,
+        canAffordNextTuning: true,
+        summaryLine: 'CHASSIS: 0/6 EQUIPPED (PWR 0) // TUNING: 0/19 RANKS (0%) // READY TO UPGRADE TWIN-CAM ENGINE TUNE (20 ⚙️)'
+      });
+
+      // 100 scrap
+      const adv100 = getGarageStationAdvisor({ scrap: 100 });
+      expect(adv100.canAffordNextTuning).toBe(true);
+      expect(adv100.summaryLine).toBe(
+        'CHASSIS: 0/6 EQUIPPED (PWR 0) // TUNING: 0/19 RANKS (0%) // READY TO UPGRADE TWIN-CAM ENGINE TUNE (20 ⚙️)'
+      );
+    });
+
+    it('evaluates partially equipped loadout and ranks with affordable vs unaffordable scrap', () => {
+      const partialEquipped = {
+        engine: { slot: 'engine', rarity: 1, name: 'Twin Turbo', stats: { hp: 2 } },
+        tires: { slot: 'tires', rarity: 1, name: 'Slick Tires', stats: { hp: 1 } }
+      };
+
+      // Speed rank 1 (1/19 = 5% completion). Cheapest next upgrade is dmg (cost 25 ⚙️).
+      // With scrap = 30 >= 25 -> affordable
+      const advAffordable = getGarageStationAdvisor({
+        scrap: 30,
+        ranks: { speed: 1 },
+        equipped: partialEquipped
+      });
+      expect(advAffordable).toEqual({
+        equippedCount: 2,
+        powerScore: 3,
+        tuningRanks: 1,
+        tuningMaxRanks: 19,
+        tuningCompletionPct: 5,
+        canAffordNextTuning: true,
+        summaryLine: 'CHASSIS: 2/6 EQUIPPED (PWR 3) // TUNING: 1/19 RANKS (5%) // READY TO UPGRADE ORDNANCE CALIBRATION (25 ⚙️)'
+      });
+
+      // With scrap = 24 < 25 -> unaffordable
+      const advUnaffordable = getGarageStationAdvisor({
+        scrap: 24,
+        ranks: { speed: 1 },
+        equipped: partialEquipped
+      });
+      expect(advUnaffordable).toEqual({
+        equippedCount: 2,
+        powerScore: 3,
+        tuningRanks: 1,
+        tuningMaxRanks: 19,
+        tuningCompletionPct: 5,
+        canAffordNextTuning: false,
+        summaryLine: 'CHASSIS: 2/6 EQUIPPED (PWR 3) // TUNING: 1/19 RANKS (5%) // NEED 25 ⚙️ FOR NEXT TUNE'
+      });
+    });
+
+    it('evaluates fully maxed build (6/6 equipped, 19/19 ranks, 100%)', () => {
+      const allEquipped = {
+        tires: { slot: 'tires', rarity: 3, name: 'Omega Tires', stats: { hp: 2 } },
+        engine: { slot: 'engine', rarity: 3, name: 'Omega Engine', stats: { hp: 2 } },
+        handlebars: { slot: 'handlebars', rarity: 3, name: 'Omega Bar', stats: { hp: 2 } },
+        exhaust: { slot: 'exhaust', rarity: 3, name: 'Omega Exhaust', stats: { hp: 2 } },
+        frame: { slot: 'frame', rarity: 3, name: 'Omega Frame', stats: { hp: 2 } },
+        tank: { slot: 'tank', rarity: 3, name: 'Omega Tank', stats: { hp: 2 } }
+      };
+
+      const maxRanks = {
+        dmg: 5,
+        fireRate: 5,
+        speed: 5,
+        maxHp: 4
+      };
+
+      const advMax = getGarageStationAdvisor({
+        scrap: 9999,
+        ranks: maxRanks,
+        equipped: allEquipped
+      });
+
+      expect(advMax).toEqual({
+        equippedCount: 6,
+        powerScore: 12,
+        tuningRanks: 19,
+        tuningMaxRanks: 19,
+        tuningCompletionPct: 100,
+        canAffordNextTuning: false,
+        summaryLine: 'CHASSIS: 6/6 EQUIPPED (PWR 12) // TUNING: 19/19 RANKS (100%) // TUNING MAXED'
+      });
+    });
+
+    it('gracefully handles missing, null, undefined, primitive, and boundary values', () => {
+      const advUndefined = getGarageStationAdvisor();
+      expect(advUndefined.equippedCount).toBe(0);
+      expect(advUndefined.tuningRanks).toBe(0);
+      expect(advUndefined.canAffordNextTuning).toBe(false);
+
+      const advNull = getGarageStationAdvisor(null);
+      expect(advNull.equippedCount).toBe(0);
+      expect(advNull.tuningRanks).toBe(0);
+      expect(advNull.canAffordNextTuning).toBe(false);
+
+      const advPrimitive = getGarageStationAdvisor('invalid' as any);
+      expect(advPrimitive.equippedCount).toBe(0);
+      expect(advPrimitive.tuningRanks).toBe(0);
+      expect(advPrimitive.canAffordNextTuning).toBe(false);
+
+      // Negative scrap sanitized to 0
+      const advNegativeScrap = getGarageStationAdvisor({ scrap: -50, ranks: {} });
+      expect(advNegativeScrap.canAffordNextTuning).toBe(false);
+      expect(advNegativeScrap.summaryLine).toContain('NEED 20 ⚙️ FOR NEXT TUNE');
+
+      // NaN scrap sanitized to 0
+      const advNaNScrap = getGarageStationAdvisor({ scrap: NaN, ranks: {} });
+      expect(advNaNScrap.canAffordNextTuning).toBe(false);
+
+      // Overflow ranks clamped
+      const advOverflow = getGarageStationAdvisor({
+        scrap: 100,
+        ranks: { dmg: 99, fireRate: 99, speed: 99, maxHp: 99 }
+      });
+      expect(advOverflow.tuningRanks).toBe(19);
+      expect(advOverflow.tuningCompletionPct).toBe(100);
+      expect(advOverflow.summaryLine).toContain('TUNING MAXED');
+    });
+
+    it('is accessible via HubStationModalController static and instance methods', () => {
+      const meta = {
+        scrap: 50,
+        ranks: { speed: 1 },
+        equipped: {
+          engine: { slot: 'engine', rarity: 1, name: 'Engine Mk1', stats: { hp: 2 } }
+        }
+      };
+
+      expect(HubStationModalController.getGarageStationAdvisor(meta)).toEqual(
+        getGarageStationAdvisor(meta)
+      );
+
+      const controller = new HubStationModalController();
+      expect(controller.getGarageStationAdvisor(meta)).toEqual(
+        getGarageStationAdvisor(meta)
       );
     });
   });
