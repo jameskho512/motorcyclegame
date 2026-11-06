@@ -190,7 +190,6 @@ export class GarageController {
       }
       this.liveryBar = document.getElementById('livery-bar');
       this.eqTotals = document.getElementById('eq-totals');
-      this.equipBonusSummary = document.getElementById('equip-bonus-summary');
       this.stashList = document.getElementById('stash-list');
       this.unlockList = document.getElementById('unlock-list');
       this.metaUpgradeList = document.getElementById('meta-upgrade-list');

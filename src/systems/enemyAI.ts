@@ -313,7 +313,8 @@ export function updateBossAI(ctx: AIContext): void {
     projScale,
     enemyBullets,
     enemyBombs,
-    rng = Math.random
+    rng = Math.random,
+    floorNum = 1
   } = ctx;
   const boss = en as Boss;
   const dx = player.x - en.x;
