@@ -82,7 +82,7 @@
 /* Center Square Room Playfield Wrapper */
 #game-wrapper {
   position: relative;
-  z-index: 1;
+  z-index: auto;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -100,6 +100,13 @@
     0 0 0 7px #e5203a,
     0 0 35px rgba(229, 32, 58, 0.35),
     0 0 80px rgba(0, 0, 0, 0.95);
+}
+
+#app-layout:has(#garage-overlay.visible, #settings-overlay.visible, #shop-confirm-overlay.visible, #portal-confirm-overlay.visible) .hud-cluster {
+  opacity: 0.08;
+  filter: blur(3px);
+  pointer-events: none !important;
+  transition: opacity 0.18s ease-out, filter 0.18s ease-out;
 }
 
 canvas#canvas {
@@ -246,7 +253,7 @@ canvas#canvas {
 
 /* HULL Meter (Thick White & Black Comic Frame + Slanted Crimson Segments) */
 .hud-hull {
-  width: clamp(290px, 21vw, 395px);
+  width: clamp(190px, calc((100vw - min(calc(100vh - 136px), 100vw)) / 2 - 190px), 340px);
 }
 
 .hud-hull .hud-label {
@@ -305,7 +312,7 @@ canvas#canvas {
 
 /* NOS Meter + LV. X Badge Row (Matches Concept Art Segmented Yellow Blocks) */
 .hud-nos {
-  width: clamp(260px, 19vw, 355px);
+  width: clamp(180px, calc((100vw - min(calc(100vh - 136px), 100vw)) / 2 - 205px), 315px);
 }
 
 .hud-nos .hud-label {
@@ -401,7 +408,7 @@ canvas#canvas {
   gap: 8px;
   margin-top: 18px;
   margin-left: 8px;
-  width: clamp(260px, 20vw, 360px);
+  width: clamp(260px, calc((100vw - min(calc(100vh - 136px), 100vw)) / 2 - 48px), 365px);
   max-width: none;
   z-index: 2;
 }
@@ -904,32 +911,36 @@ canvas#fuel-gauge {
 
 .wcard-lock {
   position: absolute;
-  inset: 0;
-  background: rgba(10, 11, 16, 0.82);
-  display: flex;
-  flex-direction: column;
+  top: 4px;
+  right: 4px;
+  background: rgba(10, 11, 16, 0.92);
+  border: 1.5px solid #ffd60a;
+  display: inline-flex;
+  flex-direction: row;
   align-items: center;
   justify-content: center;
-  color: #cccccc;
+  color: #ffd60a;
   font-family: var(--font-display, 'Impact', sans-serif);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 10.5px;
+  font-weight: 900;
   z-index: 4;
-  border-radius: 2px;
-  gap: 2px;
+  border-radius: 3px;
+  padding: 1px 5px;
+  gap: 3px;
+  box-shadow: 2px 2px 0 #0a0b10;
 }
 
 .wcard-lock svg {
-  width: 16px;
-  height: 16px;
+  width: 11px;
+  height: 11px;
   fill: #ffd60a;
 }
 
 .wcard.locked,
 .wcard.is-locked {
-  opacity: 0.68;
+  opacity: 0.84;
   cursor: not-allowed;
-  filter: saturate(0.45);
+  filter: saturate(0.75);
 }
 
 /* Evolved Weapon Cards (Milestone 4) */
@@ -1543,18 +1554,46 @@ canvas#fuel-gauge {
 }
 
 .hud-wing-left {
-  width: 280px;
+  width: clamp(260px, calc((100vw - min(calc(100vh - 136px), 100vw)) / 2 - 48px), 365px);
+  margin-left: 8px;
 }
 
 .style-rank-card,
 .synergy-tracker-card,
-.hud-wing-right {
+.hud-wing-right,
+.controls-legend-card {
   background: linear-gradient(135deg, rgba(22, 18, 34, 0.94) 0%, rgba(12, 11, 18, 0.96) 100%);
   border: 2.5px solid #ffffff;
   outline: 2.5px solid #0a0b10;
   box-shadow: 4px 5px 0 #0a0b10, 0 8px 18px rgba(0, 0, 0, 0.72);
   padding: 8px 12px;
   transform: skewX(-6deg);
+}
+
+.controls-legend-card {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 5px 10px;
+  font-size: 10.5px;
+  color: #cfd6e6;
+}
+
+.controls-legend-card span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 800;
+}
+
+.controls-legend-card kbd {
+  background: #0a0b10;
+  color: #ffd60a;
+  border: 1.5px solid #ffd60a;
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-family: var(--font-display, 'Impact', sans-serif);
+  font-size: 10px;
+  font-style: italic;
 }
 
 .style-rank-head {
