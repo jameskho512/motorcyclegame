@@ -604,7 +604,7 @@ describe('Tier 1: Feature Coverage — 28 Features in Isolation', () => {
       expect(state.grenades).toHaveLength(1);
       const grenade = state.grenades[0];
       expect(grenade.blastRadius).toBeCloseTo(92);
-      expect(grenade.dmg).toBe(36);
+      expect(grenade.dmg).toBe(18);
     });
   });
 
@@ -742,8 +742,8 @@ describe('Tier 1: Feature Coverage — 28 Features in Isolation', () => {
   describe('Feature 25: Elite Variant Modifier', () => {
     it('applies 1.65x HP and 1.15x speed scaling to elite variants and bounds roll chance', () => {
       expect(getEliteSpawnChance(1)).toBe(0);
-      expect(getEliteSpawnChance(3)).toBeCloseTo(0.24); // (3-1)*0.12
-      expect(getEliteSpawnChance(10)).toBe(0.45); // Capped at 0.45
+      expect(getEliteSpawnChance(3)).toBeCloseTo(0.10 * 1.45);
+      expect(getEliteSpawnChance(20)).toBe(0.45); // Capped at 0.45
 
       const normalHp = calcEnemyHp(100, 1, false);
       const eliteHp = calcEnemyHp(100, 1, true);

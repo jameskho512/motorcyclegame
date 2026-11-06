@@ -17,7 +17,8 @@
 .hud-stage {
   position: relative;
   display: grid;
-  place-items: center;
+  align-items: start;
+  justify-items: center;
   width: 100vw;
   height: 100vh;
   padding: 0;
@@ -87,12 +88,12 @@
   background: #14141f;
   overflow: hidden;
   pointer-events: auto; /* Playfield receives all mouse aim & clicks */
-  width: min(100vh, 100vw);
-  height: min(100vh, 100vw);
+  width: min(calc(100vh - 148px), 100vw);
+  height: min(calc(100vh - 148px), 100vw);
   aspect-ratio: 1 / 1;
-  max-height: 100vh;
+  max-height: calc(100vh - 148px);
   max-width: 100vw;
-  margin: 0 auto;
+  margin: 12px auto 0 auto;
   box-shadow:
     0 0 0 4px #0a0b10,
     0 0 0 7px #e5203a,
@@ -558,7 +559,7 @@ canvas#fuel-gauge {
    5. Bottom Cluster: 7 Slanted Weapon Cards + Installed Mod Stickers
    -------------------------------------------------------------------------- */
 .hud-bottom {
-  bottom: 12px;
+  bottom: 6px;
   left: 0;
   right: 0;
   display: flex;
@@ -580,8 +581,8 @@ canvas#fuel-gauge {
 .weapon-slot {
   transform: skewX(-12deg);
   transform-origin: center bottom;
-  width: 82px;
-  height: 116px;
+  width: 78px;
+  height: 96px;
   border: 3px solid #0a0b10;
   box-shadow:
     3px 3px 0 #0a0b10,
@@ -702,7 +703,7 @@ canvas#fuel-gauge {
 /* Active Weapon Card: Enlarged with Glowing Flame Border (Mockup Parity) */
 .wcard.active,
 .wcard.is-active {
-  transform: skewX(-12deg) scale(1.18) translateY(-14px);
+  transform: skewX(-12deg) scale(1.12) translateY(-8px);
   z-index: 25;
   box-shadow:
     0 0 0 3.5px #ffd60a,
@@ -886,7 +887,23 @@ canvas#fuel-gauge {
   }
   .wcard,
   .weapon-slot {
-    width: 70px;
-    height: 102px;
+    width: 68px;
+    height: 82px;
+  }
+}
+
+@media (max-height: 820px) {
+  .wcard,
+  .weapon-slot {
+    width: 66px;
+    height: 78px;
+  }
+  .wcard.active,
+  .wcard.is-active {
+    transform: skewX(-12deg) scale(1.08) translateY(-5px);
+  }
+  .wcard-icon svg {
+    width: 52px;
+    height: 30px;
   }
 }

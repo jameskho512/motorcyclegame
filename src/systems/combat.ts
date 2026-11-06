@@ -583,9 +583,10 @@ export function handleEnemyDeath({
 
   // Splitter spawns 2 fast mini_swarmers on death
   if (en.type === 'splitter') {
-    // Dynamic import avoidance; mini_swarmers created inline matching specs
-    const scale = (1 + (floorNum - 1) * 0.45 + Math.pow(floorNum - 1, 1.35) * 0.22);
-    const spdScale = 1 + (floorNum - 1) * 0.06;
+    // Exponential floor scaling matching enemyAI / dungeon
+    const f = Math.max(1, floorNum);
+    const scale = Math.pow(1.55, f - 1);
+    const spdScale = Math.pow(1.06, f - 1);
     const hp = Math.round(22 * scale);
     room.enemies.push({
       id: Date.now() + Math.floor(rng() * 1000),
@@ -643,7 +644,16 @@ export function handleEnemyDeath({
   }
 
   // RoR2 Stacking Item Toolbox Drop: Boss guaranteed, Elites 30%, Regulars 4% (mini_swarmer yields nothing)
-  if (en.type === 'boss' || (en.type !== 'mini_swarmer' && rng() < (en.isElite ? 0.30 : 0.04))) {
+  // Capped at maximum 1 power-up item per 2 rooms in a floor (and max 1 per room).
+  const quota = room.powerUpDropQuota;
+  const alreadyDroppedInRoom =
+    !!room.powerUpDroppedInRoom || room.pickups.some(p => p.type === 'item_drop');
+  const underFloorCap = !quota || quota.dropped < quota.max;
+  if (
+    !alreadyDroppedInRoom &&
+    underFloorCap &&
+    (en.type === 'boss' || (en.type !== 'mini_swarmer' && rng() < (en.isElite ? 0.30 : 0.04)))
+  ) {
     const id = DROP_ITEM_IDS[Math.floor(rng() * DROP_ITEM_IDS.length)];
     room.pickups.push({
       x: en.x,
@@ -652,6 +662,10 @@ export function handleEnemyDeath({
       itemId: id,
       radius: 16
     });
+    room.powerUpDroppedInRoom = true;
+    if (quota) {
+      quota.dropped += 1;
+    }
   }
 
   // Vampiric Siphon mod check

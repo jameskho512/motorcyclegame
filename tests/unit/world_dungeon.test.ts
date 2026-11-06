@@ -259,13 +259,25 @@ describe('World Module: Procedural Dungeon Generation (src/world/dungeon.ts)', (
   });
 
   describe('Enemy population logic and floor scaling', () => {
-    it('scales floor formula accurately matching prototype', () => {
-      // 1 + (floor - 1) * 0.45 + (floor - 1)^1.35 * 0.22
+    it('scales floor formula exponentially', () => {
+      // 1.55^(floor - 1)
       expect(getFloorScale(1)).toBe(1.0);
-      const scaleF2 = 1 + 0.45 + Math.pow(1, 1.35) * 0.22;
+      const scaleF2 = Math.pow(1.55, 1);
       expect(getFloorScale(2)).toBeCloseTo(scaleF2, 4);
-      const scaleF3 = 1 + 2 * 0.45 + Math.pow(2, 1.35) * 0.22;
+      const scaleF3 = Math.pow(1.55, 2);
       expect(getFloorScale(3)).toBeCloseTo(scaleF3, 4);
+    });
+
+    it('enforces maximum 1 power-up item per 2 rooms in a floor', () => {
+      const dungeonGraph = generateDungeon(2);
+      const rooms = Object.values(dungeonGraph.rooms);
+      const expectedMax = Math.floor(rooms.length / 2);
+      for (const r of rooms) {
+        expect(r.powerUpDropQuota).toBeDefined();
+        expect(r.powerUpDropQuota!.max).toBe(expectedMax);
+      }
+      // All rooms on the floor share the same quota reference
+      expect(rooms[0].powerUpDropQuota).toBe(rooms[1].powerUpDropQuota);
     });
 
     it('populates Floor 1 combat rooms with only Tier 1 enemies (swarmer, turret, charger)', () => {

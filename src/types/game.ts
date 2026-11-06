@@ -310,6 +310,11 @@ export interface SkidMark {
   angle: number;
 }
 
+export interface FloorPowerUpQuota {
+  dropped: number;
+  max: number;
+}
+
 export interface Room {
   x: number;
   y: number;
@@ -323,6 +328,8 @@ export interface Room {
   hazards: FloorHazard[];
   skids: SkidMark[];
   trapdoor: boolean;
+  powerUpDropQuota?: FloorPowerUpQuota;
+  powerUpDroppedInRoom?: boolean;
 }
 
 export type Dungeon = Record<string, Room>;

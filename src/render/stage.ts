@@ -224,32 +224,213 @@ export class StageManager {
     const H = ARENA_HEIGHT;
     const WALL = WALL_THICKNESS;
 
-    // Outer boundary fill
-    g.rect(0, 0, W, H).fill({ color: 0x0e0f16 });
+    // 1. Outer deep bunker hull abyss
+    g.rect(0, 0, W, H).fill({ color: 0x090a10 });
 
-    // Inner room floor fill by room type
-    const themeColors: Record<string, number> = {
-      start: 0x1b1d28,
-      combat: 0x1c1c27,
-      treasure: 0x231f2c,
-      shop: 0x162323,
-      boss: 0x24141c
+    // 2. Inner room floor base color by room type (warm industrial slate/brown-grey like concept art)
+    const themeColors: Record<string, { floor: number; plateHi: number; plateLo: number; accent: number }> = {
+      start:    { floor: 0x26242c, plateHi: 0x33303b, plateLo: 0x1b1920, accent: 0xff6b2b },
+      combat:   { floor: 0x25232b, plateHi: 0x312e39, plateLo: 0x19181f, accent: 0xe5203a },
+      treasure: { floor: 0x292434, plateHi: 0x373046, plateLo: 0x1c1824, accent: 0xffd60a },
+      shop:     { floor: 0x1d2a2d, plateHi: 0x27383c, plateLo: 0x141d20, accent: 0x2ee6ff },
+      boss:     { floor: 0x2c1921, plateHi: 0x3b222c, plateLo: 0x1d0f15, accent: 0xff2a55 }
     };
-    const baseColor = themeColors[room.type] || 0x1c1c27;
-    g.rect(WALL, WALL, W - WALL * 2, H - WALL * 2).fill({ color: baseColor });
+    const palette = themeColors[room.type] || themeColors.combat;
+    const innerW = W - WALL * 2;
+    const innerH = H - WALL * 2;
 
-    // 12x12 grid lines
-    const tile = (W - WALL * 2) / 12;
-    for (let x = WALL; x <= W - WALL + 1; x += tile) {
-      g.moveTo(x, WALL)
-        .lineTo(x, H - WALL)
-        .stroke({ color: 0xffffff, width: 1, alpha: 0.035 });
+    g.rect(WALL, WALL, innerW, innerH).fill({ color: palette.floor });
+
+    // 3. 2.5D Beveled Industrial Steel Floor Deck Plates (8x8 heavy armored slabs)
+    const cols = 8;
+    const tile = innerW / cols;
+    for (let r = 0; r < cols; r++) {
+      for (let c = 0; c < cols; c++) {
+        const tx = WALL + c * tile;
+        const ty = WALL + r * tile;
+        const checker = (r + c) % 2 === 0;
+
+        // Subtle alternating plate tone
+        g.rect(tx + 2, ty + 2, tile - 4, tile - 4)
+          .fill({ color: checker ? palette.plateHi : palette.floor, alpha: checker ? 0.42 : 0.2 });
+
+        // Top & Left 3D cel-shaded specular bevel
+        g.moveTo(tx + 2, ty + tile - 2)
+          .lineTo(tx + 2, ty + 2)
+          .lineTo(tx + tile - 2, ty + 2)
+          .stroke({ color: 0xffffff, width: 1.5, alpha: 0.09 });
+
+        // Bottom & Right 3D recessed shadow bevel
+        g.moveTo(tx + 2, ty + tile - 2)
+          .lineTo(tx + tile - 2, ty + tile - 2)
+          .lineTo(tx + tile - 2, ty + 2)
+          .stroke({ color: 0x050508, width: 2, alpha: 0.55 });
+
+        // Corner bolt rivets on each steel slab
+        const inset = 6;
+        g.circle(tx + inset, ty + inset, 1.3).fill({ color: 0x0d0e14, alpha: 0.7 });
+        g.circle(tx + tile - inset, ty + inset, 1.3).fill({ color: 0x0d0e14, alpha: 0.7 });
+        g.circle(tx + inset, ty + tile - inset, 1.3).fill({ color: 0x0d0e14, alpha: 0.7 });
+        g.circle(tx + tile - inset, ty + tile - inset, 1.3).fill({ color: 0x0d0e14, alpha: 0.7 });
+      }
     }
-    for (let y = WALL; y <= H - WALL + 1; y += tile) {
-      g.moveTo(WALL, y)
-        .lineTo(W - WALL, y)
-        .stroke({ color: 0xffffff, width: 1, alpha: 0.035 });
+
+    // Deep recessed expansion seams between steel floor slabs
+    for (let i = 0; i <= cols; i++) {
+      const p = WALL + i * tile;
+      g.moveTo(p, WALL).lineTo(p, H - WALL).stroke({ color: 0x0a0b10, width: 2.5, alpha: 0.75 });
+      g.moveTo(WALL, p).lineTo(W - WALL, p).stroke({ color: 0x0a0b10, width: 2.5, alpha: 0.75 });
     }
+
+    // 4. Sub-floor 3D Recessed Ventilation Grates (4 symmetrical bays)
+    const gratePositions = [
+      [WALL + tile * 1.2, WALL + tile * 1.2],
+      [W - WALL - tile * 2.2, WALL + tile * 1.2],
+      [WALL + tile * 1.2, H - WALL - tile * 2.2],
+      [W - WALL - tile * 2.2, H - WALL - tile * 2.2]
+    ];
+    for (const [gx, gy] of gratePositions) {
+      const gw = tile * 0.95;
+      const gh = tile * 0.65;
+      // Sub-floor dark pit depth
+      g.rect(gx, gy, gw, gh)
+        .fill({ color: 0x08090f })
+        .stroke({ color: 0x0a0b10, width: 2.5 });
+      // Inner top wall lip inside pit (2.5D depth)
+      g.rect(gx + 2, gy + 2, gw - 4, 6)
+        .fill({ color: 0x151722 });
+      // Steel grate bars
+      for (let bx = gx + 8; bx < gx + gw - 4; bx += 8) {
+        g.moveTo(bx, gy + 2).lineTo(bx, gy + gh - 2).stroke({ color: 0x2f3242, width: 2 });
+      }
+      // Beveled outer hazard trim
+      g.rect(gx - 2, gy - 2, gw + 4, gh + 4)
+        .stroke({ color: 0x3d3a4b, width: 1.5, alpha: 0.65 });
+    }
+
+    // 5. Central Tactical Arena Octagon & Isometric Panel Lines
+    const cx = W / 2;
+    const cy = H / 2;
+    const octR = 118;
+    const octPts: number[] = [];
+    for (let i = 0; i < 8; i++) {
+      const ang = (i * Math.PI) / 4 + Math.PI / 8;
+      octPts.push(cx + Math.cos(ang) * octR, cy + Math.sin(ang) * octR);
+    }
+    g.poly(octPts)
+      .fill({ color: 0x16151d, alpha: 0.45 })
+      .stroke({ color: 0x0a0b10, width: 3, alpha: 0.7 });
+    g.circle(cx, cy, 82)
+      .stroke({ color: palette.accent, width: 1.5, alpha: 0.22 });
+    // Diagonal structural floor seams
+    g.moveTo(cx - 65, cy - 65).lineTo(cx - 28, cy - 28).stroke({ color: palette.accent, width: 2, alpha: 0.25 });
+    g.moveTo(cx + 65, cy - 65).lineTo(cx + 28, cy - 28).stroke({ color: palette.accent, width: 2, alpha: 0.25 });
+    g.moveTo(cx - 65, cy + 65).lineTo(cx - 28, cy + 28).stroke({ color: palette.accent, width: 2, alpha: 0.25 });
+    g.moveTo(cx + 65, cy + 65).lineTo(cx + 28, cy + 28).stroke({ color: palette.accent, width: 2, alpha: 0.25 });
+
+    // 6. 2.5D Perspective Bunker Walls (North, West, East, South)
+    const parapet = 12;
+
+    // --- NORTH WALL (Top): Shows parapet roof + angled 3D vertical wall face + floor cast shadow ---
+    // Floor cast shadow from North wall
+    g.rect(WALL, WALL, innerW, 24)
+      .fill({ color: 0x05050a, alpha: 0.52 });
+    g.rect(WALL, WALL + 24, innerW, 14)
+      .fill({ color: 0x05050a, alpha: 0.22 });
+
+    // 3D Vertical North wall face (y: parapet .. WALL)
+    g.rect(parapet, parapet, W - parapet * 2, WALL - parapet)
+      .fill({ color: 0x2c2836 })
+      .stroke({ color: 0x0a0b10, width: 2.5 });
+
+    // North wall lower hazard skirting strip
+    g.rect(WALL, WALL - 5, innerW, 5)
+      .fill({ color: 0x14131a });
+    for (let hx = WALL + 8; hx < W - WALL - 16; hx += 24) {
+      if (Math.abs(hx - cx) < 56) continue; // skip doorway
+      g.poly([hx, WALL - 5, hx + 10, WALL - 5, hx + 6, WALL, hx - 4, WALL])
+        .fill({ color: 0xffae00, alpha: 0.65 });
+    }
+
+    // Extruded 3D Steel I-Beam Buttress Columns along North Wall
+    const northPillars = [96, 176, 256, 464, 544, 624];
+    for (const px of northPillars) {
+      // Column shadow
+      g.rect(px + 5, parapet, 8, WALL - parapet + 8)
+        .fill({ color: 0x07070c, alpha: 0.55 });
+      // 3D Column front face
+      g.rect(px - 6, parapet - 2, 12, WALL - parapet + 4)
+        .fill({ color: 0x3d384a })
+        .stroke({ color: 0x0a0b10, width: 2 });
+      // Column specular edge
+      g.rect(px - 4, parapet, 3, WALL - parapet)
+        .fill({ color: 0x5c556e });
+    }
+
+    // Glowing Industrial Bunker Sconces on North Wall casting warm light pools onto floor
+    const sconceXs = [136, 216, 504, 584];
+    for (const sx of sconceXs) {
+      // Floor light cone
+      g.poly([sx - 6, WALL, sx + 6, WALL, sx + 26, WALL + 42, sx - 26, WALL + 42])
+        .fill({ color: palette.accent, alpha: 0.11 });
+      // Sconce fixture
+      g.rect(sx - 7, parapet + 6, 14, 6)
+        .fill({ color: palette.accent })
+        .stroke({ color: 0x0a0b10, width: 1.5 });
+    }
+
+    // --- WEST WALL (Left): 3D Perspective Sloped Wall Face ---
+    g.rect(WALL, WALL, 16, innerH)
+      .fill({ color: 0x05050a, alpha: 0.42 });
+    g.poly([parapet, parapet, WALL, WALL, WALL, H - WALL, parapet, H - parapet])
+      .fill({ color: 0x25222e })
+      .stroke({ color: 0x0a0b10, width: 2.5 });
+    for (const py of northPillars) {
+      g.poly([parapet, py - 5, WALL, py - 3, WALL, py + 7, parapet, py + 5])
+        .fill({ color: 0x3a3548 })
+        .stroke({ color: 0x0a0b10, width: 1.8 });
+    }
+
+    // --- EAST WALL (Right): 3D Perspective Sloped Wall Face ---
+    g.rect(W - WALL - 16, WALL, 16, innerH)
+      .fill({ color: 0x05050a, alpha: 0.42 });
+    g.poly([W - parapet, parapet, W - WALL, WALL, W - WALL, H - WALL, W - parapet, H - parapet])
+      .fill({ color: 0x1f1c27 })
+      .stroke({ color: 0x0a0b10, width: 2.5 });
+    for (const py of northPillars) {
+      g.poly([W - parapet, py - 5, W - WALL, py - 3, W - WALL, py + 7, W - parapet, py + 5])
+        .fill({ color: 0x342f42 })
+        .stroke({ color: 0x0a0b10, width: 1.8 });
+    }
+
+    // --- SOUTH WALL (Bottom): Foreground Cutaway Parapet Ledge ---
+    g.poly([parapet, H - parapet, WALL, H - WALL, W - WALL, H - WALL, W - parapet, H - parapet])
+      .fill({ color: 0x332e40 })
+      .stroke({ color: 0x0a0b10, width: 2.5 });
+    // Bright top rim along inner South wall edge
+    g.moveTo(WALL, H - WALL + 1.5)
+      .lineTo(W - WALL, H - WALL + 1.5)
+      .stroke({ color: 0x625a78, width: 2 });
+
+    // --- Outer Parapet Top Frame & 4 Reinforced 3D Corner Bastions ---
+    const corners = [
+      [0, 0],
+      [W - WALL, 0],
+      [0, H - WALL],
+      [W - WALL, H - WALL]
+    ];
+    for (const [bx, by] of corners) {
+      g.rect(bx + 2, by + 2, WALL - 4, WALL - 4)
+        .fill({ color: 0x2e2a3b })
+        .stroke({ color: 0x0a0b10, width: 3 });
+      g.rect(bx + 7, by + 7, WALL - 14, WALL - 14)
+        .fill({ color: 0x1a1823 })
+        .stroke({ color: palette.accent, width: 1.5, alpha: 0.55 });
+    }
+
+    // Crisp inner arena 3D bounding contour
+    g.rect(WALL, WALL, innerW, innerH)
+      .stroke({ color: 0x0a0b10, width: 3.5 });
 
     // Trapdoor in cleared Boss Room
     if (room.trapdoor) {

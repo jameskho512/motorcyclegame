@@ -79,13 +79,12 @@ export const OBSTACLE_PATTERNS: readonly (readonly Point2D[])[] = [
 ] as const;
 
 /**
- * Meaningful exponential + linear scaling per floor.
- * Matches index.html L1701-L1704 verbatim:
- * 1 + (floor - 1) * 0.45 + (floor - 1)^1.35 * 0.22
+ * Exponential scaling per floor:
+ * 1.55^(floor - 1)
  */
 export function getFloorScale(floor: number): number {
   const f = Math.max(1, floor);
-  return 1 + (f - 1) * 0.45 + Math.pow(f - 1, 1.35) * 0.22;
+  return Math.pow(1.55, f - 1);
 }
 
 /**
@@ -118,7 +117,7 @@ export function createBoss(floor: number, x: number, y: number): Boss {
     radius: 34,
     hp: baseHp,
     maxHp: baseHp,
-    speed: 98 + floor * 7,
+    speed: Math.round(105 * Math.pow(1.06, Math.max(1, floor) - 1)),
     burnTimer: 0,
     burnTick: 0,
     aiTimer: 1.3,
@@ -142,8 +141,9 @@ export function createEnemy(
   isElite = false,
   random: () => number = Math.random
 ): RegularEnemy {
-  const scale = getFloorScale(floor) * (isElite ? 1.65 : 1);
-  const spdScale = (1 + (floor - 1) * 0.06) * (isElite ? 1.15 : 1);
+  const f = Math.max(1, floor);
+  const scale = getFloorScale(f) * (isElite ? 1.65 : 1);
+  const spdScale = Math.pow(1.06, f - 1) * (isElite ? 1.15 : 1);
   const base = {
     id: getNextEntityId(),
     type,
@@ -370,8 +370,9 @@ export function populateRoom(
     pool.push('splitter', 'sniper', 'pyro');
   }
 
-  const baseCount = 3 + Math.floor(floor * 1.4) + Math.floor(random() * 2);
-  const eliteChance = Math.min(0.45, Math.max(0, (floor - 1) * 0.12));
+  const f = Math.max(1, floor);
+  const baseCount = Math.min(18, Math.round(4 * Math.pow(1.22, f - 1)) + Math.floor(random() * 2));
+  const eliteChance = f <= 1 ? 0 : Math.min(0.45, 0.10 * Math.pow(1.45, f - 2));
 
   for (let i = 0; i < baseCount; i++) {
     let ex = 0;
@@ -453,7 +454,11 @@ export function generateDungeon(
     }
   }
 
-  // Initialize room data
+  // Initialize room data with floor-wide power-up quota (max 1 power-up per 2 rooms)
+  const floorPowerUpQuota = {
+    dropped: 0,
+    max: Math.floor(coords.length / 2)
+  };
   for (const c of coords) {
     const key = `${c.x},${c.y}`;
     const isStart = c.x === 0 && c.y === 0;
@@ -469,7 +474,9 @@ export function generateDungeon(
       pickups: [],
       hazards: [],
       skids: [],
-      trapdoor: false
+      trapdoor: false,
+      powerUpDropQuota: floorPowerUpQuota,
+      powerUpDroppedInRoom: false
     };
   }
 

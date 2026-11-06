@@ -279,17 +279,16 @@ describe('Tier 2: Boundary & Corner Cases', () => {
   // Boundary 7: Floor 1 vs Floor 10 Scaling
   // --------------------------------------------------------------------------
   describe('Boundary 7: Floor 1 vs Floor 10 Scaling', () => {
-    it('verifies non-linear scaling formula 1 + 0.45(f-1) + 0.22(f-1)^1.35 matches exact bounds', () => {
+    it('verifies exponential scaling formula 1.55^(f-1) matches exact bounds', () => {
       // Floor 1: exactly 1.0
       expect(getFloorScale(1)).toBe(1.0);
 
-      // Floor 2: 1 + 0.45(1) + 0.22(1) = 1.67
-      expect(getFloorScale(2)).toBeCloseTo(1.67);
+      // Floor 2: 1.55^1 = 1.55
+      expect(getFloorScale(2)).toBeCloseTo(1.55, 4);
 
-      // Floor 10: 1 + 0.45(9) + 0.22*(9^1.35) ≈ 1 + 4.05 + 4.288 ≈ 9.338
+      // Floor 10: 1.55^9 ≈ 51.59
       const scale10 = getFloorScale(10);
-      expect(scale10).toBeGreaterThan(9.0);
-      expect(scale10).toBeLessThan(10.0);
+      expect(scale10).toBeCloseTo(Math.pow(1.55, 9), 4);
 
       // Enemy HP scaling on Floor 1 vs Floor 10
       const hpF1 = calcEnemyHp(100, 1);

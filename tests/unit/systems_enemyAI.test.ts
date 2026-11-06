@@ -90,20 +90,24 @@ function createMockPlayer(overrides: Partial<PlayerState> = {}): PlayerState {
 }
 
 describe('Systems: EnemyAI — Floor Scaling Curves', () => {
-  it('computes non-linear floor scaling curves correctly across floors 1 to 5', () => {
-    // Floor 1: 1 + 0 + 0 = 1.0
+  it('computes exponential floor scaling curves correctly across floors 1 to 10', () => {
+    // Floor 1: 1.55^0 = 1.0
     expect(getFloorScale(1)).toBe(1.0);
 
-    // Floor 2: 1 + (1)*0.45 + (1)^1.35 * 0.22 = 1 + 0.45 + 0.22 = 1.67
-    expect(getFloorScale(2)).toBeCloseTo(1.67, 5);
+    // Floor 2: 1.55^1 = 1.55
+    expect(getFloorScale(2)).toBeCloseTo(1.55, 5);
 
-    // Floor 3: 1 + (2)*0.45 + (2)^1.35 * 0.22 = 1 + 0.90 + 2.549 * 0.22 = ~2.4608
-    const expectedFloor3 = 1 + 2 * 0.45 + Math.pow(2, 1.35) * 0.22;
+    // Floor 3: 1.55^2 = 2.4025
+    const expectedFloor3 = Math.pow(1.55, 2);
     expect(getFloorScale(3)).toBeCloseTo(expectedFloor3, 5);
 
-    // Scaling is strictly monotonically increasing
+    // Scaling is strictly exponential (accelerating marginal increments)
     for (let f = 1; f < 10; f++) {
-      expect(getFloorScale(f + 1)).toBeGreaterThan(getFloorScale(f));
+      const deltaCurr = getFloorScale(f + 1) - getFloorScale(f);
+      const deltaNext = getFloorScale(f + 2) - getFloorScale(f + 1);
+      expect(deltaCurr).toBeGreaterThan(0);
+      expect(deltaNext).toBeGreaterThan(deltaCurr);
+      expect(getFloorScale(f + 1) / getFloorScale(f)).toBeCloseTo(1.55, 5);
     }
   });
 
@@ -115,14 +119,14 @@ describe('Systems: EnemyAI — Floor Scaling Curves', () => {
     // Floor 1 elite -> 165
     expect(calcEnemyHp(baseHp, 1, true)).toBe(165);
 
-    // Floor 2 regular -> 167
-    expect(calcEnemyHp(baseHp, 2, false)).toBe(167);
+    // Floor 2 regular -> round(100 * 1.55) = 155
+    expect(calcEnemyHp(baseHp, 2, false)).toBe(155);
 
-    // Floor 2 elite -> round(100 * 1.67 * 1.65) = round(275.55) = 276
+    // Floor 2 elite -> round(100 * getFloorScale(2) * 1.65)
     expect(calcEnemyHp(baseHp, 2, true)).toBe(Math.round(baseHp * getFloorScale(2) * 1.65));
   });
 
-  it('scales enemy speed with floor (+6%/floor) and elite 1.15x multiplier', () => {
+  it('scales enemy speed exponentially with floor and elite 1.15x multiplier', () => {
     const baseSpeed = 100;
     // Floor 1 regular -> 100
     expect(calcEnemySpeed(baseSpeed, 1, false)).toBe(100);
@@ -130,25 +134,24 @@ describe('Systems: EnemyAI — Floor Scaling Curves', () => {
     // Floor 1 elite -> 115
     expect(calcEnemySpeed(baseSpeed, 1, true)).toBeCloseTo(115, 5);
 
-    // Floor 3 regular -> 100 * (1 + 2 * 0.06) = 112
-    expect(calcEnemySpeed(baseSpeed, 3, false)).toBeCloseTo(112, 5);
+    // Floor 3 regular -> 100 * 1.06^2
+    expect(calcEnemySpeed(baseSpeed, 3, false)).toBeCloseTo(100 * Math.pow(1.06, 2), 5);
 
-    // Floor 3 elite -> 100 * 1.12 * 1.15 = 128.8
-    expect(calcEnemySpeed(baseSpeed, 3, true)).toBeCloseTo(128.8, 5);
+    // Floor 3 elite -> 100 * 1.06^2 * 1.15
+    expect(calcEnemySpeed(baseSpeed, 3, true)).toBeCloseTo(100 * Math.pow(1.06, 2) * 1.15, 5);
   });
 
-  it('scales enemy bullet projectile speed (+8%/floor)', () => {
+  it('scales enemy bullet projectile speed exponentially', () => {
     expect(calcEnemyProjSpeedScale(1)).toBe(1.0);
     expect(calcEnemyProjSpeedScale(2)).toBeCloseTo(1.08, 5);
-    expect(calcEnemyProjSpeedScale(5)).toBeCloseTo(1.32, 5);
+    expect(calcEnemyProjSpeedScale(5)).toBeCloseTo(Math.pow(1.08, 4), 5);
   });
 
-  it('computes elite spawn chance starting at floor 2 and capping at 45%', () => {
+  it('computes elite spawn chance exponentially starting at floor 2 and capping at 45%', () => {
     expect(getEliteSpawnChance(1)).toBe(0);
-    expect(getEliteSpawnChance(2)).toBeCloseTo(0.12, 5);
-    expect(getEliteSpawnChance(4)).toBeCloseTo(0.36, 5);
-    expect(getEliteSpawnChance(5)).toBeCloseTo(0.45, 5); // capped at 0.45
-    expect(getEliteSpawnChance(10)).toBe(0.45);
+    expect(getEliteSpawnChance(2)).toBeCloseTo(0.10, 5);
+    expect(getEliteSpawnChance(4)).toBeCloseTo(0.10 * Math.pow(1.45, 2), 5);
+    expect(getEliteSpawnChance(10)).toBe(0.45); // capped at 0.45
   });
 });
 

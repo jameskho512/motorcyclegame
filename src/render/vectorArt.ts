@@ -62,15 +62,15 @@ export function drawMotorcycle(g: Graphics, player: PlayerState, _timestampMs: n
   const alpha = isBlinking ? 0.45 : 1.0;
 
   // --- Volumetric Headlight Cone ---
-  const hlLength = 135;
-  const hlSpread = 40;
+  const hlLength = 145;
+  const hlSpread = 42;
   const cosB = Math.cos(bAngle);
   const sinB = Math.sin(bAngle);
   const perpX = -sinB;
   const perpY = cosB;
 
-  const hlOriginX = px + cosB * 14;
-  const hlOriginY = py + sinB * 14;
+  const hlOriginX = px + cosB * 18;
+  const hlOriginY = py + sinB * 18;
   const hlFarCenterX = px + cosB * hlLength;
   const hlFarCenterY = py + sinB * hlLength;
 
@@ -79,163 +79,393 @@ export function drawMotorcycle(g: Graphics, player: PlayerState, _timestampMs: n
     hlFarCenterX + perpX * hlSpread, hlFarCenterY + perpY * hlSpread,
     hlFarCenterX - perpX * hlSpread, hlFarCenterY - perpY * hlSpread
   ];
-
   g.poly(coneCoords)
     .fill({ color: 0xfffae0, alpha: 0.14 * alpha });
 
-  // Inner bright beam core
   const innerConeCoords = [
     hlOriginX, hlOriginY,
-    hlFarCenterX + perpX * (hlSpread * 0.4), hlFarCenterY + perpY * (hlSpread * 0.4),
-    hlFarCenterX - perpX * (hlSpread * 0.4), hlFarCenterY - perpY * (hlSpread * 0.4)
+    hlFarCenterX + perpX * (hlSpread * 0.42), hlFarCenterY + perpY * (hlSpread * 0.42),
+    hlFarCenterX - perpX * (hlSpread * 0.42), hlFarCenterY - perpY * (hlSpread * 0.42)
   ];
   g.poly(innerConeCoords)
     .fill({ color: 0xffffff, alpha: 0.22 * alpha });
 
-  // --- Motorcycle Chassis (Drawn along bikeAngle) ---
-  // Transforms helper
-  const toWorld = (lx: number, ly: number): [number, number] => {
+  // 2.5D Height Extrusion Helper: z > 0 lifts geometry upward in screen-Y for three-quarter 3D depth
+  const toWorld = (lx: number, ly: number, z: number = 0): [number, number] => {
     return [
       px + cosB * lx - sinB * ly,
-      py + sinB * lx + cosB * ly
+      py + sinB * lx + cosB * ly - z
     ];
   };
 
-  // Rear Tire (Bold black rubber with hard-edge tread rim)
-  const tireCoords = [
-    toWorld(-23, -6.5),
-    toWorld(-9, -6.5),
-    toWorld(-9, 6.5),
-    toWorld(-23, 6.5)
+  // --- 1. Wide Performance Tires & 2.5D Sidewalls ---
+  // Rear Tire (Fat racing slick with 3D sidewall, tread grooves & orange rim stripe)
+  const rearTireBase = [
+    toWorld(-26, -7.8, 0),
+    toWorld(-8, -7.8, 0),
+    toWorld(-8, 7.8, 0),
+    toWorld(-26, 7.8, 0)
   ].flat();
-  g.poly(tireCoords)
-    .fill({ color: 0x0a0b10, alpha })
-    .stroke({ color: 0x222530, width: 2, alpha });
+  g.poly(rearTireBase)
+    .fill({ color: 0x0b0c12, alpha })
+    .stroke({ color: 0x050508, width: 2.5, alpha });
 
-  // Front Tire
-  const frontTireCoords = [
-    toWorld(8, -5.5),
-    toWorld(21, -5.5),
-    toWorld(21, 5.5),
-    toWorld(8, 5.5)
+  const rearTireTop = [
+    toWorld(-25, -7.0, 2.5),
+    toWorld(-9, -7.0, 2.5),
+    toWorld(-9, 7.0, 2.5),
+    toWorld(-25, 7.0, 2.5)
   ].flat();
-  g.poly(frontTireCoords)
-    .fill({ color: 0x0a0b10, alpha })
-    .stroke({ color: 0x222530, width: 2, alpha });
+  g.poly(rearTireTop)
+    .fill({ color: 0x1e202b, alpha })
+    .stroke({ color: 0x0a0b10, width: 2, alpha });
 
-  // Chrome Twin Exhaust Pipes
-  const ex1Coords = [toWorld(-21, -9.5), toWorld(-6, -9.5), toWorld(-6, -6.5), toWorld(-21, -6.5)].flat();
-  const ex2Coords = [toWorld(-21, 6.5), toWorld(-6, 6.5), toWorld(-6, 9.5), toWorld(-21, 9.5)].flat();
-  g.poly(ex1Coords).fill({ color: 0x535661, alpha }).stroke({ color: 0x0a0b10, width: 1.5, alpha });
-  g.poly(ex2Coords).fill({ color: 0x535661, alpha }).stroke({ color: 0x0a0b10, width: 1.5, alpha });
+  // Rear Tire orange alloy rim accent & tread ribs
+  const [rt1x, rt1y] = toWorld(-22, -5.5, 2.5);
+  const [rt2x, rt2y] = toWorld(-12, -5.5, 2.5);
+  g.moveTo(rt1x, rt1y).lineTo(rt2x, rt2y).stroke({ color: 0xff5c00, width: 1.6, alpha });
+  for (const tx of [-23, -19, -15, -11]) {
+    const [t1x, t1y] = toWorld(tx, -6.2, 2.5);
+    const [t2x, t2y] = toWorld(tx - 1.5, 6.2, 2.5);
+    g.moveTo(t1x, t1y).lineTo(t2x, t2y).stroke({ color: 0x0a0b10, width: 1.5, alpha });
+  }
 
-  // Glowing heated exhaust tips
-  const tip1 = [toWorld(-23, -9.5), toWorld(-21, -9.5), toWorld(-21, -6.5), toWorld(-23, -6.5)].flat();
-  const tip2 = [toWorld(-23, 6.5), toWorld(-21, 6.5), toWorld(-21, 9.5), toWorld(-23, 9.5)].flat();
-  g.poly(tip1).fill({ color: 0xff9f1c, alpha });
-  g.poly(tip2).fill({ color: 0xff9f1c, alpha });
-
-  // Cel-shaded Fairing & Chassis (Angular 2-tone orange)
-  const chassisPoints = [
-    toWorld(-14, -7.5),
-    toWorld(8, -7.5),
-    toWorld(14, 0),
-    toWorld(8, 7.5),
-    toWorld(-14, 7.5)
+  // Front Tire (Sculpted sport tire with gold inverted fork tubes)
+  const frontTireBase = [
+    toWorld(9, -6.2, 0),
+    toWorld(25, -6.2, 0),
+    toWorld(25, 6.2, 0),
+    toWorld(9, 6.2, 0)
   ].flat();
+  g.poly(frontTireBase)
+    .fill({ color: 0x0b0c12, alpha })
+    .stroke({ color: 0x050508, width: 2.5, alpha });
 
-  // Dark ink outline
-  g.poly(chassisPoints)
+  const frontTireTop = [
+    toWorld(10, -5.4, 2.2),
+    toWorld(24, -5.4, 2.2),
+    toWorld(24, 5.4, 2.2),
+    toWorld(10, 5.4, 2.2)
+  ].flat();
+  g.poly(frontTireTop)
+    .fill({ color: 0x1e202b, alpha })
+    .stroke({ color: 0x0a0b10, width: 1.8, alpha });
+
+  // Gold Inverted Front Forks & Rear Swingarm
+  const [fkL1x, fkL1y] = toWorld(8, -6.8, 4.5);
+  const [fkL2x, fkL2y] = toWorld(18, -5.8, 1.5);
+  const [fkR1x, fkR1y] = toWorld(8, 6.8, 4.5);
+  const [fkR2x, fkR2y] = toWorld(18, 5.8, 1.5);
+  g.moveTo(fkL1x, fkL1y).lineTo(fkL2x, fkL2y).stroke({ color: 0xffbe0b, width: 3, alpha });
+  g.moveTo(fkR1x, fkR1y).lineTo(fkR2x, fkR2y).stroke({ color: 0xffbe0b, width: 3, alpha });
+
+  // --- 2. Twin Upswept Megaphone Exhausts & Mechanical Engine Block ---
+  const exLeft = [toWorld(-24, -10.5, 4), toWorld(-5, -8.5, 3), toWorld(-5, -5.5, 3), toWorld(-24, -7.2, 4)].flat();
+  const exRight = [toWorld(-24, 7.2, 4), toWorld(-5, 5.5, 3), toWorld(-5, 8.5, 3), toWorld(-24, 10.5, 4)].flat();
+  g.poly(exLeft).fill({ color: 0x5c6274, alpha }).stroke({ color: 0x0a0b10, width: 2, alpha });
+  g.poly(exRight).fill({ color: 0x454a59, alpha }).stroke({ color: 0x0a0b10, width: 2, alpha });
+
+  // Glowing afterburner exhaust nozzles
+  const [noz1x, noz1y] = toWorld(-24.5, -8.8, 4);
+  const [noz2x, noz2y] = toWorld(-24.5, 8.8, 4);
+  g.circle(noz1x, noz1y, 2.4).fill({ color: 0xff9f1c, alpha });
+  g.circle(noz2x, noz2y, 2.4).fill({ color: 0xff9f1c, alpha });
+
+  // Exposed Gunmetal V-Twin Engine Casing & Gold Clutch Cover
+  const engineBlock = [
+    toWorld(-7, -9.2, 3),
+    toWorld(6, -9.2, 3),
+    toWorld(6, 9.2, 3),
+    toWorld(-7, 9.2, 3)
+  ].flat();
+  g.poly(engineBlock)
+    .fill({ color: 0x2b2e3b, alpha })
+    .stroke({ color: 0x0a0b10, width: 2, alpha });
+  const [clX, clY] = toWorld(-1, 7.5, 3.2);
+  g.circle(clX, clY, 3.2)
+    .fill({ color: 0xff9f1c, alpha })
+    .stroke({ color: 0x0a0b10, width: 1.5, alpha });
+
+  // --- 3. Sculpted 3-Tone Cel-Shaded Sportbike Fairing, Tank & Tail Cowl ---
+  // Lower Shadow Belly Pan (Dark crimson-orange 3D underside)
+  const lowerFairing = [
+    toWorld(-18, -8.2, 3.2),
+    toWorld(10, -9.2, 3.2),
+    toWorld(19, 0, 3.2),
+    toWorld(10, 9.2, 3.2),
+    toWorld(-18, 8.2, 3.2)
+  ].flat();
+  g.poly(lowerFairing)
+    .fill({ color: 0xb33000, alpha })
     .stroke({ color: 0x0a0b10, width: 3.5, alpha });
 
-  // Base bold orange fill
-  g.poly(chassisPoints)
-    .fill({ color: 0xff5c00, alpha });
-
-  // Top specular highlight block
-  const specPoints = [
-    toWorld(-12, -6.5),
-    toWorld(6, -6.5),
-    toWorld(11, 0),
-    toWorld(-12, 0)
+  // Main Sculpted Upper Fairing & Swept Tail Cowl (Vibrant Anime Racing Orange)
+  const upperFairing = [
+    toWorld(-21, -4.5, 5.5),
+    toWorld(-11, -8.0, 5.5),
+    toWorld(9, -8.8, 5.5),
+    toWorld(19, -3.2, 5.2),
+    toWorld(21, 0, 5.2),
+    toWorld(19, 3.2, 5.2),
+    toWorld(9, 8.8, 5.5),
+    toWorld(-11, 8.0, 5.5),
+    toWorld(-21, 4.5, 5.5)
   ].flat();
-  g.poly(specPoints)
-    .fill({ color: 0xff8533, alpha });
+  g.poly(upperFairing)
+    .fill({ color: 0xff5c00, alpha })
+    .stroke({ color: 0x0a0b10, width: 3, alpha });
 
-  // Center black racing stripe
-  const stripePoints = [
-    toWorld(-12, -2.5),
-    toWorld(12, -2.5),
-    toWorld(12, 2.5),
-    toWorld(-12, 2.5)
+  // Cel-Shaded Top-Left Specular Highlight Plane
+  const fairingHighlight = [
+    toWorld(-19, -4.0, 5.8),
+    toWorld(-9, -7.2, 5.8),
+    toWorld(8, -7.8, 5.8),
+    toWorld(17, -2.2, 5.6),
+    toWorld(14, 0, 5.8),
+    toWorld(-15, -1.0, 5.8)
   ].flat();
-  g.poly(stripePoints)
+  g.poly(fairingHighlight)
+    .fill({ color: 0xff9e44, alpha });
+
+  // Sculpted Fuel Tank Bulge with Graphic Black Racing Stripe & Crisp Rim Glint
+  const tankShape = [
+    toWorld(-4, -6.2, 6.5),
+    toWorld(8, -6.8, 6.5),
+    toWorld(12, -3.5, 6.5),
+    toWorld(12, 3.5, 6.5),
+    toWorld(8, 6.8, 6.5),
+    toWorld(-4, 6.2, 6.5)
+  ].flat();
+  g.poly(tankShape)
+    .fill({ color: 0xff6d1a, alpha })
+    .stroke({ color: 0x0a0b10, width: 2.2, alpha });
+
+  const racingStripe = [
+    toWorld(-20, -2.2, 6.6),
+    toWorld(17, -2.2, 6.6),
+    toWorld(17, 2.2, 6.6),
+    toWorld(-20, 2.2, 6.6)
+  ].flat();
+  g.poly(racingStripe)
     .fill({ color: 0x0a0b10, alpha });
 
-  // Handlebars
-  const [hbLeftX, hbLeftY] = toWorld(6, -13);
-  const [hbMidX, hbMidY] = toWorld(9.5, 0);
-  const [hbRightX, hbRightY] = toWorld(6, 13);
-  g.moveTo(hbLeftX, hbLeftY)
-    .lineTo(hbMidX, hbMidY)
-    .lineTo(hbRightX, hbRightY)
-    .stroke({ color: 0xdee2e6, width: 3, alpha });
+  // Dark Smoked Aero Windscreen & Twin Shark-Eye LED Headlights
+  const windscreen = [
+    toWorld(9, -5.2, 6.8),
+    toWorld(16, -3.0, 6.5),
+    toWorld(18, 0, 6.5),
+    toWorld(16, 3.0, 6.5),
+    toWorld(9, 5.2, 6.8)
+  ].flat();
+  g.poly(windscreen)
+    .fill({ color: 0x141824, alpha })
+    .stroke({ color: 0x0a0b10, width: 2, alpha });
 
-  // Headlight fixture
-  const [hlX, hlY] = toWorld(14, 0);
-  g.circle(hlX, hlY, 3.5)
-    .fill({ color: 0xfffce6, alpha })
-    .stroke({ color: 0x0a0b10, width: 1.5, alpha });
+  const [ledLx, ledLy] = toWorld(18.5, -3.4, 5.2);
+  const [ledRx, ledRy] = toWorld(18.5, 3.4, 5.2);
+  g.circle(ledLx, ledLy, 2.4).fill({ color: 0xfffce6, alpha }).stroke({ color: 0x0a0b10, width: 1.2, alpha });
+  g.circle(ledRx, ledRy, 2.4).fill({ color: 0xfffce6, alpha }).stroke({ color: 0x0a0b10, width: 1.2, alpha });
 
-  // --- Aimed Turret Carriage & Rider Helmet (aimAngle) ---
+  // Swept Clip-On Handlebars & Brake Levers
+  const [hbLx, hbLy] = toWorld(6.5, -13.5, 6.5);
+  const [hbMx, hbMy] = toWorld(10.5, 0, 6.8);
+  const [hbRx, hbRy] = toWorld(6.5, 13.5, 6.5);
+  g.moveTo(hbLx, hbLy)
+    .lineTo(hbMx, hbMy)
+    .lineTo(hbRx, hbRy)
+    .stroke({ color: 0xdde2eb, width: 3.2, alpha });
+  g.circle(hbLx, hbLy, 2.5).fill({ color: 0x0a0b10, alpha });
+  g.circle(hbRx, hbRy, 2.5).fill({ color: 0x0a0b10, alpha });
+
+  // --- 4. Anime Biker Rider (Leaning Armored Torso, Spine Plates, Shoulders & Arms) ---
+  // Rider Back & Armored Jacket Torso leaning into the tank
+  const torsoPts = [
+    toWorld(-14, -6.2, 7.5),
+    toWorld(-2, -7.8, 8.5),
+    toWorld(3, -5.2, 9.0),
+    toWorld(3, 5.2, 9.0),
+    toWorld(-2, 7.8, 8.5),
+    toWorld(-14, 6.2, 7.5)
+  ].flat();
+  g.poly(torsoPts)
+    .fill({ color: 0x1d1f2b, alpha })
+    .stroke({ color: 0x0a0b10, width: 2.8, alpha });
+
+  // Orange Leather Shoulder Pads on Rider Jacket
+  const leftPad = [
+    toWorld(-5, -7.8, 8.8),
+    toWorld(2, -7.2, 9.2),
+    toWorld(2, -3.5, 9.2),
+    toWorld(-5, -4.0, 8.8)
+  ].flat();
+  const rightPad = [
+    toWorld(-5, 4.0, 8.8),
+    toWorld(2, 3.5, 9.2),
+    toWorld(2, 7.2, 9.2),
+    toWorld(-5, 7.8, 8.8)
+  ].flat();
+  g.poly(leftPad).fill({ color: 0xff5c00, alpha }).stroke({ color: 0x0a0b10, width: 1.8, alpha });
+  g.poly(rightPad).fill({ color: 0xd94800, alpha }).stroke({ color: 0x0a0b10, width: 1.8, alpha });
+
+  // Segmented Cybernetic Spine Armor Ribs along Rider's Back
+  for (const sx of [-11, -8, -5]) {
+    const [sp1x, sp1y] = toWorld(sx, -2.4, 8.8);
+    const [sp2x, sp2y] = toWorld(sx, 2.4, 8.8);
+    g.moveTo(sp1x, sp1y).lineTo(sp2x, sp2y).stroke({ color: 0x8d95a8, width: 2, alpha });
+  }
+
+  // Left Rider Arm gripping handlebar
+  const [shLx, shLy] = toWorld(0, -7.0, 9.0);
+  g.moveTo(shLx, shLy)
+    .lineTo(hbLx, hbLy)
+    .stroke({ color: 0x292c3d, width: 4.2, alpha });
+  g.circle(hbLx, hbLy, 3).fill({ color: 0xff5c00, alpha }).stroke({ color: 0x0a0b10, width: 1.5, alpha });
+
+  // --- 5. Aimed Heavy Weapon Rig & Sculpted Anime Racing Helmet (aimAngle) ---
   const cosA = Math.cos(aAngle);
   const sinA = Math.sin(aAngle);
+  const recoil = player.fireTimer > 0 ? Math.min(3.5, player.fireTimer * 14) : 0;
 
-  const toAim = (lx: number, ly: number): [number, number] => {
+  const toAim = (lx: number, ly: number, z: number = 9.5): [number, number] => {
+    const rx = lx - recoil;
     return [
-      px + cosA * lx - sinA * ly,
-      py + sinA * lx + cosA * ly
+      px + cosA * rx - sinA * ly,
+      py + sinA * rx + cosA * ly - z
     ];
   };
 
-  // Heavy Turret Carriage
-  const turretPoints = [
-    toAim(2, -4),
-    toAim(22, -4),
-    toAim(22, 4),
-    toAim(2, 4)
-  ].flat();
+  // Rider Right Weapon Arm supporting the gun
+  const [armStartX, armStartY] = toAim(-1, 5.5, 9.0);
+  const [armEndX, armEndY] = toAim(11, 3.8, 9.2);
+  g.moveTo(armStartX, armStartY)
+    .lineTo(armEndX, armEndY)
+    .stroke({ color: 0x1d1f2b, width: 4.8, alpha });
 
-  g.poly(turretPoints)
-    .fill({ color: 0x1a1c26, alpha })
-    .stroke({ color: 0x0a0b10, width: 3, alpha });
+  // Weapon-Specific High-Detail Silhouette (matching Concept Art)
+  if (player.weapon === 'shotgun') {
+    // Double-barrel sawed-off shotgun with wooden stock & twin heavy bores
+    const body = [toAim(3, -4.5), toAim(24, -4.5), toAim(24, 4.5), toAim(3, 4.5)].flat();
+    g.poly(body).fill({ color: 0x2b2d3c, alpha }).stroke({ color: 0x0a0b10, width: 2.8, alpha });
+    const [b1x, b1y] = toAim(7, -2.2);
+    const [b2x, b2y] = toAim(24, -2.2);
+    const [b3x, b3y] = toAim(7, 2.2);
+    const [b4x, b4y] = toAim(24, 2.2);
+    g.moveTo(b1x, b1y).lineTo(b2x, b2y).stroke({ color: 0x8d95a8, width: 2.2, alpha });
+    g.moveTo(b3x, b3y).lineTo(b4x, b4y).stroke({ color: 0x8d95a8, width: 2.2, alpha });
+  } else if (player.weapon === 'railgun') {
+    // Twin-rail electromagnetic accelerator with glowing cyan plasma core
+    const railL = [toAim(2, -5.2), toAim(27, -4.2), toAim(27, -1.8), toAim(2, -1.8)].flat();
+    const railR = [toAim(2, 1.8), toAim(27, 1.8), toAim(27, 4.2), toAim(2, 5.2)].flat();
+    g.poly(railL).fill({ color: 0x232736, alpha }).stroke({ color: 0x0a0b10, width: 2.4, alpha });
+    g.poly(railR).fill({ color: 0x232736, alpha }).stroke({ color: 0x0a0b10, width: 2.4, alpha });
+    const [c1x, c1y] = toAim(4, 0);
+    const [c2x, c2y] = toAim(26, 0);
+    g.moveTo(c1x, c1y).lineTo(c2x, c2y).stroke({ color: 0x00f5d4, width: 3, alpha });
+  } else if (player.weapon === 'flamethrower') {
+    // Heavy flame projector with orange fuel tank & igniter nozzle
+    const tank = [toAim(1, -6.2), toAim(13, -6.2), toAim(13, -1.5), toAim(1, -1.5)].flat();
+    g.poly(tank).fill({ color: 0xff5400, alpha }).stroke({ color: 0x0a0b10, width: 2.2, alpha });
+    const barrel = [toAim(3, -2.5), toAim(24, -2.5), toAim(24, 3.8), toAim(3, 3.8)].flat();
+    g.poly(barrel).fill({ color: 0x282b3a, alpha }).stroke({ color: 0x0a0b10, width: 2.8, alpha });
+  } else if (player.weapon === 'grenade_launcher') {
+    // Revolving drum heavy grenade launcher
+    const drum = [toAim(4, -6.2), toAim(15, -6.2), toAim(15, 6.2), toAim(4, 6.2)].flat();
+    g.poly(drum).fill({ color: 0x34384b, alpha }).stroke({ color: 0x0a0b10, width: 2.8, alpha });
+    const tube = [toAim(14, -4.2), toAim(25, -4.2), toAim(25, 4.2), toAim(14, 4.2)].flat();
+    g.poly(tube).fill({ color: 0x1c1e29, alpha }).stroke({ color: 0x0a0b10, width: 2.6, alpha });
+  } else {
+    // Assault SMG / Tactical Sidearm / Arc Coil Receiver with top Picatinny rail
+    const gunBody = [
+      toAim(3, -4.2),
+      toAim(24, -3.8),
+      toAim(24, 3.8),
+      toAim(3, 4.2)
+    ].flat();
+    g.poly(gunBody)
+      .fill({ color: 0x222533, alpha })
+      .stroke({ color: 0x0a0b10, width: 2.8, alpha });
 
-  // Weapon Muzzle Accent Band
+    const [rail1x, rail1y] = toAim(5, -1.5);
+    const [rail2x, rail2y] = toAim(20, -1.5);
+    g.moveTo(rail1x, rail1y).lineTo(rail2x, rail2y).stroke({ color: 0x6c758c, width: 1.8, alpha });
+  }
+
+  // Glowing Weapon Muzzle Brake Band
   const muzzlePoints = [
-    toAim(19, -4.5),
-    toAim(23, -4.5),
-    toAim(23, 4.5),
-    toAim(19, 4.5)
+    toAim(21, -4.5),
+    toAim(25.5, -4.5),
+    toAim(25.5, 4.5),
+    toAim(21, 4.5)
   ].flat();
   g.poly(muzzlePoints)
-    .fill({ color: weaponColor, alpha });
-
-  // Rider Helmet (Cel-shaded dome with bold ink contour)
-  g.circle(px, py, 9)
-    .fill({ color: 0x222533, alpha })
-    .stroke({ color: 0x0a0b10, width: 3, alpha });
-
-  // Aerodynamic Visor with Neon Weapon Color
-  const visorPoints = [
-    toAim(2.5, -5),
-    toAim(8, -5),
-    toAim(8, 5),
-    toAim(2.5, 5)
-  ].flat();
-
-  g.poly(visorPoints)
     .fill({ color: weaponColor, alpha })
-    .stroke({ color: 0x0a0b10, width: 1.5, alpha });
+    .stroke({ color: 0x0a0b10, width: 1.8, alpha });
+
+  // --- 6. Sculpted Anime Racing Helmet (Matching HUD Portrait & Concept Art) ---
+  const toHelm = (lx: number, ly: number): [number, number] => {
+    return [
+      px + cosA * lx - sinA * ly,
+      py + sinA * lx + cosA * ly - 10.5
+    ];
+  };
+
+  // Aerodynamic Helmet Shell with Rear Spoiler Ridge (Orange & Black Cel-Shaded)
+  const helmetShell = [
+    toHelm(-10.5, -4.2),
+    toHelm(-5.5, -8.8),
+    toHelm(3.5, -8.6),
+    toHelm(9.2, -5.2),
+    toHelm(10.5, 0),
+    toHelm(9.2, 5.2),
+    toHelm(3.5, 8.6),
+    toHelm(-5.5, 8.8),
+    toHelm(-10.5, 4.2),
+    toHelm(-12.0, 0)
+  ].flat();
+  g.poly(helmetShell)
+    .fill({ color: 0xff5c00, alpha })
+    .stroke({ color: 0x0a0b10, width: 3.2, alpha });
+
+  // Helmet Crown Specular Highlight (Top-left cel-shaded light crescent)
+  const helmetHighlight = [
+    toHelm(-7.5, -4.5),
+    toHelm(-3.5, -7.4),
+    toHelm(4.0, -7.0),
+    toHelm(6.5, -3.5),
+    toHelm(-4.5, -2.2)
+  ].flat();
+  g.poly(helmetHighlight)
+    .fill({ color: 0xff9e44, alpha });
+
+  // Center Black Racing Stripe across Helmet Crown
+  const helmStripe = [
+    toHelm(-11.0, -2.0),
+    toHelm(5.0, -2.0),
+    toHelm(5.0, 2.0),
+    toHelm(-11.0, 2.0)
+  ].flat();
+  g.poly(helmStripe)
+    .fill({ color: 0x0a0b10, alpha });
+
+  // Wrap-Around Tinted Racing Visor with Neon Rim & White Anime Specular Slash
+  const visorPoints = [
+    toHelm(2.0, -6.8),
+    toHelm(8.5, -4.8),
+    toHelm(10.2, 0),
+    toHelm(8.5, 4.8),
+    toHelm(2.0, 6.8),
+    toHelm(4.2, 0)
+  ].flat();
+  g.poly(visorPoints)
+    .fill({ color: 0x101420, alpha })
+    .stroke({ color: 0x0a0b10, width: 2, alpha });
+
+  // Visor Neon Glint Slash
+  const [vg1x, vg1y] = toHelm(4.5, -4.8);
+  const [vg2x, vg2y] = toHelm(8.6, -1.2);
+  g.moveTo(vg1x, vg1y)
+    .lineTo(vg2x, vg2y)
+    .stroke({ color: weaponColor, width: 2.2, alpha });
 }
 
 // ============================================================================
@@ -583,40 +813,87 @@ export function drawEnemy(g: Graphics, en: Enemy, timestampMs: number = 0): void
 
 export function drawObstacle(g: Graphics, ob: Obstacle): void {
   const hs = ob.size / 2;
+  const zHeight = 12; // 2.5D vertical extrusion height
 
   if (ob.type === 'rock') {
-    // Sharp faceted indestructible rock
-    const rockPoints = [
+    // 1. 2.5D Extruded Front/Side Vertical Faces (gives true 3D block height)
+    const frontFace = [
       ob.x - hs, ob.y - hs + 4,
-      ob.x - hs + 6, ob.y - hs,
-      ob.x + hs - 4, ob.y - hs,
       ob.x + hs, ob.y - hs + 7,
-      ob.x + hs, ob.y + hs - 5,
-      ob.x + hs - 6, ob.y + hs,
-      ob.x - hs + 5, ob.y + hs,
-      ob.x - hs, ob.y + hs - 4
+      ob.x + hs, ob.y + hs - 3,
+      ob.x + hs - 6, ob.y + hs + 2,
+      ob.x - hs + 5, ob.y + hs + 2,
+      ob.x - hs, ob.y + hs - 2
     ];
-
-    // Bold black ink contour
-    g.poly(rockPoints)
-      .fill({ color: 0x3b3d4f })
+    g.poly(frontFace)
+      .fill({ color: 0x222430 })
       .stroke({ color: 0x0a0b10, width: 3 });
 
-    // Sharp angular stone facet highlights
-    g.moveTo(ob.x - hs + 8, ob.y - hs + 10)
-      .lineTo(ob.x + 2, ob.y + 2)
-      .lineTo(ob.x + hs - 7, ob.y + hs - 6)
-      .stroke({ color: 0x686c87, width: 2 });
+    // Hazard stripe band on front vertical face
+    g.rect(ob.x - hs + 4, ob.y + hs - 8, ob.size - 8, 5)
+      .fill({ color: 0xffae00, alpha: 0.75 })
+      .stroke({ color: 0x0a0b10, width: 1.5 });
+
+    // 2. Elevated 2.5D Top Armor Slab (shifted up by -zHeight)
+    const topY = ob.y - zHeight;
+    const rockTop = [
+      ob.x - hs, topY - hs + 4,
+      ob.x - hs + 6, topY - hs,
+      ob.x + hs - 4, topY - hs,
+      ob.x + hs, topY - hs + 7,
+      ob.x + hs, topY + hs - 5,
+      ob.x + hs - 6, topY + hs,
+      ob.x - hs + 5, topY + hs,
+      ob.x - hs, topY + hs - 4
+    ];
+    g.poly(rockTop)
+      .fill({ color: 0x424559 })
+      .stroke({ color: 0x0a0b10, width: 3 });
+
+    // Top slab specular bevel & bolted steel reinforcement plate
+    g.moveTo(ob.x - hs + 6, topY - hs + 3)
+      .lineTo(ob.x + hs - 5, topY - hs + 3)
+      .stroke({ color: 0x767b99, width: 2 });
+    g.rect(ob.x - hs + 8, topY - hs + 8, ob.size - 16, ob.size - 16)
+      .fill({ color: 0x323546 })
+      .stroke({ color: 0x0a0b10, width: 1.5 });
   } else {
-    // High-contrast explosive TNT barrel
-    // Cylinder body
-    g.circle(ob.x, ob.y, hs)
+    // 2.5D Standing Explosive Fuel / TNT Drum Cylinder
+    const r = hs * 0.92;
+    const topY = ob.y - 10;
+    const botY = ob.y + 6;
+
+    // Cylinder vertical body
+    g.rect(ob.x - r, topY, r * 2, botY - topY)
+      .fill({ color: 0xc92a37 })
+      .stroke({ color: 0x0a0b10, width: 3 });
+
+    // Bottom elliptical base of drum
+    g.ellipse(ob.x, botY, r, r * 0.55)
+      .fill({ color: 0x9e1b26 })
+      .stroke({ color: 0x0a0b10, width: 3 });
+
+    // Right-side 3D cel-shaded shadow band on cylinder wall
+    g.rect(ob.x + r * 0.2, topY, r * 0.75, botY - topY)
+      .fill({ color: 0x80131d, alpha: 0.65 });
+
+    // Left-side 3D specular highlight band
+    g.rect(ob.x - r * 0.75, topY, r * 0.3, botY - topY)
+      .fill({ color: 0xff6b77, alpha: 0.65 });
+
+    // Curved Yellow Hazard Stripe around drum waist
+    g.ellipse(ob.x, (topY + botY) / 2 + 2, r, r * 0.42)
+      .stroke({ color: 0xffd166, width: 3 });
+
+    // 3D Elliptical Top Lid of Drum
+    g.ellipse(ob.x, topY, r, r * 0.55)
       .fill({ color: 0xe63946 })
       .stroke({ color: 0x0a0b10, width: 3 });
-
-    // Yellow hazard bands
-    g.circle(ob.x, ob.y, hs - 3)
-      .stroke({ color: 0xffd166, width: 2.5 });
+    g.ellipse(ob.x, topY, r * 0.72, r * 0.38)
+      .fill({ color: 0x242633 })
+      .stroke({ color: 0xffd166, width: 1.5 });
+    // Bung cap glint
+    g.circle(ob.x - 4, topY, 2.2).fill({ color: 0xffd166 });
   }
 }
 
@@ -917,14 +1194,38 @@ export function drawDoor(
     h = DOOR_HALF_WIDTH * 2;
   }
 
-  // Door opening fill
-  const fillColor = isCleared ? 0x2a2b3a : 0x4a1c24;
+  // 1. Recessed 3D Tunnel / Blast Gate Interior
+  const fillColor = isCleared ? 0x10121c : 0x3b151e;
   g.rect(cx - w / 2, cy - h / 2, w, h)
     .fill({ color: fillColor });
 
-  // Heavy blast door border frame
+  if (isCleared) {
+    // Open 2.5D corridor depth rails leading into adjacent room
+    if (dir === 'N' || dir === 'S') {
+      g.rect(cx - w / 2 + 6, cy - h / 2, w - 12, h)
+        .fill({ color: 0x08090f });
+      g.moveTo(cx - w / 2 + 12, cy - h / 2).lineTo(cx - w / 2 + 12, cy + h / 2).stroke({ color: frameColor, width: 2, alpha: 0.7 });
+      g.moveTo(cx + w / 2 - 12, cy - h / 2).lineTo(cx + w / 2 - 12, cy + h / 2).stroke({ color: frameColor, width: 2, alpha: 0.7 });
+    } else {
+      g.rect(cx - w / 2, cy - h / 2 + 6, w, h - 12)
+        .fill({ color: 0x08090f });
+      g.moveTo(cx - w / 2, cy - h / 2 + 12).lineTo(cx + w / 2, cy - h / 2 + 12).stroke({ color: frameColor, width: 2, alpha: 0.7 });
+      g.moveTo(cx - w / 2, cy + h / 2 - 12).lineTo(cx + w / 2, cy + h / 2 - 12).stroke({ color: frameColor, width: 2, alpha: 0.7 });
+    }
+  } else {
+    // Locked heavy steel blast shutters & red laser barrier
+    if (dir === 'N' || dir === 'S') {
+      g.moveTo(cx - w / 2, cy).lineTo(cx + w / 2, cy).stroke({ color: 0xff2a55, width: 3 });
+    } else {
+      g.moveTo(cx, cy - h / 2).lineTo(cx, cy + h / 2).stroke({ color: 0xff2a55, width: 3 });
+    }
+  }
+
+  // 2. Heavy 3D Beveled Bulkhead Door Frame & Flanking Pillars
   g.rect(cx - w / 2, cy - h / 2, w, h)
-    .stroke({ color: frameColor, width: 3 });
+    .stroke({ color: 0x0a0b10, width: 4 });
+  g.rect(cx - w / 2 + 1.5, cy - h / 2 + 1.5, w - 3, h - 3)
+    .stroke({ color: frameColor, width: 2.5 });
 }
 
 export function drawTrapdoor(g: Graphics, timestampMs: number = 0): void {

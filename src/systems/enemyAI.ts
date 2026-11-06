@@ -49,12 +49,12 @@ import { resolveCircleAABB } from './combat';
 // ============================================================================
 
 /**
- * Meaningful non-linear exponential + linear scaling per floor.
- * Formula: 1 + (floor - 1) * 0.45 + (floor - 1)^1.35 * 0.22
+ * Exponential difficulty scaling per floor.
+ * Formula: 1.55^(floor - 1)
  */
 export function getFloorScale(floor: number): number {
   const f = Math.max(1, floor);
-  return 1 + (f - 1) * 0.45 + Math.pow(f - 1, 1.35) * 0.22;
+  return Math.pow(1.55, f - 1);
 }
 
 /**
@@ -67,30 +67,32 @@ export function calcEnemyHp(baseHp: number, floor: number, isElite: boolean = fa
 }
 
 /**
- * Calculates scaled enemy movement speed.
- * Formula: baseSpeed * (1 + (floor - 1) * 0.06) * (isElite ? 1.15 : 1)
+ * Calculates scaled enemy movement speed (exponential per floor).
+ * Formula: baseSpeed * 1.06^(floor - 1) * (isElite ? 1.15 : 1)
  */
 export function calcEnemySpeed(baseSpeed: number, floor: number, isElite: boolean = false): number {
   const f = Math.max(1, floor);
-  const spdScale = (1 + (f - 1) * 0.06) * (isElite ? 1.15 : 1);
+  const spdScale = Math.pow(1.06, f - 1) * (isElite ? 1.15 : 1);
   return baseSpeed * spdScale;
 }
 
 /**
- * Calculates enemy bullet velocity scaling multiplier.
- * Formula: 1 + (floor - 1) * 0.08
+ * Calculates enemy bullet velocity scaling multiplier (exponential per floor).
+ * Formula: 1.08^(floor - 1)
  */
 export function calcEnemyProjSpeedScale(floor: number): number {
   const f = Math.max(1, floor);
-  return 1 + (f - 1) * 0.08;
+  return Math.pow(1.08, f - 1);
 }
 
 /**
- * Calculates elite spawn probability for a floor.
- * Formula: min(0.45, max(0, (floor - 1) * 0.12))
+ * Calculates elite spawn probability for a floor (exponential per floor).
+ * Formula: floor <= 1 ? 0 : min(0.45, 0.10 * 1.45^(floor - 2))
  */
 export function getEliteSpawnChance(floor: number): number {
-  return Math.min(0.45, Math.max(0, (floor - 1) * 0.12));
+  const f = Math.max(1, floor);
+  if (f <= 1) return 0;
+  return Math.min(0.45, 0.10 * Math.pow(1.45, f - 2));
 }
 
 // ============================================================================
@@ -212,7 +214,7 @@ export function createBoss(
     radius: 34,
     hp: baseHp,
     maxHp: baseHp,
-    speed: 98 + floor * 7,
+    speed: Math.round(105 * Math.pow(1.06, Math.max(1, floor) - 1)),
     burnTimer: 0,
     burnTick: 0,
     aiTimer: 1.3,

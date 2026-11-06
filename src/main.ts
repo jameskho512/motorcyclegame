@@ -371,7 +371,9 @@ export class MotoRogueApp {
 
     if (!wrapper || !canvas) return;
 
-    const availH = Math.max(320, window.innerHeight - 24);
+    const topReserve = 12;
+    const bottomReserve = window.innerHeight < 820 ? 112 : 136;
+    const availH = Math.max(320, window.innerHeight - topReserve - bottomReserve);
     const availW = Math.max(320, window.innerWidth - 540);
     const size = Math.floor(Math.min(availH, availW));
 
