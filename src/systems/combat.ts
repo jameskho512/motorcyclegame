@@ -1006,6 +1006,72 @@ export function updateEnemyBullets(
 }
 
 /**
+ * Computes the relative collision mass of an enemy.
+ * Bosses have mass 100.
+ * Other enemies scale by radius, elite status, and type.
+ */
+export function getEnemyMass(en: Enemy): number {
+  if (en.type === 'boss') {
+    return 100;
+  }
+  return en.radius * (en.isElite ? 1.25 : 1) + (en.type === 'charger' ? 3 : 0);
+}
+
+/**
+ * Handles physical contact collisions between player and alive enemies in the room.
+ */
+export function updateEnemyCollisions(
+  room: Room,
+  player: PlayerState,
+  state: CombatState,
+  onPlayerHurt?: (dmg: number) => void
+): void {
+  for (const en of room.enemies) {
+    if (en.hp <= 0) continue;
+    const dx = player.x - en.x;
+    const dy = player.y - en.y;
+    const dist = Math.hypot(dx, dy);
+    const minDist = player.radius + en.radius;
+    if (dist < minDist) {
+      const nx = dist > 0 ? dx / dist : 1;
+      const ny = dist > 0 ? dy / dist : 0;
+      const overlap = minDist - dist;
+      const playerMass = player.radius || 17;
+      const enemyMass = getEnemyMass(en);
+
+      if (en.type === 'boss') {
+        player.x += nx * (overlap + 4);
+        player.y += ny * (overlap + 4);
+        player.vx = nx * 520;
+        player.vy = ny * 520;
+        if ((player.stunTimer || 0) <= 0) {
+          player.stunTimer = 1.0;
+          addFloatingText(state, player.x, player.y - player.radius - 16, 'STUNNED! 1s', '#ffd166');
+        }
+        state.screenShake = Math.max(state.screenShake, 9);
+      } else if (enemyMass > playerMass) {
+        player.x += nx * (overlap + 2);
+        player.y += ny * (overlap + 2);
+        const kb = Math.min(480, 340 * (enemyMass / playerMass));
+        player.vx = nx * kb;
+        player.vy = ny * kb;
+        state.screenShake = Math.max(state.screenShake, 5);
+      } else {
+        player.x += nx * (overlap * 0.35);
+        player.y += ny * (overlap * 0.35);
+        en.x -= nx * (overlap * 0.65);
+        en.y -= ny * (overlap * 0.65);
+      }
+
+      player.x = Math.max(WALL_THICKNESS + player.radius, Math.min(ARENA_WIDTH - WALL_THICKNESS - player.radius, player.x));
+      player.y = Math.max(WALL_THICKNESS + player.radius, Math.min(ARENA_HEIGHT - WALL_THICKNESS - player.radius, player.y));
+
+      if (onPlayerHurt) onPlayerHurt(1);
+    }
+  }
+}
+
+/**
  * Updates burn DoT ticks for all enemies afflicted with burnTimer > 0.
  * Burn ticks every 0.35s dealing 2.2 * dmgMult * blastMult damage.
  */
@@ -1118,7 +1184,10 @@ export function updateCombatPipeline(
   // 5. Enemy bullets
   updateEnemyBullets(dt, state.enemyBullets, player, onPlayerHurt);
 
-  // 6. Check enemy deaths
+  // 6. Enemy body collisions
+  updateEnemyCollisions(room, player, state, onPlayerHurt);
+
+  // 7. Check enemy deaths
   for (let i = room.enemies.length - 1; i >= 0; i--) {
     const en = room.enemies[i];
     if (en.hp <= 0) {

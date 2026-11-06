@@ -318,6 +318,7 @@ export class MotoRogueApp {
     player.y = ARENA_HEIGHT / 2;
     player.vx = 0;
     player.vy = 0;
+    player.stunTimer = 0;
 
     this.combatState = createCombatState();
     this.hud.updateBossBar(null, this.stateManager.floorNum);
@@ -474,11 +475,21 @@ export class MotoRogueApp {
       player.invuln = Math.max(0, player.invuln - dt);
     }
 
-    // 3. Bike Kinematics & NOS
-    const ix = (inputState.right ? 1 : 0) - (inputState.left ? 1 : 0);
-    const iy = (inputState.down ? 1 : 0) - (inputState.up ? 1 : 0);
+    if (player.stunTimer && player.stunTimer > 0) {
+      player.stunTimer = Math.max(0, player.stunTimer - dt);
+    }
+    const isStunned = (player.stunTimer || 0) > 0;
 
-    const { boosting } = updateNos(player, isShiftHeld, isMoving, dt);
+    // 3. Bike Kinematics & NOS
+    let ix = (inputState.right ? 1 : 0) - (inputState.left ? 1 : 0);
+    let iy = (inputState.down ? 1 : 0) - (inputState.up ? 1 : 0);
+
+    if (isStunned) {
+      ix = 0;
+      iy = 0;
+    }
+
+    const { boosting } = updateNos(player, isShiftHeld && !isStunned, isMoving && !isStunned, dt);
 
     // Per-frame NOS bar visual update
     this.hud.updateNos(player.nos, player.nosMax, player.nosLock, boosting);
@@ -556,7 +567,7 @@ export class MotoRogueApp {
 
     // 5. Weapon Firing
     player.fireTimer = Math.max(0, player.fireTimer - dt);
-    if (inputState.fire && player.fireTimer <= 0) {
+    if (!isStunned && inputState.fire && player.fireTimer <= 0) {
       fireWeapon({
         player,
         target: { x: inputState.mouseX, y: inputState.mouseY },

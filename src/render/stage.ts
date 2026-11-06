@@ -216,7 +216,7 @@ export class StageManager {
     );
 
     // 6. HUD LAYER
-    this.renderHUD(this.hudGraphics, room, damageNumbers);
+    this.renderHUD(this.hudGraphics, player, room, damageNumbers, timestampMs);
   }
 
   private renderFloor(g: Graphics, room: Room, _floorNum: number, timestampMs: number): void {
@@ -659,7 +659,13 @@ export class StageManager {
     this.vfx.renderSpeedLines(g, player, isBoosting);
   }
 
-  private renderHUD(g: Graphics, room: Room, damageNumbers: DamageNumber[]): void {
+  private renderHUD(
+    g: Graphics,
+    player: PlayerState,
+    room: Room,
+    damageNumbers: DamageNumber[],
+    timestampMs: number = performance.now()
+  ): void {
     // Price text labels are pooled: children of priceTextContainer are reused each frame
     // (previously removeChildren() + new Text/TextStyle per frame leaked textures).
     const pricePool = this.priceTextContainer.children;
@@ -734,6 +740,77 @@ export class StageManager {
         const hpColor = en.isElite ? 0xffd166 : 0xef233c;
         g.rect(en.x - barWidth / 2, barY, barWidth * frac, 6)
           .fill({ color: hpColor });
+      }
+    }
+
+    // Anime Player Stun Indicator (3 spinning golden/cyan stars & lightning arcs in ellipse orbit)
+    if ((player.stunTimer || 0) > 0) {
+      const headX = player.x;
+      const headY = player.y - 24;
+      const rx = 18;
+      const ry = 7;
+      const spinSpeed = 4.2; // rad/sec
+      const t = (timestampMs / 1000) * spinSpeed;
+
+      // Orbit halo ring
+      g.ellipse(headX, headY, rx + 1, ry + 1)
+        .stroke({ color: 0xffd166, width: 1.5, alpha: 0.35 });
+
+      // Faint electric arcs between orbiting stars
+      for (let i = 0; i < 3; i++) {
+        const nextIdx = (i + 1) % 3;
+        const a1 = t + (i * Math.PI * 2) / 3;
+        const a2 = t + (nextIdx * Math.PI * 2) / 3;
+        const x1 = headX + Math.cos(a1) * rx;
+        const y1 = headY + Math.sin(a1) * ry;
+        const x2 = headX + Math.cos(a2) * rx;
+        const y2 = headY + Math.sin(a2) * ry;
+        const midX = (x1 + x2) / 2 + (Math.sin(t * 8 + i) * 3);
+        const midY = (y1 + y2) / 2 + (Math.cos(t * 8 + i) * 2);
+        g.moveTo(x1, y1).lineTo(midX, midY).lineTo(x2, y2)
+          .stroke({ color: 0x2ee6ff, width: 1.2, alpha: 0.45 });
+      }
+
+      const starColors = [0xffd166, 0x2ee6ff, 0xffd166];
+
+      for (let i = 0; i < 3; i++) {
+        const starAngle = t + (i * Math.PI * 2) / 3;
+        const sx = headX + Math.cos(starAngle) * rx;
+        const sy = headY + Math.sin(starAngle) * ry;
+
+        // Depth perspective scaling (stars further back are smaller)
+        const depthScale = 0.8 + 0.35 * ((Math.sin(starAngle) + 1) / 2);
+        const outerR = 6.5 * depthScale;
+        const innerR = 2.4 * depthScale;
+        const selfRot = t * 2.5 + i * 1.5;
+
+        // 4-point anime star polygon
+        const pts: number[] = [];
+        for (let p = 0; p < 8; p++) {
+          const a = selfRot + (p * Math.PI) / 4;
+          const r = (p % 2 === 0) ? outerR : innerR;
+          pts.push(sx + Math.cos(a) * r, sy + Math.sin(a) * r);
+        }
+
+        // Star drop shadow for high contrast visibility
+        g.poly(pts.map((val, idx) => (idx % 2 === 1 ? val + 2 : val)))
+          .fill({ color: 0x0a0b10, alpha: 0.5 });
+
+        // Outer dark comic outline & vibrant fill
+        g.poly(pts)
+          .fill({ color: starColors[i], alpha: 0.95 })
+          .stroke({ color: 0x0a0b10, width: 1.8 });
+
+        // Crisp white specular core
+        g.circle(sx, sy, 1.2 * depthScale)
+          .fill({ color: 0xffffff, alpha: 0.95 });
+
+        // Tiny trailing spark on the orbit
+        const sparkAngle = starAngle - 0.28;
+        const spX = headX + Math.cos(sparkAngle) * rx;
+        const spY = headY + Math.sin(sparkAngle) * ry;
+        g.circle(spX, spY, 1.2 * depthScale)
+          .fill({ color: starColors[i], alpha: 0.55 });
       }
     }
 

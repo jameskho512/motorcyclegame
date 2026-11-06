@@ -211,6 +211,7 @@ export interface PlayerState {
   coins: number;
   invuln: number;
   invulnTimer?: number; // Compatibility alias
+  stunTimer?: number;
   weapon: WeaponId;
   runWeapons: Partial<Record<WeaponId, boolean>>;
   fireTimer: number;

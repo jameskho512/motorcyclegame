@@ -151,6 +151,7 @@ export function createDefaultPlayerState(): PlayerState {
     maxHp: 6,
     coins: 0,
     invuln: 0,
+    stunTimer: 0,
     weapon: 'pistol',
     runWeapons: {},
     fireTimer: 0,
