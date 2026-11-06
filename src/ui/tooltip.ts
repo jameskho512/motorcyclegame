@@ -5,8 +5,14 @@
  * Parity reference: moto-rogue/index.html L4052-L4098
  */
 
-import { Pickup } from '../types/game';
-import { WEAPONS } from '../data/weapons';
+import { Pickup, PlayerState } from '../types/game';
+import {
+  WEAPONS,
+  WEAPON_EVOLUTIONS,
+  isWeaponEvolved,
+  getWeaponEvolutionProgress,
+  WeaponId
+} from '../data/weapons';
 import { DROP_ITEMS } from '../data/upgrades';
 import { RARITY, fmtStat } from '../data/equipment';
 import { getHubNpcGreeting } from '../world/dungeon';
@@ -95,6 +101,53 @@ export function formatWeaponMasteryHint(kills: number = 0): string {
     return `Mastery: ★☆☆ ROOKIE I (+5% DMG · ${safeKills}/40 kills to ★★☆ ADEPT II)`;
   }
   return `Mastery: ☆☆☆ UNRANKED (${safeKills}/10 kills to ★☆☆ ROOKIE I +5% DMG)`;
+}
+
+/**
+ * Formats weapon overclock evolution progress and requirements for UI tooltips.
+ */
+export function formatWeaponEvolutionTooltipHint(
+  weaponId: WeaponId,
+  player?: Partial<PlayerState> | null
+): string {
+  const targetPlayer = (player || {}) as any;
+  const rawProg = getWeaponEvolutionProgress(weaponId, targetPlayer);
+  const evoDef = WEAPON_EVOLUTIONS[weaponId] || WEAPON_EVOLUTIONS.pistol;
+
+  let totalStacks = 0;
+  if (targetPlayer.itemStacks && typeof targetPlayer.itemStacks === 'object') {
+    for (const v of Object.values(targetPlayer.itemStacks)) {
+      if (typeof v === 'number') totalStacks += v;
+    }
+  }
+
+  const isEvolved = Boolean(
+    (rawProg as any).isEvolved ??
+      (rawProg.evolved || isWeaponEvolved(weaponId, targetPlayer))
+  );
+  const bonusSummary = (rawProg as any).bonusSummary || evoDef.desc;
+  const currentStacks =
+    typeof (rawProg as any).currentStacks === 'number'
+      ? (rawProg as any).currentStacks
+      : Math.min(3, totalStacks);
+  const requiredStacks =
+    typeof (rawProg as any).requiredStacks === 'number'
+      ? (rawProg as any).requiredStacks
+      : 3;
+
+  const prog = {
+    ...rawProg,
+    isEvolved,
+    bonusSummary,
+    currentStacks,
+    requiredStacks
+  };
+
+  if (prog.isEvolved) {
+    return `⚡ OVERCLOCKED: ${prog.evolvedName.toUpperCase()} ACTIVE (${prog.bonusSummary})`;
+  }
+
+  return `🔧 OVERCLOCK TO ${prog.evolvedName.toUpperCase()}: Need "${prog.signatureModName}" Mod OR ${prog.currentStacks}/${prog.requiredStacks} Item Stacks (${prog.bonusSummary})`;
 }
 
 export interface HubNpcTooltipInfo {

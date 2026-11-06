@@ -1056,4 +1056,72 @@ export function getRoomHazardSummary(room?: Room | null): RoomHazardSummary {
   };
 }
 
+// ============================================================================
+// DUNGEON FLOOR EXPLORATION & LOOT COMPLETION SUMMARY (M87)
+// ============================================================================
+
+export interface FloorExplorationStatus {
+  totalRooms: number;
+  visitedRooms: number;
+  clearedRooms: number;
+  remainingPickups: number;
+  isFullyCleared: boolean;
+  statusLine: string;
+}
+
+/**
+ * Summarizes the exploration progress and unclaimed loot status of a dungeon floor.
+ * Counts visited sectors, cleared sectors, and remaining pickups (excluding Hub NPCs).
+ */
+export function getFloorExplorationStatus(
+  dungeon?: Dungeon | { rooms: Dungeon } | null
+): FloorExplorationStatus {
+  const roomsMap = (dungeon && (dungeon as any).rooms && typeof (dungeon as any).rooms === 'object')
+    ? (dungeon as any).rooms
+    : (dungeon || {});
+  const rooms = Object.values(roomsMap) as Room[];
+
+  let totalRooms = 0;
+  let visitedRooms = 0;
+  let clearedRooms = 0;
+  let remainingPickups = 0;
+
+  for (const r of rooms) {
+    if (!r) continue;
+    totalRooms++;
+    if (r.visited) visitedRooms++;
+    if (r.cleared) clearedRooms++;
+    if (Array.isArray(r.pickups)) {
+      for (const p of r.pickups) {
+        if (p && (p as any).type !== 'hub_npc') {
+          remainingPickups++;
+        }
+      }
+    }
+  }
+
+  const isFullyCleared = totalRooms > 0 && clearedRooms === totalRooms;
+
+  let statusLine: string;
+  if (totalRooms === 0) {
+    statusLine = 'NO SECTOR DATA';
+  } else if (isFullyCleared && remainingPickups === 0) {
+    statusLine = '★ SECTOR 100% SWEPT & LOOTED';
+  } else if (isFullyCleared) {
+    statusLine = '✓ SECTOR CLEARED · ' + remainingPickups + ' UNCLAIMED SUPPLY DROP(S)';
+  } else {
+    statusLine = `${clearedRooms}/${totalRooms} SECTORS SECURED · ${remainingPickups} DROP(S) DETECTED`;
+  }
+
+  return {
+    totalRooms,
+    visitedRooms,
+    clearedRooms,
+    remainingPickups,
+    isFullyCleared,
+    statusLine
+  };
+}
+
+
 

@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { formatWeaponMasteryHint, formatHubNpcTooltip, HubNpcTooltipInfo, formatStyleRankTooltip } from '@/ui/tooltip';
+import { formatWeaponMasteryHint, formatHubNpcTooltip, HubNpcTooltipInfo, formatStyleRankTooltip, formatWeaponEvolutionTooltipHint } from '@/ui/tooltip';
 import {
   WEAPONS,
   UNLOCKABLE_IDS,
@@ -677,6 +677,128 @@ describe('Tooltip: formatHubNpcTooltip', () => {
 
       const htmlLow = formatStyleRankTooltip(23.4, 'C');
       expect(htmlLow).toContain('OUTLAW STYLE RANK (C — 23%)');
+    });
+  });
+
+  describe('Weapon Evolution Progress Tooltip Formatter (formatWeaponEvolutionTooltipHint - M86)', () => {
+    const allWeapons: WeaponId[] = [
+      'pistol',
+      'machine_gun',
+      'flamethrower',
+      'grenade_launcher',
+      'shotgun',
+      'railgun',
+      'arc_coil'
+    ];
+
+    it('formats unevolved baseline hint at 0/3 stacks across all 7 weapons', () => {
+      for (const id of allWeapons) {
+        const evo = WEAPON_EVOLUTIONS[id];
+        const hint = formatWeaponEvolutionTooltipHint(id, { items: [], itemStacks: {} });
+        expect(hint).toBe(
+          `🔧 OVERCLOCK TO ${evo.evolvedName.toUpperCase()}: Need "${evo.signatureModName}" Mod OR 0/3 Item Stacks (${evo.desc})`
+        );
+        expect(hint).not.toContain('ACTIVE');
+        expect(hint).not.toContain('⚡ OVERCLOCKED');
+      }
+    });
+
+    it('formats partial unevolved progression at 2/3 stacks correctly', () => {
+      const hint = formatWeaponEvolutionTooltipHint('pistol', {
+        items: [],
+        itemStacks: { lens: 2 }
+      });
+      expect(hint).toBe(
+        '🔧 OVERCLOCK TO RICOCHET REVOLVER: Need "Ricochet Rounds" Mod OR 2/3 Item Stacks (+2 Bounces, +35% Damage & Golden Tracer Rounds)'
+      );
+      expect(hint).toContain('2/3 Item Stacks');
+      expect(hint).not.toContain('ACTIVE');
+      expect(hint).not.toContain('⚡ OVERCLOCKED');
+    });
+
+    it('formats evolved state when player possesses weapon signature mod across all 7 weapons', () => {
+      for (const id of allWeapons) {
+        const evo = WEAPON_EVOLUTIONS[id];
+        // Signature mod by name
+        const hintByName = formatWeaponEvolutionTooltipHint(id, {
+          items: [evo.signatureModName],
+          itemStacks: {}
+        });
+        expect(hintByName).toBe(
+          `⚡ OVERCLOCKED: ${evo.evolvedName.toUpperCase()} ACTIVE (${evo.desc})`
+        );
+        expect(hintByName).toContain('ACTIVE');
+        expect(hintByName).not.toContain('Need');
+
+        // Signature mod by id
+        const hintById = formatWeaponEvolutionTooltipHint(id, {
+          items: [evo.signatureModId],
+          itemStacks: {}
+        });
+        expect(hintById).toBe(
+          `⚡ OVERCLOCKED: ${evo.evolvedName.toUpperCase()} ACTIVE (${evo.desc})`
+        );
+      }
+    });
+
+    it('formats evolved state when player reaches 3/3 item stacks without signature mod', () => {
+      // 3 stacks on single item
+      const hintSingle = formatWeaponEvolutionTooltipHint('machine_gun', {
+        items: [],
+        itemStacks: { scrap: 3 }
+      });
+      expect(hintSingle).toBe(
+        '⚡ OVERCLOCKED: HYPER-VULCAN GATLING ACTIVE (Twin Parallel Streams & Tightened Spread)'
+      );
+
+      // 3 stacks split across multiple items
+      const hintSplit = formatWeaponEvolutionTooltipHint('shotgun', {
+        items: [],
+        itemStacks: { lens: 1, armor_plate: 2 }
+      });
+      expect(hintSplit).toBe(
+        '⚡ OVERCLOCKED: HELLFIRE FLAK CANNON ACTIVE (10 Incendiary Pellets & 20px Blast Knockback)'
+      );
+    });
+
+    it('formats evolved state when player has both signature mod and 3/3 stacks', () => {
+      const hintBoth = formatWeaponEvolutionTooltipHint('railgun', {
+        items: ['Piercing Core'],
+        itemStacks: { lens: 3 }
+      });
+      expect(hintBoth).toBe(
+        '⚡ OVERCLOCKED: ORBITAL ION LANCE ACTIVE (Hyper-Wide Golden Ion Lance & +35% Damage)'
+      );
+      expect(hintBoth).toContain('ACTIVE');
+    });
+
+    it('gracefully handles null, undefined, empty player, and stack overflow boundaries', () => {
+      // Undefined player parameter
+      const hintUndefined = formatWeaponEvolutionTooltipHint('arc_coil');
+      expect(hintUndefined).toBe(
+        '🔧 OVERCLOCK TO THUNDERLORD STORM COIL: Need "Vampiric Siphon" Mod OR 0/3 Item Stacks (Chains to 6 Targets for 85% Damage)'
+      );
+
+      // Explicit null player parameter
+      const hintNull = formatWeaponEvolutionTooltipHint('flamethrower', null);
+      expect(hintNull).toBe(
+        '🔧 OVERCLOCK TO PLASMA MELTDOWN TORCH: Need "High Explosive" Mod OR 0/3 Item Stacks (Blue-White Plasma Cone & +45% Burn Power)'
+      );
+
+      // Empty object player
+      const hintEmpty = formatWeaponEvolutionTooltipHint('grenade_launcher', {});
+      expect(hintEmpty).toBe(
+        '🔧 OVERCLOCK TO CARPET CLUSTER MORTAR: Need "High Explosive" Mod OR 0/3 Item Stacks (Spawns 3 Secondary Cluster Bomblets on Impact)'
+      );
+
+      // Overflow stacks (> 3) triggers overclocked state
+      const hintOverflow = formatWeaponEvolutionTooltipHint('pistol', {
+        items: [],
+        itemStacks: { scrap: 5 }
+      });
+      expect(hintOverflow).toBe(
+        '⚡ OVERCLOCKED: RICOCHET REVOLVER ACTIVE (+2 Bounces, +35% Damage & Golden Tracer Rounds)'
+      );
     });
   });
 });

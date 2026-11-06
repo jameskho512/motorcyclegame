@@ -743,6 +743,25 @@ describe('Render & UI Subsystems', () => {
   });
 
   describe('Shop Modal Controller', () => {
+    let overlayEl: HTMLElement;
+
+    beforeEach(() => {
+      document.body.innerHTML = `
+        <div id="shop-confirm-overlay">
+          <div class="shop-name-panel">
+            <div id="shop-modal-name"></div>
+            <div id="shop-modal-desc"></div>
+            <div id="shop-modal-cost"></div>
+            <div id="shop-modal-type"></div>
+            <div id="shop-modal-quote"></div>
+          </div>
+          <button id="btn-confirm-buy"></button>
+          <button id="btn-cancel-buy"></button>
+        </div>
+      `;
+      overlayEl = document.getElementById('shop-confirm-overlay')!;
+    });
+
     it('manages open, confirm, and cancel states with callbacks', () => {
       const modal = new ShopModalController();
       const onConfirm = vi.fn();
@@ -770,6 +789,101 @@ describe('Render & UI Subsystems', () => {
       modal.cancel();
       expect(onCancel).toHaveBeenCalledTimes(1);
       expect(modal.isOpen()).toBe(false);
+    });
+
+    it('sets EVOLUTION_KEY synergy attributes when mod pedestal matches current weapon evolution requirement', () => {
+      const modal = new ShopModalController();
+      const pickup: Pickup = {
+        x: 100,
+        y: 100,
+        radius: 20,
+        type: 'mod_pedestal',
+        cost: 20,
+        mod: {
+          id: 'ricochet_mod',
+          name: 'Ricochet Rounds',
+          desc: '+2 Bounces & +35% Damage',
+          cost: 20,
+          apply: vi.fn()
+        }
+      };
+      const player: Partial<PlayerState> = {
+        weapon: 'pistol',
+        hp: 6,
+        maxHp: 6
+      };
+
+      modal.open(pickup, vi.fn(), vi.fn(), 50, player);
+
+      expect(overlayEl.getAttribute('data-shop-synergy')).toBe('EVOLUTION_KEY');
+      expect(overlayEl.getAttribute('data-shop-synergy-hint')).toBe('⚡ UNLOCKS RICOCHET REVOLVER EVOLUTION!');
+    });
+
+    it('sets LOW_HULL_REPAIR synergy attributes when purchasing hull repair at or below 50% max HP', () => {
+      const modal = new ShopModalController();
+      const pickup: Pickup = {
+        x: 100,
+        y: 100,
+        radius: 20,
+        type: 'shop_heart',
+        name: 'Hull Repair',
+        cost: 10
+      };
+      const player: Partial<PlayerState> = {
+        weapon: 'pistol',
+        hp: 3,
+        maxHp: 6
+      };
+
+      modal.open(pickup, vi.fn(), vi.fn(), 50, player);
+
+      expect(overlayEl.getAttribute('data-shop-synergy')).toBe('LOW_HULL_REPAIR');
+      expect(overlayEl.getAttribute('data-shop-synergy-hint')).toBe('⚠️ CRITICAL HULL REPAIR RECOMMENDED!');
+    });
+
+    it('sets WEAPON_UPGRADE synergy attributes when purchasing a new weapon for the run deck', () => {
+      const modal = new ShopModalController();
+      const pickup: any = {
+        x: 100,
+        y: 100,
+        radius: 20,
+        type: 'run_weapon',
+        weaponId: 'shotgun',
+        name: 'Sawed-Off Shotgun',
+        cost: 25
+      };
+      const player: Partial<PlayerState> = {
+        weapon: 'pistol',
+        hp: 6,
+        maxHp: 6
+      };
+
+      modal.open(pickup, vi.fn(), vi.fn(), 50, player);
+
+      expect(overlayEl.getAttribute('data-shop-synergy')).toBe('WEAPON_UPGRADE');
+      expect(overlayEl.getAttribute('data-shop-synergy-hint')).toBe('🔫 ADDS NEW WEAPON TO RUN DECK!');
+    });
+
+    it('sets STANDARD synergy attributes when pickup has no special build synergy', () => {
+      const modal = new ShopModalController();
+      const pickup: Pickup = {
+        x: 100,
+        y: 100,
+        radius: 20,
+        type: 'shop_heart',
+        name: 'Hull Repair',
+        cost: 10
+      };
+      const player: Partial<PlayerState> = {
+        weapon: 'pistol',
+        hp: 6,
+        maxHp: 6
+      };
+
+      modal.open(pickup, vi.fn(), vi.fn(), 50, player);
+
+      expect(overlayEl.getAttribute('data-shop-synergy')).toBe('STANDARD');
+      expect(overlayEl.getAttribute('data-shop-synergy-hint')).toBe('Standard Black Market Ordnance');
     });
   });
 

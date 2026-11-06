@@ -20,7 +20,10 @@ import {
   getHubNpcGreeting,
   type HubNpcGreeting,
   getRoomHazardSummary,
-  type RoomHazardSummary
+  type RoomHazardSummary,
+  getFloorExplorationStatus,
+  type FloorExplorationStatus,
+  createHomeBaseRoom
 } from '../../src/world/dungeon';
 import {
   ARENA_WIDTH,
@@ -931,6 +934,224 @@ describe('World Module: Procedural Dungeon Generation (src/world/dungeon.ts)', (
         }
       }
       expect(checkedAny).toBe(true);
+    });
+  });
+
+  describe('getFloorExplorationStatus (M87: Dungeon Floor Exploration & Loot Completion Summary)', () => {
+    it('handles null, undefined, and empty dungeon records safely with NO SECTOR DATA', () => {
+      const nullStatus: FloorExplorationStatus = getFloorExplorationStatus(null);
+      expect(nullStatus).toEqual({
+        totalRooms: 0,
+        visitedRooms: 0,
+        clearedRooms: 0,
+        remainingPickups: 0,
+        isFullyCleared: false,
+        statusLine: 'NO SECTOR DATA'
+      });
+
+      const undefStatus = getFloorExplorationStatus(undefined);
+      expect(undefStatus).toEqual({
+        totalRooms: 0,
+        visitedRooms: 0,
+        clearedRooms: 0,
+        remainingPickups: 0,
+        isFullyCleared: false,
+        statusLine: 'NO SECTOR DATA'
+      });
+
+      const emptyStatus = getFloorExplorationStatus({});
+      expect(emptyStatus).toEqual({
+        totalRooms: 0,
+        visitedRooms: 0,
+        clearedRooms: 0,
+        remainingPickups: 0,
+        isFullyCleared: false,
+        statusLine: 'NO SECTOR DATA'
+      });
+    });
+
+    it('accurately tracks partially explored dungeons with uncleared rooms and pending drops', () => {
+      const partialDungeon: Record<string, Room> = {
+        '0,0': {
+          x: 0,
+          y: 0,
+          type: 'start',
+          cleared: true,
+          visited: true,
+          doors: { N: true, S: false, E: false, W: false },
+          obstacles: [],
+          enemies: [],
+          pickups: [{ x: 100, y: 100, type: 'scrap', cost: 0, radius: 10 } as any],
+          hazards: [],
+          skids: [],
+          trapdoor: false
+        },
+        '0,-1': {
+          x: 0,
+          y: -1,
+          type: 'combat',
+          cleared: false,
+          visited: true,
+          doors: { N: false, S: true, E: true, W: false },
+          obstacles: [],
+          enemies: [],
+          pickups: [
+            { x: 120, y: 120, type: 'scrap', cost: 0, radius: 10 } as any,
+            { x: 200, y: 200, type: 'heart', cost: 0, radius: 12 } as any
+          ],
+          hazards: [],
+          skids: [],
+          trapdoor: false
+        },
+        '1,-1': {
+          x: 1,
+          y: -1,
+          type: 'boss',
+          cleared: false,
+          visited: false,
+          doors: { N: false, S: false, E: false, W: true },
+          obstacles: [],
+          enemies: [],
+          pickups: [],
+          hazards: [],
+          skids: [],
+          trapdoor: false
+        }
+      };
+
+      const status: FloorExplorationStatus = getFloorExplorationStatus(partialDungeon);
+      expect(status.totalRooms).toBe(3);
+      expect(status.visitedRooms).toBe(2);
+      expect(status.clearedRooms).toBe(1);
+      expect(status.remainingPickups).toBe(3);
+      expect(status.isFullyCleared).toBe(false);
+      expect(status.statusLine).toBe('1/3 SECTORS SECURED · 3 DROP(S) DETECTED');
+    });
+
+    it('formats status line for fully cleared sector with remaining supply pickups', () => {
+      const clearedDungeonWithPickups: Record<string, Room> = {
+        '0,0': {
+          x: 0,
+          y: 0,
+          type: 'start',
+          cleared: true,
+          visited: true,
+          doors: { N: true, S: false, E: false, W: false },
+          obstacles: [],
+          enemies: [],
+          pickups: [{ x: 50, y: 50, type: 'heart', cost: 0, radius: 12 } as any],
+          hazards: [],
+          skids: [],
+          trapdoor: false
+        },
+        '0,-1': {
+          x: 0,
+          y: -1,
+          type: 'combat',
+          cleared: true,
+          visited: true,
+          doors: { N: false, S: true, E: false, W: false },
+          obstacles: [],
+          enemies: [],
+          pickups: [{ x: 60, y: 60, type: 'mod_pedestal', cost: 0, radius: 22 } as any],
+          hazards: [],
+          skids: [],
+          trapdoor: false
+        }
+      };
+
+      const status: FloorExplorationStatus = getFloorExplorationStatus(clearedDungeonWithPickups);
+      expect(status.totalRooms).toBe(2);
+      expect(status.visitedRooms).toBe(2);
+      expect(status.clearedRooms).toBe(2);
+      expect(status.remainingPickups).toBe(2);
+      expect(status.isFullyCleared).toBe(true);
+      expect(status.statusLine).toBe('✓ SECTOR CLEARED · 2 UNCLAIMED SUPPLY DROP(S)');
+    });
+
+    it('formats status line for 100% swept and looted sector when all rooms cleared and no pickups left', () => {
+      const sweptDungeon: Record<string, Room> = {
+        '0,0': {
+          x: 0,
+          y: 0,
+          type: 'start',
+          cleared: true,
+          visited: true,
+          doors: { N: true, S: false, E: false, W: false },
+          obstacles: [],
+          enemies: [],
+          pickups: [],
+          hazards: [],
+          skids: [],
+          trapdoor: false
+        },
+        '0,-1': {
+          x: 0,
+          y: -1,
+          type: 'combat',
+          cleared: true,
+          visited: true,
+          doors: { N: false, S: true, E: false, W: false },
+          obstacles: [],
+          enemies: [],
+          pickups: [],
+          hazards: [],
+          skids: [],
+          trapdoor: false
+        }
+      };
+
+      const status: FloorExplorationStatus = getFloorExplorationStatus(sweptDungeon);
+      expect(status.totalRooms).toBe(2);
+      expect(status.visitedRooms).toBe(2);
+      expect(status.clearedRooms).toBe(2);
+      expect(status.remainingPickups).toBe(0);
+      expect(status.isFullyCleared).toBe(true);
+      expect(status.statusLine).toBe('★ SECTOR 100% SWEPT & LOOTED');
+    });
+
+    it('ignores hub_npc pickups in Home Base Hub rooms while properly counting true supply drops', () => {
+      const hubRoom = createHomeBaseRoom();
+      expect(hubRoom.pickups.length).toBeGreaterThanOrEqual(5);
+      expect(hubRoom.pickups.every(p => (p as any).type === 'hub_npc')).toBe(true);
+
+      const hubDungeon: Record<string, Room> = { '0,0': hubRoom };
+      const status: FloorExplorationStatus = getFloorExplorationStatus(hubDungeon);
+      expect(status.totalRooms).toBe(1);
+      expect(status.visitedRooms).toBe(1);
+      expect(status.clearedRooms).toBe(1);
+      expect(status.remainingPickups).toBe(0);
+      expect(status.isFullyCleared).toBe(true);
+      expect(status.statusLine).toBe('★ SECTOR 100% SWEPT & LOOTED');
+
+      // Add a supply drop into the hub room
+      hubRoom.pickups.push({
+        x: 360,
+        y: 400,
+        type: 'shop_heart' as any,
+        name: 'Emergency Stim',
+        cost: 10,
+        radius: 20
+      });
+      const updatedStatus = getFloorExplorationStatus(hubDungeon);
+      expect(updatedStatus.remainingPickups).toBe(1);
+      expect(updatedStatus.statusLine).toBe('✓ SECTOR CLEARED · 1 UNCLAIMED SUPPLY DROP(S)');
+    });
+
+    it('correctly inspects full procedural dungeons via DungeonGraph or Dungeon records', () => {
+      const graph = generateDungeon(1);
+      const statusFromGraph = getFloorExplorationStatus(graph);
+      const statusFromRooms = getFloorExplorationStatus(graph.rooms);
+
+      expect(statusFromGraph).toEqual(statusFromRooms);
+      expect(statusFromGraph.totalRooms).toBe(graph.targetRooms);
+      expect(statusFromGraph.visitedRooms).toBe(1); // start room only
+      expect(statusFromGraph.clearedRooms).toBeGreaterThanOrEqual(3); // start, treasure, shop
+      expect(statusFromGraph.remainingPickups).toBeGreaterThanOrEqual(4); // treasure pedestal + 3 shop items
+      expect(statusFromGraph.isFullyCleared).toBe(false);
+      expect(statusFromGraph.statusLine).toBe(
+        `${statusFromGraph.clearedRooms}/${statusFromGraph.totalRooms} SECTORS SECURED · ${statusFromGraph.remainingPickups} DROP(S) DETECTED`
+      );
     });
   });
 });

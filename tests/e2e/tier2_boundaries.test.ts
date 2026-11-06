@@ -38,20 +38,23 @@ import {
   loadRunCheckpoint,
   loadMetaSave,
   clearRunSave,
-  addLoot
+  addLoot,
+  getCareerOutlawRank
 } from '@/core/state';
 
 import {
   updateNos,
   NOS_DELAY,
-  NOS_LOCK_THRESHOLD
+  NOS_LOCK_THRESHOLD,
+  getRiderMobilitySummary
 } from '@/systems/physics';
 
 import {
   createCombatState,
   rollCrit,
   updatePlayerBullets,
-  handleEnemyDeath
+  handleEnemyDeath,
+  getCombatOffenseSummary
 } from '@/systems/combat';
 
 import {
@@ -62,8 +65,14 @@ import {
 import {
   getFloorScale,
   calcEnemyHp,
-  createEnemy
+  createEnemy,
+  getRoomThreatAssessment
 } from '@/systems/enemyAI';
+
+import { getHubStationPromptInfo } from '@/ui/hubStationModal';
+import { getPortalHeatBriefing } from '@/ui/portalModal';
+import { getShopBuildSynergyHint } from '@/ui/shopModal';
+import { getRoomHazardSummary } from '@/world/dungeon';
 
 describe('Tier 2: Boundary & Corner Cases', () => {
   let player: PlayerState;
@@ -461,6 +470,497 @@ describe('Tier 2: Boundary & Corner Cases', () => {
 
       expect(minBound).toBe(75);
       expect(maxBound).toBe(645);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Boundary 15: Wave 14-20 Telemetry & Sanctuary Boundary Stress Suite (M88)
+  // --------------------------------------------------------------------------
+  describe('Wave 14-20 Telemetry & Sanctuary Boundary Stress Suite (M88)', () => {
+    // 1. getHubStationPromptInfo fallback on unknown station IDs
+    it('handles unknown or empty station IDs in getHubStationPromptInfo with fallback prompt', () => {
+      const fallbackUnknown = getHubStationPromptInfo('unknown_station_xyz');
+      expect(fallbackUnknown).toEqual({
+        title: 'STATION // INTERACT',
+        summary: 'Press [E] to interact with this hideout station',
+        actionLabel: 'INTERACT [E]',
+        accentColor: '#ffd60a'
+      });
+
+      const fallbackEmpty = getHubStationPromptInfo('', undefined, undefined);
+      expect(fallbackEmpty.title).toBe('STATION // INTERACT');
+      expect(fallbackEmpty.actionLabel).toBe('INTERACT [E]');
+
+      const fallbackNull = getHubStationPromptInfo('null', null, null);
+      expect(fallbackNull.title).toBe('STATION // INTERACT');
+    });
+
+    // 2. getHubStationPromptInfo null/undefined buffs and varied buff states
+    it('handles null, undefined, and toggled buff states across known stations in getHubStationPromptInfo', () => {
+      const garage = getHubStationPromptInfo('garage');
+      expect(garage.title).toContain('GARAGE');
+      expect(garage.actionLabel).toBe('OPEN GARAGE [E]');
+
+      const forge = getHubStationPromptInfo('blacksmith');
+      expect(forge.title).toContain('THE SCRAP FORGE');
+      expect(forge.actionLabel).toBe('OPEN FORGE [E]');
+
+      const launch = getHubStationPromptInfo('launch');
+      expect(launch.title).toContain('LAUNCH GATE');
+      expect(launch.actionLabel).toBe('OPEN LAUNCH GATE [E]');
+
+      // Codex buff state branching
+      const codexUnclaimed = getHubStationPromptInfo('codex', null, null, { scannerClaimed: false });
+      expect(codexUnclaimed.summary).toContain('Claim FREE +8–20% Weapon DMG');
+
+      const codexClaimed = getHubStationPromptInfo('codex', null, null, { scannerClaimed: true });
+      expect(codexClaimed.summary).toContain('Tactical Scanner +DMG/+SPD Buff Active!');
+
+      const codexUndef = getHubStationPromptInfo('codex');
+      expect(codexUndef.summary).toContain('Claim FREE +8–20% Weapon DMG');
+
+      // Bounty buff state branching
+      const bountyUnclaimed = getHubStationPromptInfo('bounty', null, null, { bountyClaimed: false });
+      expect(bountyUnclaimed.summary).toContain('Claim FREE +15 Coins');
+
+      const bountyClaimed = getHubStationPromptInfo('bounty', null, null, { bountyClaimed: true });
+      expect(bountyClaimed.summary).toContain('Free Cache Claimed!');
+
+      const bountyUndef = getHubStationPromptInfo('bounty');
+      expect(bountyUndef.summary).toContain('Claim FREE +15 Coins');
+    });
+
+    // 3. getPortalHeatBriefing non-numeric and infinite values
+    it('clamps non-numeric and infinite values to safe heat bounds in getPortalHeatBriefing', () => {
+      // NaN falls back to heat 0
+      const nanBriefing = getPortalHeatBriefing(NaN);
+      expect(nanBriefing).toEqual({
+        heatLevel: 0,
+        label: 'HEAT 0 // STANDARD',
+        enemyScaleText: 'Standard Enemy HP & Speed',
+        scrapBonusText: '+0% Bonus Scrap'
+      });
+
+      // -Infinity clamped to 0
+      const negInfBriefing = getPortalHeatBriefing(-Infinity);
+      expect(negInfBriefing.heatLevel).toBe(0);
+      expect(negInfBriefing.label).toBe('HEAT 0 // STANDARD');
+      expect(negInfBriefing.scrapBonusText).toBe('+0% Bonus Scrap');
+
+      // +Infinity clamped to 3
+      const posInfBriefing = getPortalHeatBriefing(Infinity);
+      expect(posInfBriefing.heatLevel).toBe(3);
+      expect(posInfBriefing.label).toBe('HEAT 3 // VALHALLA INFERNO');
+      expect(posInfBriefing.enemyScaleText).toBe('+72% Enemy HP · +36% Speed');
+      expect(posInfBriefing.scrapBonusText).toBe('+75% Bonus Scrap');
+    });
+
+    // 4. getPortalHeatBriefing negative, out-of-range, and floating point numbers
+    it('normalizes negative, extreme out-of-range, and floating-point heat levels in getPortalHeatBriefing', () => {
+      // Negative heat (-5) clamped to 0
+      const negBriefing = getPortalHeatBriefing(-5);
+      expect(negBriefing.heatLevel).toBe(0);
+      expect(negBriefing.label).toBe('HEAT 0 // STANDARD');
+      expect(negBriefing.scrapBonusText).toBe('+0% Bonus Scrap');
+
+      // Extreme heat (99) clamped to 3
+      const extremeBriefing = getPortalHeatBriefing(99);
+      expect(extremeBriefing.heatLevel).toBe(3);
+      expect(extremeBriefing.label).toBe('HEAT 3 // VALHALLA INFERNO');
+      expect(extremeBriefing.scrapBonusText).toBe('+75% Bonus Scrap');
+
+      // Float 1.6 rounds to 2
+      const floatBriefing2 = getPortalHeatBriefing(1.6);
+      expect(floatBriefing2.heatLevel).toBe(2);
+      expect(floatBriefing2.label).toBe('HEAT 2 // BLOOD PACT');
+      expect(floatBriefing2.enemyScaleText).toBe('+48% Enemy HP · +24% Speed');
+      expect(floatBriefing2.scrapBonusText).toBe('+50% Bonus Scrap');
+
+      // Float 0.4 rounds to 0
+      const floatBriefing0 = getPortalHeatBriefing(0.4);
+      expect(floatBriefing0.heatLevel).toBe(0);
+
+      // Float 1.2 rounds to 1
+      const floatBriefing1 = getPortalHeatBriefing(1.2);
+      expect(floatBriefing1.heatLevel).toBe(1);
+      expect(floatBriefing1.label).toBe('HEAT 1 // OVERCLOCKED');
+      expect(floatBriefing1.enemyScaleText).toBe('+24% Enemy HP · +12% Speed');
+      expect(floatBriefing1.scrapBonusText).toBe('+25% Bonus Scrap');
+    });
+
+    // 5. getShopBuildSynergyHint null/undefined/empty objects
+    it('returns standard fallback telemetry on null, undefined, or empty objects in getShopBuildSynergyHint', () => {
+      const fromNull = getShopBuildSynergyHint(null, null);
+      expect(fromNull).toEqual({
+        hasSynergy: false,
+        synergyType: 'STANDARD',
+        hintText: 'Standard Black Market Ordnance'
+      });
+
+      const fromUndef = getShopBuildSynergyHint(undefined, undefined);
+      expect(fromUndef.hasSynergy).toBe(false);
+      expect(fromUndef.synergyType).toBe('STANDARD');
+
+      const fromEmpty = getShopBuildSynergyHint({} as any, {} as any);
+      expect(fromEmpty.hasSynergy).toBe(false);
+      expect(fromEmpty.synergyType).toBe('STANDARD');
+    });
+
+    // 6. getShopBuildSynergyHint shop_heart under critical/zero/negative HP
+    it('evaluates shop_heart repair urgency under critical, zero, negative, and boundary HP conditions', () => {
+      const heartPickup = { type: 'shop_heart' } as any;
+
+      // 0 maxHp and 0 hp: 0 <= ceil(0 * 0.5) = 0 -> true (LOW_HULL_REPAIR)
+      const zeroHpResult = getShopBuildSynergyHint(heartPickup, { maxHp: 0, hp: 0 } as any);
+      expect(zeroHpResult.hasSynergy).toBe(true);
+      expect(zeroHpResult.synergyType).toBe('LOW_HULL_REPAIR');
+      expect(zeroHpResult.hintText).toBe('⚠️ CRITICAL HULL REPAIR RECOMMENDED!');
+
+      // Negative hp (-2) with maxHp 10: -2 <= 5 -> true (LOW_HULL_REPAIR)
+      const negHpResult = getShopBuildSynergyHint(heartPickup, { maxHp: 10, hp: -2 } as any);
+      expect(negHpResult.hasSynergy).toBe(true);
+      expect(negHpResult.synergyType).toBe('LOW_HULL_REPAIR');
+
+      // Exact 50% threshold: 5 / 10 HP -> 5 <= 5 -> true
+      const thresholdResult = getShopBuildSynergyHint(heartPickup, { maxHp: 10, hp: 5 } as any);
+      expect(thresholdResult.hasSynergy).toBe(true);
+      expect(thresholdResult.synergyType).toBe('LOW_HULL_REPAIR');
+
+      // Above 50%: 6 / 10 HP -> 6 <= 5 -> false (STANDARD)
+      const healthyResult = getShopBuildSynergyHint(heartPickup, { maxHp: 10, hp: 6 } as any);
+      expect(healthyResult.hasSynergy).toBe(false);
+      expect(healthyResult.synergyType).toBe('STANDARD');
+    });
+
+    // 7. getShopBuildSynergyHint mod_pedestal missing mod object or corrupt properties
+    it('handles mod_pedestal with missing, null, or corrupted mod objects in getShopBuildSynergyHint', () => {
+      // null mod object on pedestal
+      const nullModPedestal = { type: 'mod_pedestal', mod: null } as any;
+      const resNullMod = getShopBuildSynergyHint(nullModPedestal, { weapon: 'pistol' } as any);
+      expect(resNullMod.hasSynergy).toBe(false);
+      expect(resNullMod.synergyType).toBe('STANDARD');
+
+      // empty mod object on pedestal
+      const emptyModPedestal = { type: 'mod_pedestal', mod: {} } as any;
+      const resEmptyMod = getShopBuildSynergyHint(emptyModPedestal, { weapon: 'shotgun' } as any);
+      expect(resEmptyMod.hasSynergy).toBe(false);
+      expect(resEmptyMod.synergyType).toBe('STANDARD');
+
+      // unrelated mod on pedestal
+      const unrelatedMod = { type: 'mod_pedestal', mod: { id: 'alien_artifact', name: 'Alien Artifact' } } as any;
+      const resUnrelated = getShopBuildSynergyHint(unrelatedMod, { weapon: 'shotgun' } as any);
+      expect(resUnrelated.hasSynergy).toBe(false);
+      expect(resUnrelated.synergyType).toBe('STANDARD');
+
+      // matching weapon signature mod triggers EVOLUTION_KEY
+      const signatureMod = { type: 'mod_pedestal', mod: { id: 'split_chamber', name: 'Split Chamber' } } as any;
+      const resEvo = getShopBuildSynergyHint(signatureMod, { weapon: 'shotgun' } as any);
+      expect(resEvo.hasSynergy).toBe(true);
+      expect(resEvo.synergyType).toBe('EVOLUTION_KEY');
+      expect(resEvo.hintText).toContain('UNLOCKS HELLFIRE FLAK CANNON EVOLUTION!');
+    });
+
+    // 8. getCareerOutlawRank null safety and negative kills/bosses/bestFloor sanitization
+    it('sanitizes null, undefined, and negative statistics in getCareerOutlawRank without NaN or exceptions', () => {
+      const fromNull = getCareerOutlawRank(null);
+      expect(fromNull).toEqual({
+        rankId: 'rookie_courier',
+        title: '⚙️ ROOKIE COURIER',
+        tierNumber: 1,
+        careerScore: 0,
+        nextMilestoneText: 'Reach 40 Career Score or Floor 2 for HIGHWAY OUTLAW'
+      });
+
+      const fromUndef = getCareerOutlawRank(undefined);
+      expect(fromUndef.rankId).toBe('rookie_courier');
+      expect(fromUndef.careerScore).toBe(0);
+
+      // Extreme negative stats are clamped to non-negative baselines (kills >= 0, bosses >= 0, bestFloor >= 1)
+      const fromNegative = getCareerOutlawRank({
+        totalKills: -999,
+        bossesSlain: -20,
+        bestFloor: -5
+      } as any);
+      expect(fromNegative.careerScore).toBe(0);
+      expect(fromNegative.rankId).toBe('rookie_courier');
+      expect(fromNegative.tierNumber).toBe(1);
+    });
+
+    // 9. getCareerOutlawRank exact tier boundary thresholds (39 vs 40, 119 vs 120, 249 vs 250, 499 vs 500)
+    it('enforces exact career score threshold boundaries (39 vs 40, 119 vs 120, 249 vs 250, 499 vs 500) in getCareerOutlawRank', () => {
+      // Threshold 1: 39 (Rookie Courier) vs 40 (Highway Outlaw)
+      const rank39 = getCareerOutlawRank({ totalKills: 39, bossesSlain: 0, bestFloor: 1 });
+      expect(rank39.careerScore).toBe(39);
+      expect(rank39.tierNumber).toBe(1);
+      expect(rank39.rankId).toBe('rookie_courier');
+
+      const rank40 = getCareerOutlawRank({ totalKills: 40, bossesSlain: 0, bestFloor: 1 });
+      expect(rank40.careerScore).toBe(40);
+      expect(rank40.tierNumber).toBe(2);
+      expect(rank40.rankId).toBe('highway_outlaw');
+
+      // Threshold 2: 119 (Highway Outlaw) vs 120 (Syndicate Enforcer)
+      const rank119 = getCareerOutlawRank({ totalKills: 119, bossesSlain: 0, bestFloor: 1 });
+      expect(rank119.careerScore).toBe(119);
+      expect(rank119.tierNumber).toBe(2);
+      expect(rank119.rankId).toBe('highway_outlaw');
+
+      const rank120 = getCareerOutlawRank({ totalKills: 120, bossesSlain: 0, bestFloor: 1 });
+      expect(rank120.careerScore).toBe(120);
+      expect(rank120.tierNumber).toBe(3);
+      expect(rank120.rankId).toBe('syndicate_enforcer');
+
+      // Threshold 3: 249 (Syndicate Enforcer) vs 250 (Apex Roadlord)
+      const rank249 = getCareerOutlawRank({ totalKills: 249, bossesSlain: 0, bestFloor: 1 });
+      expect(rank249.careerScore).toBe(249);
+      expect(rank249.tierNumber).toBe(3);
+      expect(rank249.rankId).toBe('syndicate_enforcer');
+
+      const rank250 = getCareerOutlawRank({ totalKills: 250, bossesSlain: 0, bestFloor: 1 });
+      expect(rank250.careerScore).toBe(250);
+      expect(rank250.tierNumber).toBe(4);
+      expect(rank250.rankId).toBe('apex_roadlord');
+
+      // Threshold 4: 499 (Apex Roadlord) vs 500 (Legend of Valhalla)
+      const rank499 = getCareerOutlawRank({ totalKills: 499, bossesSlain: 0, bestFloor: 1 });
+      expect(rank499.careerScore).toBe(499);
+      expect(rank499.tierNumber).toBe(4);
+      expect(rank499.rankId).toBe('apex_roadlord');
+
+      const rank500 = getCareerOutlawRank({ totalKills: 500, bossesSlain: 0, bestFloor: 1 });
+      expect(rank500.careerScore).toBe(500);
+      expect(rank500.tierNumber).toBe(5);
+      expect(rank500.rankId).toBe('legend_of_valhalla');
+    });
+
+    // 10. getCareerOutlawRank floor progression shortcut overrides
+    it('handles floor progression shortcut overrides in getCareerOutlawRank regardless of raw score', () => {
+      // Floor 2 shortcut: bestFloor >= 2 triggers Tier 2 Highway Outlaw even with 0 kills and 0 bosses (score = 40)
+      const floor2 = getCareerOutlawRank({ totalKills: 0, bossesSlain: 0, bestFloor: 2 });
+      expect(floor2.tierNumber).toBe(2);
+      expect(floor2.rankId).toBe('highway_outlaw');
+
+      // Floor 3 shortcut: bestFloor >= 3 triggers Tier 3 Syndicate Enforcer with score = 80 (< 120)
+      const floor3 = getCareerOutlawRank({ totalKills: 0, bossesSlain: 0, bestFloor: 3 });
+      expect(floor3.careerScore).toBe(80);
+      expect(floor3.tierNumber).toBe(3);
+      expect(floor3.rankId).toBe('syndicate_enforcer');
+
+      // Floor 5 shortcut: bestFloor >= 5 triggers Tier 4 Apex Roadlord with score = 160 (< 250)
+      const floor5 = getCareerOutlawRank({ totalKills: 0, bossesSlain: 0, bestFloor: 5 });
+      expect(floor5.careerScore).toBe(160);
+      expect(floor5.tierNumber).toBe(4);
+      expect(floor5.rankId).toBe('apex_roadlord');
+
+      // Floor 6 + 6 bosses shortcut: triggers Tier 5 Legend of Valhalla even if score < 500 (350 here)
+      const valhallaShortcut = getCareerOutlawRank({ totalKills: 0, bossesSlain: 6, bestFloor: 6 });
+      expect(valhallaShortcut.careerScore).toBe(350);
+      expect(valhallaShortcut.tierNumber).toBe(5);
+      expect(valhallaShortcut.rankId).toBe('legend_of_valhalla');
+      expect(valhallaShortcut.nextMilestoneText).toBe('MAX CAREER RANK ACHIEVED');
+    });
+
+    // 11. getRiderMobilitySummary null safety and clamped drift/NOS extremes
+    it('gracefully handles null, undefined, and clamped drift/NOS extremes in getRiderMobilitySummary', () => {
+      const fromNull = getRiderMobilitySummary(null);
+      expect(fromNull).toEqual({
+        topSpeedRating: 295,
+        driftChargePct: 0,
+        nosReservePct: 100,
+        mobilityTier: 'STANDARD',
+        summaryText: 'STANDARD · 295 MPH RATING · 0% DRIFT · 100% NOS'
+      });
+
+      const fromUndef = getRiderMobilitySummary(undefined);
+      expect(fromUndef.driftChargePct).toBe(0);
+      expect(fromUndef.nosReservePct).toBe(100);
+
+      // Negative driftCharge (-0.8) clamped to 0
+      const negDrift = getRiderMobilitySummary({ driftCharge: -0.8 });
+      expect(negDrift.driftChargePct).toBe(0);
+
+      // Excessive driftCharge (> 1.0, e.g. 2.4) clamped to 100%
+      const overDrift = getRiderMobilitySummary({ driftCharge: 2.4 });
+      expect(overDrift.driftChargePct).toBe(100);
+
+      // 0 nosMax defaults safely via falsy fallback to 100
+      const zeroNosMax = getRiderMobilitySummary({ nosMax: 0, nos: 50 });
+      expect(zeroNosMax.nosReservePct).toBe(50);
+
+      // Negative NOS clamped to 0
+      const negNos = getRiderMobilitySummary({ nos: -30, nosMax: 100 });
+      expect(negNos.nosReservePct).toBe(0);
+
+      // NOS exceeding nosMax clamped to nosMax
+      const overNos = getRiderMobilitySummary({ nos: 250, nosMax: 100 });
+      expect(overNos.nosReservePct).toBe(100);
+    });
+
+    // 12. getRiderMobilitySummary mobility tier classification thresholds
+    it('classifies mobility tiers accurately across threshold boundaries in getRiderMobilitySummary', () => {
+      // 1. HYPER-DRIFTER via speedMult >= 1.35
+      const hyperSpeed = getRiderMobilitySummary({ speedMult: 1.35 });
+      expect(hyperSpeed.mobilityTier).toBe('HYPER-DRIFTER');
+
+      // 2. HYPER-DRIFTER via speedMult >= 1.20 AND driftChargePct >= 50
+      const hyperCombo = getRiderMobilitySummary({ speedMult: 1.20, driftCharge: 0.50 });
+      expect(hyperCombo.mobilityTier).toBe('HYPER-DRIFTER');
+
+      // Just below HYPER-DRIFTER combo (speedMult 1.19 with 50% drift -> INTERCEPTOR)
+      const subHyper = getRiderMobilitySummary({ speedMult: 1.19, driftCharge: 0.50 });
+      expect(subHyper.mobilityTier).toBe('INTERCEPTOR');
+
+      // 3. INTERCEPTOR via speedMult >= 1.15
+      const interceptorSpeed = getRiderMobilitySummary({ speedMult: 1.15 });
+      expect(interceptorSpeed.mobilityTier).toBe('INTERCEPTOR');
+
+      // 4. INTERCEPTOR via driftCharge >= 35%
+      const interceptorDrift = getRiderMobilitySummary({ driftCharge: 0.35 });
+      expect(interceptorDrift.mobilityTier).toBe('INTERCEPTOR');
+
+      // 5. STANDARD: just below INTERCEPTOR thresholds (speedMult 1.14, drift 34%)
+      const standardRider = getRiderMobilitySummary({ speedMult: 1.14, driftCharge: 0.34 });
+      expect(standardRider.mobilityTier).toBe('STANDARD');
+    });
+
+    // 13. getCombatOffenseSummary zero multipliers, negative scaling, missing weapon, and siphon tiers
+    it('handles zero multipliers, negative scaling, missing weapon, and extreme siphon tiers in getCombatOffenseSummary', () => {
+      // Zero multipliers fall back via falsy operator to 1
+      const zeroPlayer = {
+        ...createDefaultPlayerState(),
+        dmgMult: 0,
+        fireRateMult: 0,
+        projCount: 0
+      } as any;
+      const zeroSummary = getCombatOffenseSummary(zeroPlayer);
+      expect(zeroSummary.effectiveDpsMult).toBe(1.00);
+
+      // Negative multipliers multiply deterministically without crashing
+      const negPlayer = {
+        ...createDefaultPlayerState(),
+        dmgMult: -1.5,
+        fireRateMult: -2,
+        projCount: 1
+      } as any;
+      const negSummary = getCombatOffenseSummary(negPlayer);
+      expect(negSummary.effectiveDpsMult).toBeCloseTo(3.00, 2);
+
+      // Missing weapon does not crash or trigger evolution bonus
+      const noWeaponPlayer = {
+        ...createDefaultPlayerState(),
+        weapon: undefined as any,
+        dmgMult: 2.0
+      } as any;
+      const noWeaponSummary = getCombatOffenseSummary(noWeaponPlayer);
+      expect(noWeaponSummary.isEvolved).toBe(false);
+      expect(noWeaponSummary.summaryLine).not.toContain('OVERCLOCKED');
+
+      // Extreme siphon tiers
+      // Siphon >= 15% -> VAMPIRIC OVERDRIVE
+      const highSiphonPlayer = { ...createDefaultPlayerState(), siphon: 0.60 } as any;
+      const highSiphonSummary = getCombatOffenseSummary(highSiphonPlayer);
+      expect(highSiphonSummary.siphonPct).toBe(60);
+      expect(highSiphonSummary.siphonStatus).toBe('VAMPIRIC OVERDRIVE');
+
+      // Siphon 1..14% -> LIGHT SIPHON
+      const lightSiphonPlayer = { ...createDefaultPlayerState(), siphon: 0.08 } as any;
+      const lightSiphonSummary = getCombatOffenseSummary(lightSiphonPlayer);
+      expect(lightSiphonSummary.siphonPct).toBe(8);
+      expect(lightSiphonSummary.siphonStatus).toBe('LIGHT SIPHON');
+
+      // Siphon 0 or negative -> NONE
+      const zeroSiphonPlayer = { ...createDefaultPlayerState(), siphon: 0 } as any;
+      const zeroSiphonSummary = getCombatOffenseSummary(zeroSiphonPlayer);
+      expect(zeroSiphonSummary.siphonPct).toBe(0);
+      expect(zeroSiphonSummary.siphonStatus).toBe('NONE');
+
+      const negSiphonPlayer = { ...createDefaultPlayerState(), siphon: -0.15 } as any;
+      const negSiphonSummary = getCombatOffenseSummary(negSiphonPlayer);
+      expect(negSiphonSummary.siphonPct).toBe(-15);
+      expect(negSiphonSummary.siphonStatus).toBe('NONE');
+    });
+
+    // 14. getRoomHazardSummary null, undefined, and corrupted obstacle arrays
+    it('handles null, undefined, and corrupted obstacle arrays in getRoomHazardSummary', () => {
+      const fromNull = getRoomHazardSummary(null);
+      expect(fromNull).toEqual({
+        explosiveCount: 0,
+        toxicCount: 0,
+        cryoCount: 0,
+        zoneTypes: [],
+        tacticalHint: 'Clear asphalt sector — standard traction.'
+      });
+
+      const fromUndef = getRoomHazardSummary(undefined);
+      expect(fromUndef.tacticalHint).toBe('Clear asphalt sector — standard traction.');
+
+      // Corrupted obstacle array with null/undefined elements and mixed barrel types
+      const corruptRoom = {
+        obstacles: [
+          null as any,
+          undefined as any,
+          { type: 'cryo_barrel' },
+          { variant: 'toxic_barrel' },
+          { type: 'explosive_barrel' },
+          { type: 'non_barrel_rock' }
+        ],
+        zones: ['toxic_sludge', 'oil_slick', '']
+      } as any;
+
+      const summary = getRoomHazardSummary(corruptRoom);
+      expect(summary.cryoCount).toBe(1);
+      expect(summary.toxicCount).toBe(1);
+      expect(summary.explosiveCount).toBe(1);
+      expect(summary.zoneTypes).toEqual(['toxic_sludge', 'oil_slick']);
+      expect(summary.tacticalHint).toContain('Cryo barrels detected (1)');
+      expect(summary.tacticalHint).toContain('Toxic barrels detected (1)');
+      expect(summary.tacticalHint).toContain('Explosive barrels detected (1)');
+      expect(summary.tacticalHint).toContain('Surface modifiers detected');
+    });
+
+    // 15. getRoomThreatAssessment null rooms, all-dead hostiles, dummy targets, and negative floorNum clamping
+    it('handles null rooms, all-dead hostiles, dummy targets, and negative floorNum clamping in getRoomThreatAssessment', () => {
+      const fromNull = getRoomThreatAssessment(null);
+      expect(fromNull).toEqual({
+        threatScore: 0,
+        threatTier: 'CLEAR',
+        livingCount: 0,
+        eliteCount: 0,
+        hasBoss: false,
+        advisory: 'Sector clear — no active hostiles detected.'
+      });
+
+      const fromUndef = getRoomThreatAssessment(undefined);
+      expect(fromUndef.threatTier).toBe('CLEAR');
+
+      // Room with dead boss (hp <= 0), dead elite, and combat dummy target
+      const deadHostileRoom = {
+        enemies: [
+          { hp: 0, type: 'boss' },
+          { hp: -25, type: 'swarmer', isElite: true },
+          { hp: 100, type: 'swarmer', isDummy: true }
+        ]
+      } as any;
+      const deadSummary = getRoomThreatAssessment(deadHostileRoom, 1);
+      expect(deadSummary.livingCount).toBe(0);
+      expect(deadSummary.hasBoss).toBe(false);
+      expect(deadSummary.eliteCount).toBe(0);
+      expect(deadSummary.threatTier).toBe('CLEAR');
+      expect(deadSummary.threatScore).toBe(0);
+      expect(deadSummary.advisory).toBe('Sector clear — no active hostiles detected.');
+
+      // Negative floorNum (-5) clamped to floor 1: 1 living enemy -> threatScore: 1 * (10 + 1 * 2) = 12
+      const liveRoom = {
+        enemies: [{ hp: 50, type: 'swarmer' }]
+      } as any;
+      const negFloorSummary = getRoomThreatAssessment(liveRoom, -5);
+      expect(negFloorSummary.livingCount).toBe(1);
+      expect(negFloorSummary.threatScore).toBe(12);
+      expect(negFloorSummary.threatTier).toBe('LOW');
+
+      // Zero floorNum (0) clamped to floor 1
+      const zeroFloorSummary = getRoomThreatAssessment(liveRoom, 0);
+      expect(zeroFloorSummary.threatScore).toBe(12);
     });
   });
 });
