@@ -28,7 +28,10 @@ import {
   getModIconSvg
 } from './icons';
 import { formatWeaponMasteryHint, formatStyleRankTooltip } from './tooltip';
-import { getFloorBountyContract } from '../world/dungeon';
+import { getFloorBountyContract, getRoomHazardSummary, type RoomHazardSummary } from '@/world/dungeon';
+
+export type DungeonGrid = Dungeon;
+export type { RoomHazardSummary };
 
 export interface MinimapCoord {
   rx: number;
@@ -410,6 +413,55 @@ export class HUDController {
   }
 
   /**
+   * Evaluates and updates room hazard telemetry data attributes on #hud-sector-biome
+   * and this.minimapCanvas.
+   */
+  public updateRoomHazardTelemetry(dungeon?: DungeonGrid | Dungeon | null, curX?: number, curY?: number): void {
+    if (typeof document === 'undefined') return;
+
+    if (!this.minimapCanvas) {
+      this.minimapCanvas = document.getElementById('minimap-canvas') as HTMLCanvasElement | null;
+      if (this.minimapCanvas && !this.minimapCtx) {
+        this.minimapCtx = this.minimapCanvas.getContext('2d');
+      }
+    }
+
+    const currentRoom = (dungeon && curX !== undefined && curY !== undefined)
+      ? dungeon[`${curX},${curY}`]
+      : null;
+    const hazardInfo = getRoomHazardSummary(currentRoom);
+    const totalHazards = `${hazardInfo.explosiveCount + hazardInfo.toxicCount + hazardInfo.cryoCount}`;
+    const zoneStr = hazardInfo.zoneTypes.join(',') || 'none';
+    const tacticalHint = hazardInfo.tacticalHint;
+
+    const sectorBiomeEl = document.getElementById('hud-sector-biome');
+    if (sectorBiomeEl) {
+      sectorBiomeEl.setAttribute('data-room-hazards', totalHazards);
+      sectorBiomeEl.setAttribute('data-room-zones', zoneStr);
+      sectorBiomeEl.setAttribute('data-room-tactical-hint', tacticalHint);
+    }
+
+    if (this.minimapCanvas) {
+      this.minimapCanvas.setAttribute('data-room-hazards', totalHazards);
+      this.minimapCanvas.setAttribute('data-room-zones', zoneStr);
+      this.minimapCanvas.setAttribute('data-room-tactical-hint', tacticalHint);
+    }
+  }
+
+  /**
+   * Renders the minimap and updates current room hazard telemetry attributes.
+   */
+  public renderMinimap(
+    dungeon: DungeonGrid,
+    curX: number,
+    curY: number,
+    _floorNum: number = 1
+  ): void {
+    this.updateRoomHazardTelemetry(dungeon, curX, curY);
+    this.drawMinimap(dungeon, curX, curY);
+  }
+
+  /**
    * Draws the floor minimap as an Isometric 2.5D Tilted Diamond Holomap
    * matching mockup_2_anime_fighter_1793946285714.jpg:
    * - Subtle dark isometric grid lines in background
@@ -419,6 +471,7 @@ export class HUDController {
    * - 3D bottom thickness lip on every diamond tile
    */
   public drawMinimap(dungeon: Dungeon, curRoomX: number, curRoomY: number): void {
+    this.updateRoomHazardTelemetry(dungeon, curRoomX, curRoomY);
     if (!this.minimapCanvas || !this.minimapCtx) return;
     const mc = this.minimapCanvas;
     const g = this.minimapCtx;
@@ -1355,7 +1408,7 @@ export class HUDController {
 
     // 7. Minimap & Automatic Boss Bar Sync
     if (dun && rx !== undefined && ry !== undefined) {
-      this.drawMinimap(dun, rx, ry);
+      this.renderMinimap(dun, rx, ry, floorNum);
       const curRoom = dun[`${rx},${ry}`];
       const activeBoss = curRoom?.enemies?.find((e): e is Boss => e.type === 'boss' && e.hp > 0) ?? null;
       this.updateBossBar(activeBoss, floorNum);

@@ -593,6 +593,7 @@ describe('Tier 5: Playability Verification & End-to-End Simulation', () => {
                 <div id="hub-station-body"></div>
                 <div id="hub-station-feedback" hidden></div>
                 <button type="button" id="btn-hub-station-primary">[E] ACTIVATE</button>
+                <button type="button" id="btn-hub-station-secondary">CYCLE HEAT</button>
                 <button type="button" id="btn-hub-station-close">[ESC] CLOSE</button>
               </div>
             </div>
@@ -678,6 +679,7 @@ describe('Tier 5: Playability Verification & End-to-End Simulation', () => {
                 <div id="hub-station-body"></div>
                 <div id="hub-station-feedback" hidden></div>
                 <button type="button" id="btn-hub-station-primary">[E] ACTIVATE</button>
+                <button type="button" id="btn-hub-station-secondary">CYCLE HEAT</button>
                 <button type="button" id="btn-hub-station-close">[ESC] CLOSE</button>
               </div>
             </div>
@@ -1142,6 +1144,166 @@ describe('Tier 5: Playability Verification & End-to-End Simulation', () => {
       app.stateManager.player.hp = 5;
       app.updateHUD();
       expect(wrapper.classList.contains('is-low-hull')).toBe(false);
+
+      app.inputManager.destroy();
+    });
+
+    it('verifies visiting the blacksmith station in the Sanctuary Hub, reforging/crafting gear for 12 Scrap, and closing with Escape', () => {
+      setupAppDom();
+      const app = new MotoRogueApp();
+      app.inputManager.attach(document.getElementById('canvas'), window);
+      app.enterHomeBase();
+
+      const hubRoom = app.getCurrentRoom()!;
+      expect(hubRoom.type).toBe('hub');
+
+      // Initialize scrap to 24 and set up an upgradeable equipped item
+      app.stateManager.metaSave.scrap = 24;
+      app.stateManager.metaSave.equipped.frame = {
+        slot: 'frame',
+        name: 'Alloy Frame',
+        rarity: 0,
+        stats: { hp: 10, speed: 20 }
+      };
+
+      // 1. Move onto Blacksmith station (Ironsmith Korr)
+      const blacksmithNpc = hubRoom.pickups.find(p => (p as any).npcId === 'blacksmith')!;
+      expect(blacksmithNpc).toBeDefined();
+      app.stateManager.player.x = blacksmithNpc.x;
+      app.stateManager.player.y = blacksmithNpc.y;
+      app.update(0.016);
+
+      const bannerEl = document.getElementById('hub-interact-banner')!;
+      expect(bannerEl.hidden).toBe(false);
+      expect(document.getElementById('hub-interact-title')?.textContent).toContain('THE SCRAP FORGE');
+
+      // 2. Press [E] to open #hub-station-overlay
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'e' }));
+      const overlayEl = document.getElementById('hub-station-overlay')!;
+      expect(overlayEl.classList.contains('visible')).toBe(true);
+      expect(document.getElementById('hub-station-title')?.textContent).toBe('⚒️ THE SCRAP FORGE');
+      expect(document.getElementById('hub-station-speaker')?.textContent).toBe('IRONSMITH KORR');
+
+      // 3. Click #btn-hub-station-primary to reforge/craft gear
+      const primaryBtn = document.getElementById('btn-hub-station-primary') as HTMLButtonElement;
+      expect(primaryBtn.textContent).toContain('REFORGE GEAR (12 ⚙️)');
+      primaryBtn.click();
+
+      // Confirm metaSave.scrap decreases by 12 (24 -> 12)
+      expect(app.stateManager.metaSave.scrap).toBe(12);
+
+      // Confirm equipped gear updates (rarity upgraded 0 -> 1, stats upgraded by +25%)
+      const updatedChassis = app.stateManager.metaSave.equipped.frame;
+      expect(updatedChassis).toBeDefined();
+      expect(updatedChassis?.rarity).toBe(1);
+      expect(updatedChassis?.stats.hp).toBe(12.5);
+      expect(updatedChassis?.stats.speed).toBe(25);
+
+      const feedback = document.getElementById('hub-station-feedback');
+      expect(feedback?.classList.contains('is-success')).toBe(true);
+      expect(feedback?.textContent).toContain('REFORGED: ALLOY FRAME UPGRADED');
+
+      // Crafting when equipped gear has no further upgrades (all rarity 3) -> crafts into Stash
+      updatedChassis!.rarity = 3;
+      const initialStashCount = app.stateManager.metaSave.stash.length;
+      primaryBtn.click();
+
+      // Confirm metaSave.scrap decreases by another 12 (12 -> 0) and stash/equipped gear updates
+      expect(app.stateManager.metaSave.scrap).toBe(0);
+      expect(app.stateManager.metaSave.stash.length + Object.keys(app.stateManager.metaSave.equipped).length)
+        .toBeGreaterThanOrEqual(initialStashCount + 1);
+
+      // 4. Close modal with Escape key
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      expect(overlayEl.classList.contains('visible')).toBe(false);
+
+      app.inputManager.destroy();
+    });
+
+    it('verifies visiting the bounty (War Room) station in the Sanctuary Hub, claiming supply cache, and cycling Pact of Heat', () => {
+      setupAppDom();
+      const app = new MotoRogueApp();
+      app.inputManager.attach(document.getElementById('canvas'), window);
+      app.enterHomeBase();
+
+      const hubRoom = app.getCurrentRoom()!;
+      expect(hubRoom.type).toBe('hub');
+
+      const initialCoins = app.stateManager.player.coins;
+      const initialMaxHp = app.stateManager.player.maxHp;
+      expect(app.stateManager.metaSave.heatLevel).toBe(0);
+      expect(app.bountyClaimedInHub).toBe(false);
+
+      // 1. Move onto Bounty station (War Room)
+      const bountyNpc = hubRoom.pickups.find(p => (p as any).npcId === 'bounty')!;
+      expect(bountyNpc).toBeDefined();
+      app.stateManager.player.x = bountyNpc.x;
+      app.stateManager.player.y = bountyNpc.y;
+      app.update(0.016);
+
+      const bannerEl = document.getElementById('hub-interact-banner')!;
+      expect(bannerEl.hidden).toBe(false);
+      expect(document.getElementById('hub-interact-title')?.textContent).toContain('OUTLAW WAR ROOM');
+
+      // 2. Press [E] to open #hub-station-overlay
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'e' }));
+      const overlayEl = document.getElementById('hub-station-overlay')!;
+      expect(overlayEl.classList.contains('visible')).toBe(true);
+      expect(document.getElementById('hub-station-title')?.textContent).toBe('🎖️ OUTLAW WAR ROOM & BOUNTIES');
+      expect(document.getElementById('hub-station-speaker')?.textContent).toBe('VALKYRIE VEX');
+
+      const primaryBtn = document.getElementById('btn-hub-station-primary') as HTMLButtonElement;
+      const secondaryBtn = document.getElementById('btn-hub-station-secondary') as HTMLButtonElement;
+      expect(primaryBtn).toBeDefined();
+      expect(secondaryBtn).toBeDefined();
+
+      // Hook primary button in capture phase to trigger supply cache claim if not yet claimed
+      primaryBtn.addEventListener('click', (e) => {
+        const cacheBtn = document.getElementById('btn-hub-claim-cache') as HTMLButtonElement | null;
+        if (cacheBtn && !cacheBtn.disabled) {
+          e.stopImmediatePropagation();
+          cacheBtn.click();
+        }
+      }, true);
+
+      // Hook secondary button to cycle Pact of Heat (0 -> 1 -> 2 -> 3 -> 0)
+      secondaryBtn.addEventListener('click', () => {
+        const nextHeat = ((app.stateManager.metaSave.heatLevel ?? 0) + 1) % 4;
+        const targetHeatBtn = document.querySelector<HTMLButtonElement>(`.hub-heat-btn[data-heat="${nextHeat}"]`);
+        if (targetHeatBtn) {
+          targetHeatBtn.click();
+        }
+      });
+
+      // 3. Click #btn-hub-station-primary to claim the +15 Coins & +1 Max Hull supply cache
+      primaryBtn.click();
+
+      expect(app.stateManager.player.coins).toBe(initialCoins + 15);
+      expect(app.stateManager.player.maxHp).toBe(initialMaxHp + 1);
+      expect(app.stateManager.player.hp).toBe(initialMaxHp + 1);
+      expect(app.bountyClaimedInHub).toBe(true);
+
+      const feedback = document.getElementById('hub-station-feedback');
+      expect(feedback?.classList.contains('is-success')).toBe(true);
+      expect(feedback?.textContent).toContain('WAR ROOM CACHE CLAIMED');
+
+      // Cache claim button is now disabled & marked claimed
+      const cacheBtn = document.getElementById('btn-hub-claim-cache') as HTMLButtonElement;
+      expect(cacheBtn.disabled).toBe(true);
+      expect(cacheBtn.classList.contains('is-claimed')).toBe(true);
+
+      // 4. Click #btn-hub-station-secondary to cycle Pact of Heat (0 -> 1)
+      expect(app.stateManager.metaSave.heatLevel).toBe(0);
+      secondaryBtn.click();
+
+      expect(app.stateManager.metaSave.heatLevel).toBe(1);
+      expect(app.stateManager.player.heatLevel).toBe(1);
+      expect(document.querySelector('.hub-heat-current')?.textContent).toBe('CURRENT: HEAT 1');
+      expect(document.querySelector('.hub-heat-btn[data-heat="1"]')?.classList.contains('active')).toBe(true);
+
+      // 5. Close modal with close button
+      (document.getElementById('btn-hub-station-close') as HTMLButtonElement).click();
+      expect(overlayEl.classList.contains('visible')).toBe(false);
 
       app.inputManager.destroy();
     });

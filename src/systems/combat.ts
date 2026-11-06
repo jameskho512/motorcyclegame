@@ -33,7 +33,8 @@ import {
   Enemy,
   Room,
   AudioService,
-  MetaSaveState
+  MetaSaveState,
+  WeaponId
 } from '../types/game';
 import { WEAPONS, WeaponDef, isWeaponEvolved } from '../data/weapons';
 import { DROP_ITEM_IDS } from '../data/upgrades';
@@ -1738,4 +1739,72 @@ export function updateCombatPipeline(
 
   // 7. VFX updates
   updateCombatVfx(dt, state);
+}
+
+// ============================================================================
+// 8. COMBAT OFFENSE & SIPHON TELEMETRY
+// ============================================================================
+
+export interface Player {
+  weapon?: WeaponId | string;
+  dmgMult?: number;
+  fireRateMult?: number;
+  projCount?: number;
+  multiShot?: number;
+  siphon?: number;
+  vampChance?: number;
+  items?: string[];
+  itemStacks?: Record<string, number>;
+  [key: string]: any;
+}
+
+export interface CombatOffenseSummary {
+  effectiveDpsMult: number;
+  siphonPct: number;
+  siphonStatus: 'NONE' | 'LIGHT SIPHON' | 'VAMPIRIC OVERDRIVE';
+  isEvolved: boolean;
+  summaryLine: string;
+}
+
+/**
+ * Computes an offense and siphon sustain telemetry summary for a player.
+ * Calculates effective DPS multiplier taking weapon evolution into account,
+ * siphon percentage tier status, and a formatted display summary line.
+ */
+export function getCombatOffenseSummary(player: Player): CombatOffenseSummary {
+  const isEvolved = Boolean(
+    player.weapon && isWeaponEvolved(player.weapon as any, player as any)
+  );
+
+  const projCount = Math.max(1, player.projCount ?? (player as any).multiShot ?? 1);
+  const dmgMult = player.dmgMult || 1;
+  const fireRateMult = player.fireRateMult || 1;
+  const evoBonus = isEvolved ? 1.35 : 1;
+  const effectiveDpsMult = Number((dmgMult * fireRateMult * projCount * evoBonus).toFixed(2));
+
+  const rawSiphon =
+    typeof player.siphon === 'number'
+      ? player.siphon
+      : typeof (player as any).vampChance === 'number'
+        ? (player as any).vampChance
+        : 0;
+  const siphonPct = Math.round((rawSiphon || 0) * 100);
+
+  const siphonStatus: 'NONE' | 'LIGHT SIPHON' | 'VAMPIRIC OVERDRIVE' =
+    siphonPct >= 15
+      ? 'VAMPIRIC OVERDRIVE'
+      : siphonPct > 0
+        ? 'LIGHT SIPHON'
+        : 'NONE';
+
+  const evoTag = isEvolved ? ' · OVERCLOCKED' : '';
+  const summaryLine = `DPS x${effectiveDpsMult.toFixed(2)} · ${siphonStatus} (${siphonPct}% Siphon)${evoTag}`;
+
+  return {
+    effectiveDpsMult,
+    siphonPct,
+    siphonStatus,
+    isEvolved,
+    summaryLine
+  };
 }

@@ -34,8 +34,10 @@ import {
   handleEnemyDeath,
   calcOverkillBonus,
   formatDummyHitTelemetry,
-  updateCombatPipeline
+  updateCombatPipeline,
+  getCombatOffenseSummary
 } from '../../src/systems/combat';
+import type { CombatOffenseSummary, Player } from '../../src/systems/combat';
 import { WEAPONS } from '../../src/data/weapons';
 import type {
   PlayerState,
@@ -1182,6 +1184,158 @@ describe('Systems: Combat — Overkill & Execution Bonus', () => {
       expect(banner?.maxLife).toBe(1.0);
       expect(banner?.life).toBeCloseTo(1.0 - 0.016, 3);
       expect(banner?.y).toBeCloseTo(dummy.y - dummy.radius - 26 - 26 * 0.016, 2);
+    });
+  });
+
+  // ============================================================================
+  // M66: COMBAT OFFENSE & SIPHON SUSTAIN TELEMETRY
+  // ============================================================================
+
+  describe('M66: getCombatOffenseSummary', () => {
+    it('computes correct baseline summary for default unevolved player without siphon', () => {
+      const player: Player = {
+        weapon: 'pistol',
+        dmgMult: 1,
+        fireRateMult: 1,
+        projCount: 1,
+        siphon: 0,
+        items: [],
+        itemStacks: {}
+      };
+
+      const summary: CombatOffenseSummary = getCombatOffenseSummary(player);
+
+      expect(summary.isEvolved).toBe(false);
+      expect(summary.effectiveDpsMult).toBe(1.00);
+      expect(summary.siphonPct).toBe(0);
+      expect(summary.siphonStatus).toBe('NONE');
+      expect(summary.summaryLine).toBe('DPS x1.00 · NONE (0% Siphon)');
+    });
+
+    it('computes high-DPS state with custom dmgMult, fireRateMult, and projCount', () => {
+      const player: Player = {
+        weapon: 'machine_gun',
+        dmgMult: 2.5,
+        fireRateMult: 1.4,
+        projCount: 3,
+        siphon: 0
+      };
+
+      // 2.5 * 1.4 * 3 = 10.50
+      const summary: CombatOffenseSummary = getCombatOffenseSummary(player);
+
+      expect(summary.isEvolved).toBe(false);
+      expect(summary.effectiveDpsMult).toBe(10.50);
+      expect(summary.siphonPct).toBe(0);
+      expect(summary.siphonStatus).toBe('NONE');
+      expect(summary.summaryLine).toBe('DPS x10.50 · NONE (0% Siphon)');
+    });
+
+    it('identifies LIGHT SIPHON state when 0% < siphonPct < 15%', () => {
+      const player: Player = {
+        weapon: 'shotgun',
+        dmgMult: 1,
+        fireRateMult: 1,
+        projCount: 1,
+        siphon: 0.08
+      };
+
+      const summary: CombatOffenseSummary = getCombatOffenseSummary(player);
+
+      expect(summary.siphonPct).toBe(8);
+      expect(summary.siphonStatus).toBe('LIGHT SIPHON');
+      expect(summary.summaryLine).toBe('DPS x1.00 · LIGHT SIPHON (8% Siphon)');
+    });
+
+    it('identifies VAMPIRIC OVERDRIVE threshold at exactly 15% and above', () => {
+      const atThreshold: Player = {
+        weapon: 'shotgun',
+        siphon: 0.15
+      };
+
+      const summaryThreshold = getCombatOffenseSummary(atThreshold);
+      expect(summaryThreshold.siphonPct).toBe(15);
+      expect(summaryThreshold.siphonStatus).toBe('VAMPIRIC OVERDRIVE');
+      expect(summaryThreshold.summaryLine).toBe('DPS x1.00 · VAMPIRIC OVERDRIVE (15% Siphon)');
+
+      const aboveThreshold: Player = {
+        weapon: 'shotgun',
+        siphon: 0.25
+      };
+      const summaryAbove = getCombatOffenseSummary(aboveThreshold);
+      expect(summaryAbove.siphonPct).toBe(25);
+      expect(summaryAbove.siphonStatus).toBe('VAMPIRIC OVERDRIVE');
+      expect(summaryAbove.summaryLine).toBe('DPS x1.00 · VAMPIRIC OVERDRIVE (25% Siphon)');
+    });
+
+    it('matches exact specification example: DPS x2.70 · VAMPIRIC OVERDRIVE (18% Siphon) · OVERCLOCKED', () => {
+      const player: Player = {
+        weapon: 'pistol',
+        dmgMult: 1,
+        fireRateMult: 1,
+        projCount: 2,
+        siphon: 0.18,
+        items: ['Ricochet Rounds'] // Signature mod for pistol evolution
+      };
+
+      const summary: CombatOffenseSummary = getCombatOffenseSummary(player);
+
+      // (1 * 1 * 2 * 1.35) = 2.70
+      expect(summary.isEvolved).toBe(true);
+      expect(summary.effectiveDpsMult).toBe(2.70);
+      expect(summary.siphonPct).toBe(18);
+      expect(summary.siphonStatus).toBe('VAMPIRIC OVERDRIVE');
+      expect(summary.summaryLine).toBe('DPS x2.70 · VAMPIRIC OVERDRIVE (18% Siphon) · OVERCLOCKED');
+    });
+
+    it('triggers weapon evolution via 3 item stacks and applies 1.35x evolution multiplier', () => {
+      const player: Player = {
+        weapon: 'arc_coil',
+        dmgMult: 1.2,
+        fireRateMult: 1.1,
+        projCount: 1,
+        siphon: 0.05,
+        items: [],
+        itemStacks: { turbo: 2, plating: 1 } // sum = 3 stacks triggers evolution
+      };
+
+      const summary: CombatOffenseSummary = getCombatOffenseSummary(player);
+
+      expect(summary.isEvolved).toBe(true);
+      // 1.2 * 1.1 * 1 * 1.35 = 1.782 -> 1.78
+      expect(summary.effectiveDpsMult).toBe(1.78);
+      expect(summary.siphonPct).toBe(5);
+      expect(summary.siphonStatus).toBe('LIGHT SIPHON');
+      expect(summary.summaryLine).toBe('DPS x1.78 · LIGHT SIPHON (5% Siphon) · OVERCLOCKED');
+    });
+
+    it('falls back seamlessly to PlayerState multiShot and vampChance fields', () => {
+      const mockPlayer = createMockPlayer({
+        weapon: 'flamethrower',
+        dmgMult: 1.5,
+        fireRateMult: 1.2,
+        multiShot: 2,
+        vampChance: 0.16
+      });
+
+      const summary = getCombatOffenseSummary(mockPlayer);
+
+      // 1.5 * 1.2 * 2 = 3.60
+      expect(summary.isEvolved).toBe(false);
+      expect(summary.effectiveDpsMult).toBe(3.60);
+      expect(summary.siphonPct).toBe(16);
+      expect(summary.siphonStatus).toBe('VAMPIRIC OVERDRIVE');
+      expect(summary.summaryLine).toBe('DPS x3.60 · VAMPIRIC OVERDRIVE (16% Siphon)');
+    });
+
+    it('gracefully handles empty/minimal player input with safe defaults', () => {
+      const summary = getCombatOffenseSummary({});
+
+      expect(summary.isEvolved).toBe(false);
+      expect(summary.effectiveDpsMult).toBe(1.00);
+      expect(summary.siphonPct).toBe(0);
+      expect(summary.siphonStatus).toBe('NONE');
+      expect(summary.summaryLine).toBe('DPS x1.00 · NONE (0% Siphon)');
     });
   });
 });

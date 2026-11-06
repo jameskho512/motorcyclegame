@@ -148,6 +148,70 @@ export function getDowngradeStashItems(
   });
 }
 
+export interface BuildArchetypeSummary {
+  id: string;
+  title: string;
+  badgeColor: string;
+  description: string;
+}
+
+export type Player = PlayerState | (Partial<PlayerState> & { siphon?: number; [key: string]: any });
+export type MetaSave = MetaSaveState | (Partial<MetaSaveState> & Record<string, any>);
+
+/**
+ * Classifies player's current outlaw build into thematic gameplay archetypes.
+ */
+export function getBuildArchetypeSummary(
+  player?: Player | null,
+  _metaSave?: MetaSave | null
+): BuildArchetypeSummary {
+  const p = (player || {}) as any;
+  const siphon = Math.max(Number(p.siphon || 0), Number(p.vampChance || 0));
+  const maxHp = Number(p.maxHp || 6);
+  const speedMult = Number(p.speedMult || 1);
+  const dmgMult = Number(p.dmgMult || 1);
+  const fireRateMult = Number(p.fireRateMult || 1);
+
+  if (siphon >= 0.12) {
+    return {
+      id: 'vampiric_reaper',
+      title: '🩸 VAMPIRIC REAPER',
+      badgeColor: '#ff1f4b',
+      description: 'High-siphon hull regeneration build that thrives in aggressive close-quarters combat.'
+    };
+  }
+  if (maxHp >= 10) {
+    return {
+      id: 'iron_juggernaut',
+      title: '🛡️ IRON JUGGERNAUT',
+      badgeColor: '#00f5d4',
+      description: 'Heavy-armored tank chassis built to absorb boss salvos and crush obstacles.'
+    };
+  }
+  if (speedMult >= 1.25) {
+    return {
+      id: 'nitro_drifter',
+      title: '🏎️ NITRO DRIFTER',
+      badgeColor: '#ffd60a',
+      description: 'High-velocity powerslide specialist built for SSS Style Rank and drift discharges.'
+    };
+  }
+  if (dmgMult >= 1.35 || fireRateMult >= 1.35) {
+    return {
+      id: 'hellfire_gunner',
+      title: '🔥 HELLFIRE GUNNER',
+      badgeColor: '#ff5400',
+      description: 'Overclocked ordnance build focused on overwhelming ballistic output.'
+    };
+  }
+  return {
+    id: 'road_freelancer',
+    title: '⚙️ ROAD FREELANCER',
+    badgeColor: '#a8dadc',
+    description: 'Balanced outlaw interceptor ready for modular specialization.'
+  };
+}
+
 export interface GarageCallbacks {
   onEquipItem: (item: EquipmentItem) => void;
   onUnequipSlot: (slotId: EquipSlot) => void;
@@ -224,6 +288,14 @@ function slotIcon(slot: EquipSlot): string {
 
 export class GarageController {
   private overlay: HTMLElement | null = null;
+  public get overlayEl(): HTMLElement | null {
+    return this.overlay;
+  }
+  public set overlayEl(el: HTMLElement | null) {
+    this.overlay = el;
+  }
+  public player: PlayerState | null = null;
+  public metaSave: MetaSaveState | null = null;
   private modalTitle: HTMLElement | null = null;
   private modalScrap: HTMLElement | null = null;
   private koBurst: HTMLElement | null = null;
@@ -380,11 +452,18 @@ export class GarageController {
     this.isDead = isDead;
     this.isVisible = true;
     this.lastPlayer = player;
+    this.player = player;
+    this.lastMetaSave = metaSave;
+    this.metaSave = metaSave;
 
     if (this.overlay) {
       this.overlay.classList.add('visible');
       this.overlay.classList.toggle('is-dead', isDead);
     }
+
+    const archetype = getBuildArchetypeSummary(this.player, this.metaSave);
+    this.overlayEl?.setAttribute('data-build-archetype', archetype.id);
+    this.overlayEl?.setAttribute('data-build-archetype-title', archetype.title);
 
     if (this.modalTitle) {
       this.modalTitle.textContent = 'GARAGE BAY';
@@ -509,8 +588,15 @@ export class GarageController {
   public render(metaSave: MetaSaveState, player?: PlayerState | null): void {
     if (player) {
       this.lastPlayer = player;
+      this.player = player;
     }
-    const curPlayer = player || this.lastPlayer;
+    this.lastMetaSave = metaSave;
+    this.metaSave = metaSave;
+    const curPlayer = player || this.lastPlayer || this.player;
+
+    const archetype = getBuildArchetypeSummary(curPlayer, this.metaSave);
+    this.overlayEl?.setAttribute('data-build-archetype', archetype.id);
+    this.overlayEl?.setAttribute('data-build-archetype-title', archetype.title);
 
     this.renderHeader(metaSave, curPlayer);
     this.renderEquipmentBay(metaSave, curPlayer);
@@ -645,7 +731,9 @@ export class GarageController {
     const tipContent = this.buildSynergyCodexTooltip(metaSave, curPlayer);
     const telemetryText = `Runs: ${metaSave.totalRuns || 0} · Best Floor: ${metaSave.bestFloor || 1} · Bosses Slain: ${metaSave.bossesSlain || 0}`;
 
+    const archetype = getBuildArchetypeSummary(curPlayer, metaSave);
     let summaryHtml = `<span class="gx-totals-base">${esc(baseSummary)}</span>`;
+    summaryHtml += ` <span class="gx-archetype-badge" style="color:${archetype.badgeColor};font-weight:bold;margin-left:8px;" title="${esc(archetype.description)}">${esc(archetype.title)}</span>`;
     if (setBonus && setBonus.label) {
       summaryHtml += ` <span class="gx-set-bonus" style="color:#00f5d4;">★ <b>SET:</b> ${esc(setBonus.label)}</span>`;
     }

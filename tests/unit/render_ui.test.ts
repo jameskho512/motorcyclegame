@@ -22,7 +22,8 @@ import {
   HUDController,
   getModStackTierClass,
   type ModStackTierClass,
-  type MinimapFloorSummary
+  type MinimapFloorSummary,
+  type DungeonGrid
 } from '../../src/ui/hud';
 import { parseColor, drawObstacle } from '../../src/render/vectorArt';
 import { TooltipManager } from '../../src/ui/tooltip';
@@ -228,6 +229,166 @@ describe('Render & UI Subsystems', () => {
       // Verify telemetry pill text was drawn
       expect(mockCtx.strokeText).toHaveBeenCalledWith('2/4 (50%)', 8, 14);
       expect(mockCtx.fillText).toHaveBeenCalledWith('2/4 (50%)', 8, 14);
+    });
+
+    it('sets room hazard telemetry attributes on #hud-sector-biome and minimap-canvas via renderMinimap for hazardous room', () => {
+      document.body.innerHTML = `
+        <div id="game-wrapper">
+          <canvas id="minimap-canvas" width="240" height="150"></canvas>
+          <div id="hud-sector-biome"></div>
+        </div>
+      `;
+
+      const canvas = document.getElementById('minimap-canvas') as HTMLCanvasElement;
+      const sectorBiome = document.getElementById('hud-sector-biome') as HTMLElement;
+      const mockCtx = {
+        setTransform: vi.fn(),
+        clearRect: vi.fn(),
+        fillRect: vi.fn(),
+        save: vi.fn(),
+        restore: vi.fn(),
+        beginPath: vi.fn(),
+        moveTo: vi.fn(),
+        lineTo: vi.fn(),
+        stroke: vi.fn(),
+        fill: vi.fn(),
+        closePath: vi.fn(),
+        arc: vi.fn(),
+        fillText: vi.fn(),
+        strokeText: vi.fn(),
+        measureText: vi.fn().mockReturnValue({ width: 24 }),
+        rect: vi.fn(),
+        roundRect: vi.fn(),
+        fillStyle: '',
+        strokeStyle: '',
+        lineWidth: 1,
+        lineCap: 'round',
+        shadowColor: '',
+        shadowBlur: 0,
+        font: '',
+        textAlign: 'left',
+        textBaseline: 'alphabetic',
+        lineJoin: 'miter'
+      };
+      vi.spyOn(canvas, 'getContext').mockReturnValue(mockCtx as any);
+
+      const hud = new HUDController();
+      const hazardousRoom = makeRoom({
+        x: 0,
+        y: 0,
+        type: 'combat',
+        obstacles: [
+          { x: 100, y: 100, type: 'cryo_barrel' },
+          { x: 120, y: 100, type: 'toxic_barrel' },
+          { x: 140, y: 100, type: 'barrel' },
+          { x: 160, y: 100, type: 'explosive_barrel' }
+        ] as any,
+        doors: makeDoors({ E: true })
+      });
+      (hazardousRoom as any).zones = [{ type: 'oil_slick' }, { type: 'acid_pool' }];
+
+      const dungeon: DungeonGrid = {
+        '0,0': hazardousRoom
+      };
+
+      hud.renderMinimap(dungeon, 0, 0, 1);
+
+      // Total hazards = 1 cryo + 1 toxic + 2 explosive = 4
+      expect(canvas.getAttribute('data-room-hazards')).toBe('4');
+      expect(canvas.getAttribute('data-room-zones')).toBe('oil_slick,acid_pool');
+      expect(canvas.getAttribute('data-room-tactical-hint')).toContain('Cryo barrels detected (1)');
+      expect(canvas.getAttribute('data-room-tactical-hint')).toContain('Toxic barrels detected (1)');
+      expect(canvas.getAttribute('data-room-tactical-hint')).toContain('Explosive barrels detected (2)');
+      expect(canvas.getAttribute('data-room-tactical-hint')).toContain('Surface modifiers detected (oil slick, acid pool)');
+
+      // Verify #hud-sector-biome receives identical telemetry attributes
+      expect(sectorBiome.getAttribute('data-room-hazards')).toBe('4');
+      expect(sectorBiome.getAttribute('data-room-zones')).toBe('oil_slick,acid_pool');
+      expect(sectorBiome.getAttribute('data-room-tactical-hint')).toBe(canvas.getAttribute('data-room-tactical-hint'));
+    });
+
+    it('sets room hazard telemetry attributes to 0, "none", and standard asphalt hint for empty room', () => {
+      document.body.innerHTML = `
+        <div id="game-wrapper">
+          <canvas id="minimap-canvas" width="240" height="150"></canvas>
+          <div id="hud-sector-biome"></div>
+        </div>
+      `;
+
+      const canvas = document.getElementById('minimap-canvas') as HTMLCanvasElement;
+      const sectorBiome = document.getElementById('hud-sector-biome') as HTMLElement;
+      const mockCtx = {
+        setTransform: vi.fn(),
+        clearRect: vi.fn(),
+        fillRect: vi.fn(),
+        save: vi.fn(),
+        restore: vi.fn(),
+        beginPath: vi.fn(),
+        moveTo: vi.fn(),
+        lineTo: vi.fn(),
+        stroke: vi.fn(),
+        fill: vi.fn(),
+        closePath: vi.fn(),
+        arc: vi.fn(),
+        fillText: vi.fn(),
+        strokeText: vi.fn(),
+        measureText: vi.fn().mockReturnValue({ width: 24 }),
+        rect: vi.fn(),
+        roundRect: vi.fn(),
+        fillStyle: '',
+        strokeStyle: '',
+        lineWidth: 1,
+        lineCap: 'round',
+        shadowColor: '',
+        shadowBlur: 0,
+        font: '',
+        textAlign: 'left',
+        textBaseline: 'alphabetic',
+        lineJoin: 'miter'
+      };
+      vi.spyOn(canvas, 'getContext').mockReturnValue(mockCtx as any);
+
+      const hud = new HUDController();
+      const emptyRoom = makeRoom({
+        x: 1,
+        y: 0,
+        type: 'combat',
+        obstacles: [],
+        doors: makeDoors({ W: true })
+      });
+
+      const dungeon: DungeonGrid = {
+        '1,0': emptyRoom
+      };
+
+      hud.renderMinimap(dungeon, 1, 0, 1);
+
+      expect(canvas.getAttribute('data-room-hazards')).toBe('0');
+      expect(canvas.getAttribute('data-room-zones')).toBe('none');
+      expect(canvas.getAttribute('data-room-tactical-hint')).toBe('Clear asphalt sector — standard traction.');
+
+      expect(sectorBiome.getAttribute('data-room-hazards')).toBe('0');
+      expect(sectorBiome.getAttribute('data-room-zones')).toBe('none');
+      expect(sectorBiome.getAttribute('data-room-tactical-hint')).toBe('Clear asphalt sector — standard traction.');
+    });
+
+    it('gracefully handles missing room coordinates and non-existent DOM elements', () => {
+      document.body.innerHTML = `
+        <div id="game-wrapper">
+          <div id="hud-sector-biome"></div>
+        </div>
+      `;
+
+      const sectorBiome = document.getElementById('hud-sector-biome') as HTMLElement;
+      const hud = new HUDController();
+      const dungeon: DungeonGrid = {};
+
+      // Coordinates 5,5 do not exist in dungeon
+      hud.renderMinimap(dungeon, 5, 5, 2);
+
+      expect(sectorBiome.getAttribute('data-room-hazards')).toBe('0');
+      expect(sectorBiome.getAttribute('data-room-zones')).toBe('none');
+      expect(sectorBiome.getAttribute('data-room-tactical-hint')).toBe('Clear asphalt sector — standard traction.');
     });
   });
 
