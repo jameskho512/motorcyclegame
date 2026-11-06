@@ -14,6 +14,28 @@ import { VOLUME_KEYS, VolumeKey, VolumeSettings } from '../audio/sfx';
 
 export type ScreenShakeLevel = 1 | 0.5 | 0;
 
+export interface SettingsTelemetrySummary {
+  muted: boolean;
+  shakeScale: number;
+  shakeLabel: '100%' | '50%' | 'OFF';
+  summaryLine: string;
+}
+
+/** Pure telemetry helper extracting audio mute and shake states into a compact summary string. */
+export function getSettingsSummary(settings?: SettingsController | null): SettingsTelemetrySummary {
+  const muted = !!settings?.isMuted?.();
+  const shakeScale = settings?.getScreenShake?.() ?? 1;
+  const shakeLabel: '100%' | '50%' | 'OFF' =
+    shakeScale >= 1 ? '100%' : shakeScale >= 0.5 ? '50%' : 'OFF';
+  const summaryLine = `AUDIO: ${muted ? 'MUTED' : 'ACTIVE'} · SHAKE: ${shakeLabel}`;
+  return {
+    muted,
+    shakeScale,
+    shakeLabel,
+    summaryLine
+  };
+}
+
 /** Minimal audio surface the settings UI needs (SoundSynthesizer satisfies it). */
 export interface SettingsAudioPort {
   getVolumes(): VolumeSettings;
@@ -104,6 +126,10 @@ export class SettingsController {
     this.launcherId = options.launcherId ?? 'btn-open-settings';
   }
 
+  public isMuted(): boolean {
+    return this.audio.isMuted();
+  }
+
   public getScreenShake(): ScreenShakeLevel {
     return this.screenShake;
   }
@@ -111,6 +137,7 @@ export class SettingsController {
   public setScreenShake(level: ScreenShakeLevel): void {
     this.screenShake = level;
     this.syncShake();
+    this.overlay?.setAttribute('data-settings-summary', getSettingsSummary(this).summaryLine);
     this.onShakeChange?.(level);
   }
 
@@ -154,6 +181,7 @@ export class SettingsController {
         case 'btn-settings-mute':
           this.audio.setMuted(!this.audio.isMuted());
           this.syncMute();
+          this.overlay?.setAttribute('data-settings-summary', getSettingsSummary(this).summaryLine);
           this.onMuteChange?.(this.audio.isMuted());
           break;
         case 'btn-settings-reset':
@@ -191,6 +219,7 @@ export class SettingsController {
     this.sync();
     this.overlay.classList.add('visible');
     this.overlay.setAttribute('aria-hidden', 'false');
+    this.overlay.setAttribute('data-settings-summary', getSettingsSummary(this).summaryLine);
     document.getElementById(this.launcherId)?.setAttribute('aria-expanded', 'true');
     this.overlay.querySelector<HTMLInputElement>('input[type="range"]')?.focus();
     this.onOpenChange?.(true);
@@ -229,6 +258,7 @@ export class SettingsController {
     }
     this.syncMute();
     this.syncShake();
+    this.overlay.setAttribute('data-settings-summary', getSettingsSummary(this).summaryLine);
   }
 
   public getFocusableElements(): HTMLElement[] {

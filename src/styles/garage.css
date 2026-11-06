@@ -773,9 +773,9 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 144px;
-  height: 134px;
-  padding: 6px 6px 16px 6px;
+  width: 146px;
+  height: 140px;
+  padding: 4px 6px 20px 6px;
   background:
     radial-gradient(circle at 50% 44%, color-mix(in srgb, var(--rar, #4f5362) 24%, transparent) 0%, transparent 72%),
     var(--halftone, radial-gradient(circle, rgba(0, 0, 0, 0.45) 1.2px, transparent 1.6px) 0 0 / 7px 7px),
@@ -803,8 +803,8 @@
 
 .eq-slot .gx-slot-icon,
 .eq-slot .sl-icon {
-  width: 88px;
-  height: 88px;
+  width: 82px;
+  height: 82px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -845,7 +845,23 @@
   line-height: 1.1;
 }
 
+.eq-slot .sl-model-tag {
+  display: block;
+  max-width: 132px;
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  font-size: 9px;
+  letter-spacing: 0.7px;
+  color: var(--rar, #ffd60a);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.05;
+  text-shadow: 1px 1px 0 var(--ink, #0a0b10);
+}
+
 .eq-slot.is-empty .sl-name,
+.eq-slot.is-empty .sl-model-tag,
 .eq-slot .sl-stats {
   display: none;
 }

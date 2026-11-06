@@ -38,7 +38,12 @@ import {
   LEGENDARY_SLOT_PASSIVES,
   getEquippedSetBonus
 } from '../data/equipment';
-import { EQUIP_SLOT_HI_FI_SVG, WEAPON_HI_FI_SVG } from './icons';
+import {
+  EQUIP_SLOT_HI_FI_SVG,
+  WEAPON_HI_FI_SVG,
+  getEquipmentItemModelSvg,
+  getEquipmentVisualSpec
+} from './icons';
 import { SET08_ASSETS } from './set08Assets';
 import { getCareerOutlawRank } from '@/core/state';
 
@@ -236,15 +241,79 @@ const RIGHT_SLOTS: readonly EquipSlot[] = ['handlebars', 'frame', 'tank'];
 const BIKE_W = 400;
 const BIKE_H = 300;
 
-/** Where each slot's connector line lands around the bike perimeter (logical coords, non-crossing). */
-const PART_ANCHORS: Record<EquipSlot, readonly [number, number]> = {
-  tires: [118, 78],
-  engine: [134, 150],
-  exhaust: [142, 216],
-  handlebars: [274, 78],
-  frame: [268, 150],
-  tank: [258, 216]
+/** Anatomical part anchor coordinates on the large motorcycle model (logical 400x300 space, non-crossing). */
+export const PART_ANCHORS: Record<EquipSlot, readonly [number, number]> = {
+  tires: [110, 122],
+  engine: [198, 160],
+  exhaust: [148, 174],
+  handlebars: [262, 82],
+  frame: [232, 128],
+  tank: [238, 152]
 };
+
+export interface EquippedBikePartVisual {
+  slot: EquipSlot;
+  itemName: string;
+  rarity: number;
+  rarityId: string;
+  modelCode: string;
+  tierBadge: 'MK-I' | 'MK-II' | 'MK-III' | 'OMEGA';
+  subAssemblyLabel: string;
+  anchor: readonly [number, number];
+  primaryColor: string;
+}
+
+export interface EquippedBikeVisualState {
+  equippedCount: number;
+  equippedSlots: EquipSlot[];
+  modelCodes: string[];
+  parts: Partial<Record<EquipSlot, EquippedBikePartVisual>>;
+  summaryLine: string;
+}
+
+/**
+ * Pure helper computing the active high-resolution visual models mounted on the large motorcycle.
+ */
+export function getEquippedBikeVisualState(metaSave?: MetaSaveState | null): EquippedBikeVisualState {
+  const equipped = metaSave?.equipped || {};
+  const equippedSlots: EquipSlot[] = [];
+  const modelCodes: string[] = [];
+  const parts: Partial<Record<EquipSlot, EquippedBikePartVisual>> = {};
+
+  for (const slotDef of EQUIP_SLOTS) {
+    const slot = slotDef.id;
+    const item = equipped[slot];
+    if (!item) continue;
+    const spec = getEquipmentVisualSpec(item, slot);
+    const rarDef = RARITY[item.rarity] || RARITY[0];
+    equippedSlots.push(slot);
+    modelCodes.push(spec.modelCode);
+    parts[slot] = {
+      slot,
+      itemName: item.name,
+      rarity: item.rarity,
+      rarityId: rarDef.id,
+      modelCode: spec.modelCode,
+      tierBadge: spec.tierBadge,
+      subAssemblyLabel: spec.subAssemblyLabel,
+      anchor: PART_ANCHORS[slot],
+      primaryColor: spec.primaryColor
+    };
+  }
+
+  const summaryLine =
+    equippedSlots.length > 0
+      ? `MOUNTED MODELS (${equippedSlots.length}/6): ${modelCodes.join(' · ')}`
+      : 'MOUNTED MODELS (0/6): STOCK CHASSIS';
+
+  return {
+    equippedCount: equippedSlots.length,
+    equippedSlots,
+    modelCodes,
+    parts,
+    summaryLine
+  };
+}
 
 /** Neutral paint for empty (uninstalled) parts, chosen to keep the bike readable. */
 const EMPTY_PART_COLOR: Record<EquipSlot, string> = {
@@ -283,7 +352,10 @@ function statsText(stats: EquipmentItem['stats']): string {
     .join(', ');
 }
 
-function slotIcon(slot: EquipSlot): string {
+function slotIcon(slot: EquipSlot, item?: EquipmentItem | null): string {
+  if (item) {
+    return getEquipmentItemModelSvg(item, slot);
+  }
   return EQUIP_SLOT_HI_FI_SVG[slot] || '';
 }
 
@@ -320,6 +392,8 @@ export class GarageController {
   private callbacks: GarageCallbacks;
   private set08BikeImg: HTMLImageElement | null = null;
   private set08BikeLoaded: boolean = false;
+  private set08EquipImgs: Partial<Record<EquipSlot, HTMLImageElement>> = {};
+  private set08EquipLoaded: Partial<Record<EquipSlot, boolean>> = {};
   private lastMetaSave: MetaSaveState | null = null;
   private lastPlayer: PlayerState | null = null;
   private confirmResetPending: boolean = false;
@@ -338,6 +412,27 @@ export class GarageController {
       };
       img.src = SET08_ASSETS.bike_player || '/assets/set08/bike_player.png';
       this.set08BikeImg = img;
+
+      const equipAssetKeys: Record<EquipSlot, string> = {
+        tires: 'equip_tires',
+        engine: 'equip_engine',
+        exhaust: 'equip_exhaust',
+        frame: 'equip_frame',
+        handlebars: 'equip_handlebars',
+        tank: 'equip_tank'
+      };
+      (Object.keys(equipAssetKeys) as EquipSlot[]).forEach(slot => {
+        const eqImg = new Image();
+        eqImg.onload = () => {
+          this.set08EquipLoaded[slot] = true;
+          if (this.lastMetaSave && this.isVisible) {
+            this.drawBikeLift(this.lastMetaSave);
+          }
+        };
+        const assetKey = equipAssetKeys[slot];
+        eqImg.src = SET08_ASSETS[assetKey] || `/assets/set08/${assetKey}.png`;
+        this.set08EquipImgs[slot] = eqImg;
+      });
     }
 
     if (typeof document !== 'undefined') {
@@ -609,6 +704,18 @@ export class GarageController {
     this.overlayEl?.setAttribute('data-career-title', careerRank.title);
     this.overlayEl?.setAttribute('data-career-score', String(careerRank.careerScore));
 
+    const bikeVisuals = getEquippedBikeVisualState(metaSave);
+    this.overlayEl?.setAttribute('data-equipped-visual-count', String(bikeVisuals.equippedCount));
+    this.overlayEl?.setAttribute('data-equipped-visual-slots', bikeVisuals.equippedSlots.join(','));
+    this.overlayEl?.setAttribute('data-equipped-model-codes', bikeVisuals.modelCodes.join(','));
+    this.overlayEl?.setAttribute('data-equipped-visual-summary', bikeVisuals.summaryLine);
+    if (this.bikeCanvas) {
+      this.bikeCanvas.setAttribute('data-equipped-visual-count', String(bikeVisuals.equippedCount));
+      this.bikeCanvas.setAttribute('data-equipped-visual-slots', bikeVisuals.equippedSlots.join(','));
+      this.bikeCanvas.setAttribute('data-equipped-model-codes', bikeVisuals.modelCodes.join(','));
+      this.bikeCanvas.setAttribute('data-equipped-visual-summary', bikeVisuals.summaryLine);
+    }
+
     this.renderHeader(metaSave, curPlayer);
     this.renderEquipmentBay(metaSave, curPlayer);
     this.renderLiveryBar(metaSave, curPlayer || ({} as any));
@@ -672,15 +779,20 @@ export class GarageController {
       if (it) {
         const R = RARITY[it.rarity];
         const statsStr = statsText(it.stats);
+        const spec = getEquipmentVisualSpec(it, slotDef.id);
         const el = document.createElement('button');
         el.type = 'button';
         el.className = `eq-slot is-filled rarity-${R.id}`;
         el.style.setProperty('--rar', R.color);
-        el.title = `${it.name} (${R.name}) - ${statsStr}. Click to remove.`;
-        el.setAttribute('aria-label', `${slotDef.label}: ${it.name}, ${R.name}. ${statsStr}. Remove part`);
+        el.setAttribute('data-slot-id', slotDef.id);
+        el.setAttribute('data-model-code', spec.modelCode);
+        el.setAttribute('data-tier-badge', spec.tierBadge);
+        el.title = `${it.name} [${spec.modelCode} · ${spec.tierBadge}] (${R.name})\n${spec.subAssemblyLabel}\n${statsStr}\nClick to remove.`;
+        el.setAttribute('aria-label', `${slotDef.label}: ${it.name}, ${R.name} (${spec.modelCode}). ${statsStr}. Remove part`);
         el.innerHTML = `
-          <span class="gx-slot-icon sl-icon">${slotIcon(slotDef.id)}</span>
+          <span class="gx-slot-icon sl-icon">${slotIcon(slotDef.id, it)}</span>
           <span class="sl-name">${esc(it.name)}</span>
+          <span class="sl-model-tag">${esc(spec.modelCode)}</span>
           <span class="sl-stats">${esc(statsStr)}</span>
           <span class="sl-label">${esc(slotDef.label.toUpperCase())}</span>
         `;
@@ -691,9 +803,10 @@ export class GarageController {
       } else {
         const el = document.createElement('div');
         el.className = 'eq-slot is-empty';
+        el.setAttribute('data-slot-id', slotDef.id);
         el.setAttribute('aria-label', `${slotDef.label}: Empty Slot`);
         el.innerHTML = `
-          <span class="gx-slot-icon sl-icon">${slotIcon(slotDef.id)}</span>
+          <span class="gx-slot-icon sl-icon">${slotIcon(slotDef.id, null)}</span>
           <span class="sl-name">Empty Slot</span>
           <span class="sl-stats">No part installed</span>
           <span class="sl-label">${esc(slotDef.label.toUpperCase())}</span>
@@ -826,19 +939,22 @@ export class GarageController {
         vsEquippedLine = `= Equal to Equipped: ${eqItem.name} (${statsText(eqItem.stats)})`;
       }
 
+      const spec = getEquipmentVisualSpec(it, it.slot);
       const el = document.createElement('button');
       el.type = 'button';
       el.className = `stash-item rarity-${R.id}`;
       el.style.setProperty('--rar', R.color);
       const isDowngrade = Boolean(eqItem && itemScore(it) < itemScore(eqItem));
       el.setAttribute('data-is-downgrade', isDowngrade ? 'true' : 'false');
-      el.title = `${it.name} - ${R.name} ${slotLabel}\n${statsStr}\n${vsEquippedLine}\nClick: install | Right-click / Del: sell for ${R.sell} scrap`;
-      el.setAttribute('aria-label', `${it.name}, ${R.name} ${slotLabel}. ${statsStr}. ${vsEquippedLine}. Install. Press Delete to sell for ${R.sell} scrap`);
+      el.setAttribute('data-model-code', spec.modelCode);
+      el.setAttribute('data-tier-badge', spec.tierBadge);
+      el.title = `${it.name} [${spec.modelCode} · ${spec.tierBadge}] - ${R.name} ${slotLabel}\n${spec.subAssemblyLabel}\n${statsStr}\n${vsEquippedLine}\nClick: install | Right-click / Del: sell for ${R.sell} scrap`;
+      el.setAttribute('aria-label', `${it.name}, ${R.name} ${slotLabel} (${spec.modelCode}). ${statsStr}. ${vsEquippedLine}. Install. Press Delete to sell for ${R.sell} scrap`);
       el.innerHTML = `
         ${diffBadgeHtml}
-        <div class="gx-stash-art">${EQUIP_SLOT_HI_FI_SVG[it.slot] || ''}</div>
+        <div class="gx-stash-art">${getEquipmentItemModelSvg(it, it.slot)}</div>
         <b>${esc(it.name)}</b>
-        <span class="gx-stash-meta">${esc(R.name)} ${esc(slotLabel)}</span>
+        <span class="gx-stash-meta">${esc(spec.modelCode)} · ${esc(R.name)}</span>
         <span class="gx-stash-stats">${esc(statsStr)}</span>
         <span class="gx-stash-sell">${GEAR_SVG}${R.sell}</span>
       `;
@@ -989,6 +1105,18 @@ export class GarageController {
    */
   public drawBikeLift(metaSave: MetaSaveState): void {
     this.lastMetaSave = metaSave;
+    const bikeVisuals = getEquippedBikeVisualState(metaSave);
+    this.overlayEl?.setAttribute('data-equipped-visual-count', String(bikeVisuals.equippedCount));
+    this.overlayEl?.setAttribute('data-equipped-visual-slots', bikeVisuals.equippedSlots.join(','));
+    this.overlayEl?.setAttribute('data-equipped-model-codes', bikeVisuals.modelCodes.join(','));
+    this.overlayEl?.setAttribute('data-equipped-visual-summary', bikeVisuals.summaryLine);
+    if (this.bikeCanvas) {
+      this.bikeCanvas.setAttribute('data-equipped-visual-count', String(bikeVisuals.equippedCount));
+      this.bikeCanvas.setAttribute('data-equipped-visual-slots', bikeVisuals.equippedSlots.join(','));
+      this.bikeCanvas.setAttribute('data-equipped-model-codes', bikeVisuals.modelCodes.join(','));
+      this.bikeCanvas.setAttribute('data-equipped-visual-summary', bikeVisuals.summaryLine);
+    }
+
     if (!this.bikeCanvas || !this.bikeCtx) return;
     const c = this.bikeCanvas;
     const g = this.bikeCtx;
@@ -1058,9 +1186,10 @@ export class GarageController {
       }
       const sx = side === 'left' ? 0 : W;
       const [ax, ay] = toScreen(PART_ANCHORS[slot][0], PART_ANCHORS[slot][1]);
-      const kneeX = side === 'left' ? Math.min(ax - 14, sx + 38) : Math.max(ax + 14, sx - 38);
+      const kneeX = side === 'left' ? Math.min(ax - 18, sx + 34) : Math.max(ax + 18, sx - 34);
       const it = equipped(slot);
-      const lineCol = it ? RARITY[it.rarity].color : 'rgba(255, 214, 10, 0.65)';
+      const spec = it ? getEquipmentVisualSpec(it, slot) : null;
+      const lineCol = spec ? spec.primaryColor : 'rgba(255, 214, 10, 0.55)';
       g.save();
       g.lineCap = 'round';
       g.lineJoin = 'round';
@@ -1069,18 +1198,35 @@ export class GarageController {
       g.lineTo(kneeX, sy);
       g.lineTo(ax, ay);
       g.strokeStyle = INK;
-      g.lineWidth = 4.5;
+      g.lineWidth = it ? 5.5 : 4;
       g.stroke();
+      if (spec) {
+        g.shadowColor = spec.glowColor;
+        g.shadowBlur = 8;
+      }
       g.strokeStyle = lineCol;
-      g.lineWidth = 2;
+      g.lineWidth = it ? 2.6 : 1.8;
       g.stroke();
+      g.shadowBlur = 0;
+
+      // Target reticle node on the motorcycle component
       g.beginPath();
-      g.arc(ax, ay, 4.5, 0, Math.PI * 2);
-      g.fillStyle = it ? RARITY[it.rarity].color : '#ffd60a';
+      g.arc(ax, ay, it ? 6 : 4, 0, Math.PI * 2);
+      g.fillStyle = spec ? spec.primaryColor : '#ffd60a';
       g.fill();
       g.strokeStyle = INK;
       g.lineWidth = 2;
       g.stroke();
+
+      if (spec) {
+        g.beginPath();
+        g.arc(ax, ay, 10, 0, Math.PI * 2);
+        g.strokeStyle = spec.accentColor;
+        g.lineWidth = 1.4;
+        g.setLineDash([4, 3]);
+        g.stroke();
+        g.setLineDash([]);
+      }
       g.restore();
     };
 
@@ -1145,13 +1291,9 @@ export class GarageController {
     }
     g.restore();
 
-    // 2.5 Set 08 High-Res Spider-Verse Halftone Comic Pop-Art Motorcycle Sprite Overlay
+    // 2.5 Set 08 High-Res Spider-Verse Halftone Comic Pop-Art Motorcycle Sprite + Dynamic Equipped Part Models
     if (this.set08BikeLoaded && this.set08BikeImg && this.set08BikeImg.naturalWidth > 0) {
       g.restore();
-
-      // Draw slot connectors BEHIND the Set 08 bike so lines never cross over the bike artwork
-      LEFT_SLOTS.forEach((slot, i) => drawConnector(slot, 'left', i));
-      RIGHT_SLOTS.forEach((slot, i) => drawConnector(slot, 'right', i));
 
       const activeLivery =
         BIKE_LIVERIES.find(l => l.id === metaSave.livery) || BIKE_LIVERIES[0];
@@ -1178,6 +1320,21 @@ export class GarageController {
       g.shadowColor = activeLivery.primary;
       g.shadowBlur = 22;
       g.drawImage(this.set08BikeImg, 36, -32, 328, 308);
+      g.shadowBlur = 0;
+
+      // Render high-resolution equipped part models directly onto the large motorcycle!
+      this.drawEquippedBikeModels(g, metaSave);
+      g.restore();
+
+      // Draw slot connectors & target reticles on top so lines visibly land on each mounted model
+      LEFT_SLOTS.forEach((slot, i) => drawConnector(slot, 'left', i));
+      RIGHT_SLOTS.forEach((slot, i) => drawConnector(slot, 'right', i));
+
+      // Draw on-bike model callout badges in logical space above the connector reticles
+      g.save();
+      g.translate(ox, oy);
+      g.scale(s, s);
+      this.drawEquippedCalloutBadges(g, metaSave);
       g.restore();
       return;
     }
@@ -1417,10 +1574,339 @@ export class GarageController {
     inkFill('#1d1b22', 3);
     g.restore();
 
+    // Render high-resolution equipped models over procedural fallback too
+    this.drawEquippedBikeModels(g, metaSave);
+
     g.restore();
 
     // Connectors drawn last so they read above the burst and bike edges
     LEFT_SLOTS.forEach((slot, i) => drawConnector(slot, 'left', i));
     RIGHT_SLOTS.forEach((slot, i) => drawConnector(slot, 'right', i));
+
+    g.save();
+    g.translate(ox, oy);
+    g.scale(s, s);
+    this.drawEquippedCalloutBadges(g, metaSave);
+    g.restore();
+  }
+
+  /**
+   * Renders bespoke, high-resolution 3D comic equipment models and mechanical
+   * sub-assemblies directly onto the Large Motorcycle Model (`#bike-canvas` in 400x300 logical space).
+   */
+  private drawEquippedBikeModels(g: CanvasRenderingContext2D, metaSave: MetaSaveState): void {
+    const eq = metaSave.equipped || {};
+
+    const drawPartImg = (
+      slot: EquipSlot,
+      cx: number,
+      cy: number,
+      w: number,
+      h: number,
+      rotRad: number,
+      glowCol: string,
+      rarity: number
+    ) => {
+      const img = this.set08EquipImgs[slot];
+      if (!img || !this.set08EquipLoaded[slot] || img.naturalWidth <= 0) return;
+      g.save();
+      g.translate(cx, cy);
+      if (rotRad !== 0) g.rotate(rotRad);
+      g.shadowColor = glowCol;
+      g.shadowBlur = 10 + rarity * 4;
+      g.drawImage(img, -w / 2, -h / 2, w, h);
+      g.restore();
+    };
+
+    // 1. TIRES (Transforms BOTH Rear Wheel [120, 142] and Front Wheel [298, 196] in isometric 3D perspective)
+    if (eq.tires) {
+      const spec = getEquipmentVisualSpec(eq.tires, 'tires');
+      const wheels: readonly { cx: number; cy: number; rx: number; ry: number; rot: number }[] = [
+        { cx: 120, cy: 142, rx: 22, ry: 30, rot: -0.36 },
+        { cx: 298, cy: 196, rx: 25, ry: 34, rot: -0.36 }
+      ];
+
+      wheels.forEach(({ cx, cy, rx, ry, rot }) => {
+        g.save();
+        g.translate(cx, cy);
+        g.rotate(rot);
+
+        // Clip and composite high-res Set 08 Tire & Rim inside the isometric wheel hub
+        const tireImg = this.set08EquipImgs.tires;
+        if (tireImg && this.set08EquipLoaded.tires && tireImg.naturalWidth > 0) {
+          g.save();
+          g.beginPath();
+          g.ellipse(0, 0, rx * 0.92, ry * 0.92, 0, 0, Math.PI * 2);
+          g.clip();
+          g.globalAlpha = 0.88;
+          g.drawImage(tireImg, -rx * 1.1, -ry * 1.1, rx * 2.2, ry * 2.2);
+          g.restore();
+        }
+
+        // Glowing compound sidewall rim-lip ring
+        g.shadowColor = spec.glowColor;
+        g.shadowBlur = 10 + spec.rarity * 4;
+        g.beginPath();
+        g.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+        g.strokeStyle = INK;
+        g.lineWidth = 5;
+        g.stroke();
+        g.strokeStyle = spec.primaryColor;
+        g.lineWidth = 2.6 + spec.rarity * 0.4;
+        g.stroke();
+
+        // Vented ceramic brake rotor ring
+        g.beginPath();
+        g.ellipse(0, 0, rx * 0.62, ry * 0.62, 0, 0, Math.PI * 2);
+        g.strokeStyle = spec.accentColor;
+        g.lineWidth = 2;
+        g.setLineDash([4, 3]);
+        g.stroke();
+        g.setLineDash([]);
+
+        // Twin-piston racing brake caliper
+        g.beginPath();
+        g.roundRect(-rx * 0.82, -8, 9, 15, 3);
+        g.fillStyle = spec.secondaryColor;
+        g.fill();
+        g.strokeStyle = INK;
+        g.lineWidth = 2;
+        g.stroke();
+
+        // Center axle lock-nut
+        g.beginPath();
+        g.arc(0, 0, 4.5, 0, Math.PI * 2);
+        g.fillStyle = spec.accentColor;
+        g.fill();
+        g.strokeStyle = INK;
+        g.lineWidth = 2;
+        g.stroke();
+        g.restore();
+      });
+
+      // Comic speed-sparks hugging the tire contact patch on the lift deck
+      if (spec.rarity >= 2) {
+        g.save();
+        g.shadowColor = spec.glowColor;
+        g.shadowBlur = 8;
+        [
+          [98, 174, 72, 166],
+          [272, 232, 240, 226]
+        ].forEach(([x0, y0, x1, y1]) => {
+          g.beginPath();
+          g.moveTo(x0, y0);
+          g.lineTo(x1, y1);
+          g.lineTo(x0 - 12, y0 - 8);
+          g.closePath();
+          g.fillStyle = spec.accentColor;
+          g.fill();
+          g.strokeStyle = INK;
+          g.lineWidth = 1.8;
+          g.stroke();
+        });
+        g.restore();
+      }
+    }
+
+    // 2. FRAME (Reinforced Trellis Exoskeleton Chassis [154..258, 98..156])
+    if (eq.frame) {
+      const spec = getEquipmentVisualSpec(eq.frame, 'frame');
+      g.save();
+      g.shadowColor = spec.glowColor;
+      g.shadowBlur = 10 + spec.rarity * 3;
+
+      const struts: readonly [number, number, number, number][] = [
+        [256, 106, 218, 126],
+        [218, 126, 184, 154],
+        [256, 106, 232, 146],
+        [232, 146, 184, 154],
+        [218, 126, 154, 98],
+        [184, 154, 154, 98],
+        [218, 126, 232, 146]
+      ];
+      struts.forEach(([x1, y1, x2, y2]) => {
+        g.beginPath();
+        g.moveTo(x1, y1);
+        g.lineTo(x2, y2);
+        g.strokeStyle = INK;
+        g.lineWidth = 6.5;
+        g.stroke();
+        g.strokeStyle = spec.primaryColor;
+        g.lineWidth = 3.2;
+        g.stroke();
+      });
+
+      // Hexagonal reactive shield emitter nodes at frame joints
+      const joints: readonly [number, number][] = [
+        [256, 106],
+        [218, 126],
+        [184, 154],
+        [232, 146]
+      ];
+      joints.forEach(([jx, jy]) => {
+        g.beginPath();
+        g.arc(jx, jy, 4 + spec.rarity * 0.6, 0, Math.PI * 2);
+        g.fillStyle = spec.accentColor;
+        g.fill();
+        g.strokeStyle = INK;
+        g.lineWidth = 1.8;
+        g.stroke();
+      });
+      g.restore();
+    }
+
+    // 3. EXHAUST (Twin Afterburner Megaphone Cannons along [160, 148] -> [108, 86])
+    if (eq.exhaust) {
+      const spec = getEquipmentVisualSpec(eq.exhaust, 'exhaust');
+      g.save();
+      // Multi-stage roaring afterburner jet plumes shooting from tailpipes
+      const plumeLen = 34 + spec.rarity * 12;
+      g.shadowColor = spec.glowColor;
+      g.shadowBlur = 14 + spec.rarity * 4;
+
+      [
+        [104, 82],
+        [96, 96]
+      ].forEach(([px, py]) => {
+        g.beginPath();
+        g.moveTo(px, py);
+        g.lineTo(px - plumeLen, py - plumeLen * 0.72);
+        g.lineTo(px - plumeLen * 0.58, py - plumeLen * 0.32);
+        g.lineTo(px - plumeLen * 1.1, py - plumeLen * 0.45);
+        g.lineTo(px - 8, py + 6);
+        g.closePath();
+        g.fillStyle = spec.primaryColor;
+        g.fill();
+        g.strokeStyle = INK;
+        g.lineWidth = 2;
+        g.stroke();
+
+        // Inner white-gold plasma shock cone
+        g.beginPath();
+        g.moveTo(px - 2, py - 2);
+        g.lineTo(px - plumeLen * 0.6, py - plumeLen * 0.42);
+        g.lineTo(px - 6, py + 3);
+        g.closePath();
+        g.fillStyle = spec.accentColor;
+        g.fill();
+      });
+      g.restore();
+
+      // Mount high-res Set 08 Twin Megaphone Exhaust model aligned with the bike's tailpipes
+      drawPartImg('exhaust', 132, 112, 56, 56, -0.78, spec.glowColor, spec.rarity);
+    }
+
+    // 4. ENGINE (Supercharged V-Twin Powerplant Core [198, 160])
+    if (eq.engine) {
+      const spec = getEquipmentVisualSpec(eq.engine, 'engine');
+      g.save();
+      g.shadowColor = spec.glowColor;
+      g.shadowBlur = 12 + spec.rarity * 4;
+
+      // Glowing reactor cradle & chrome manifold header bezel
+      g.beginPath();
+      g.arc(198, 160, 22, 0, Math.PI * 2);
+      g.fillStyle = 'rgba(10, 11, 16, 0.75)';
+      g.fill();
+      g.strokeStyle = spec.primaryColor;
+      g.lineWidth = 2.6;
+      g.stroke();
+
+      // Mount high-res Set 08 V-Twin Engine Block model
+      drawPartImg('engine', 198, 158, 50, 50, 0, spec.glowColor, spec.rarity);
+
+      // NOS bottle & blower accents for Rare/Legendary engines
+      if (spec.rarity >= 2) {
+        g.beginPath();
+        g.roundRect(170, 146, 10, 22, 4);
+        g.fillStyle = spec.secondaryColor;
+        g.fill();
+        g.strokeStyle = INK;
+        g.lineWidth = 2;
+        g.stroke();
+      }
+      g.restore();
+    }
+
+    // 5. FUEL TANK (Sculpted Cryo / Blood-Siphon Fuel Cell [230, 82])
+    if (eq.tank) {
+      const spec = getEquipmentVisualSpec(eq.tank, 'tank');
+      g.save();
+      // Pressurized siphon conduit line from Tank down to V-Twin Engine / Lower Fairing
+      g.beginPath();
+      g.moveTo(228, 90);
+      g.quadraticCurveTo(236, 124, 238, 152);
+      g.strokeStyle = INK;
+      g.lineWidth = 5;
+      g.stroke();
+      g.strokeStyle = spec.secondaryColor;
+      g.lineWidth = 2.4;
+      g.setLineDash([4, 3]);
+      g.stroke();
+      g.setLineDash([]);
+      g.restore();
+
+      // Mount high-res Set 08 Sculpted Fuel Tank model contoured to the upper tank dome
+      drawPartImg('tank', 230, 82, 48, 38, -0.22, spec.glowColor, spec.rarity);
+    }
+
+    // 6. HANDLEBARS (Cyber-Cockpit, Clip-On Yoke & Holo-Targeting Visor [262, 82])
+    if (eq.handlebars) {
+      const spec = getEquipmentVisualSpec(eq.handlebars, 'handlebars');
+      // Mount high-res Set 08 Cyber-Handlebars & Tachometer model at the cockpit
+      drawPartImg('handlebars', 260, 84, 42, 42, 0.12, spec.glowColor, spec.rarity);
+
+      // Projected Holographic HUD Targeting Visor & Forward Laser Sights
+      g.save();
+      g.shadowColor = spec.glowColor;
+      g.shadowBlur = 10 + spec.rarity * 3;
+      g.beginPath();
+      g.arc(286, 70, 12 + spec.rarity * 1.2, -Math.PI * 0.65, Math.PI * 0.65);
+      g.strokeStyle = spec.secondaryColor;
+      g.lineWidth = 2.2;
+      g.stroke();
+
+      if (spec.rarity >= 2) {
+        g.beginPath();
+        g.moveTo(312, 118);
+        g.lineTo(378, 132);
+        g.moveTo(298, 124);
+        g.lineTo(370, 142);
+        g.strokeStyle = spec.accentColor;
+        g.lineWidth = 1.8;
+        g.setLineDash([6, 4]);
+        g.stroke();
+        g.setLineDash([]);
+      }
+      g.restore();
+    }
+  }
+
+  /**
+   * Renders a clean blueprint telemetry plate on the lower hydraulic lift base
+   * showing the count of active custom 3D equipment models without obscuring the bike.
+   */
+  private drawEquippedCalloutBadges(g: CanvasRenderingContext2D, metaSave: MetaSaveState): void {
+    const visualState = getEquippedBikeVisualState(metaSave);
+    if (visualState.equippedCount === 0) return;
+
+    g.save();
+    const bannerText = `★ CUSTOM CHASSIS MODELS MOUNTED: ${visualState.equippedCount}/6`;
+    g.font = "900 10px Impact, 'Arial Black', sans-serif";
+    const tw = Math.max(196, g.measureText(bannerText).width + 24);
+    const bx = (BIKE_W - tw) / 2 + 10;
+    const by = 262;
+    g.fillStyle = 'rgba(10, 11, 16, 0.92)';
+    g.strokeStyle = '#00f5d4';
+    g.lineWidth = 1.8;
+    g.beginPath();
+    g.roundRect(bx, by, tw, 17, 4);
+    g.fill();
+    g.stroke();
+    g.fillStyle = '#00f5d4';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText(bannerText, bx + tw / 2, by + 9);
+    g.restore();
   }
 }

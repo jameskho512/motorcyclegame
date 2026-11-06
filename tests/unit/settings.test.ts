@@ -3,7 +3,13 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { SettingsController, SettingsAudioPort, ScreenShakeLevel } from '../../src/ui/settings';
+import {
+  SettingsController,
+  SettingsAudioPort,
+  ScreenShakeLevel,
+  getSettingsSummary,
+  SettingsTelemetrySummary
+} from '../../src/ui/settings';
 import { InputManager } from '../../src/core/input';
 import { DEFAULT_VOLUME_SETTINGS, VolumeKey, VolumeSettings } from '../../src/audio/sfx';
 
@@ -221,6 +227,115 @@ describe('SettingsController (audio mixer overlay)', () => {
     expect(ctrl.isOpen()).toBe(true);
     ctrl.toggle();
     expect(ctrl.isOpen()).toBe(false);
+  });
+
+  it('sets and updates data-settings-summary attribute on open, mute, shake, and reset', () => {
+    const overlay = document.getElementById('settings-overlay') as HTMLElement;
+    ctrl.open();
+    expect(overlay.getAttribute('data-settings-summary')).toBe('AUDIO: ACTIVE · SHAKE: 100%');
+
+    // Mute toggled
+    const muteBtn = document.getElementById('btn-settings-mute') as HTMLButtonElement;
+    muteBtn.click();
+    expect(overlay.getAttribute('data-settings-summary')).toBe('AUDIO: MUTED · SHAKE: 100%');
+
+    // Shake toggled (100% -> 50%)
+    const shakeBtn = document.getElementById('btn-settings-shake') as HTMLButtonElement;
+    shakeBtn.click();
+    expect(overlay.getAttribute('data-settings-summary')).toBe('AUDIO: MUTED · SHAKE: 50%');
+
+    // Shake toggled (50% -> OFF)
+    shakeBtn.click();
+    expect(overlay.getAttribute('data-settings-summary')).toBe('AUDIO: MUTED · SHAKE: OFF');
+
+    // Programmatic shake change (OFF -> 100%)
+    ctrl.setScreenShake(1);
+    expect(overlay.getAttribute('data-settings-summary')).toBe('AUDIO: MUTED · SHAKE: 100%');
+
+    // Reset defaults (unmutes via reset and sets shake to 100%)
+    port.muted = false; // ensure audio port syncs unmuted
+    (document.getElementById('btn-settings-reset') as HTMLButtonElement).click();
+    expect(overlay.getAttribute('data-settings-summary')).toBe('AUDIO: ACTIVE · SHAKE: 100%');
+  });
+});
+
+describe('getSettingsSummary pure function', () => {
+  it('returns default active audio and 100% shake for null or undefined input', () => {
+    const fromNull: SettingsTelemetrySummary = getSettingsSummary(null);
+    expect(fromNull).toEqual({
+      muted: false,
+      shakeScale: 1,
+      shakeLabel: '100%',
+      summaryLine: 'AUDIO: ACTIVE · SHAKE: 100%'
+    });
+
+    const fromUndefined: SettingsTelemetrySummary = getSettingsSummary(undefined);
+    expect(fromUndefined).toEqual({
+      muted: false,
+      shakeScale: 1,
+      shakeLabel: '100%',
+      summaryLine: 'AUDIO: ACTIVE · SHAKE: 100%'
+    });
+  });
+
+  it('correctly maps duck-typed and controller states to summary formats', () => {
+    const fakeMutedFifty = {
+      isMuted: () => true,
+      getScreenShake: () => 0.5 as ScreenShakeLevel
+    } as unknown as SettingsController;
+    expect(getSettingsSummary(fakeMutedFifty)).toEqual({
+      muted: true,
+      shakeScale: 0.5,
+      shakeLabel: '50%',
+      summaryLine: 'AUDIO: MUTED · SHAKE: 50%'
+    });
+
+    const fakeActiveOff = {
+      isMuted: () => false,
+      getScreenShake: () => 0 as ScreenShakeLevel
+    } as unknown as SettingsController;
+    expect(getSettingsSummary(fakeActiveOff)).toEqual({
+      muted: false,
+      shakeScale: 0,
+      shakeLabel: 'OFF',
+      summaryLine: 'AUDIO: ACTIVE · SHAKE: OFF'
+    });
+
+    const fakeMutedOff = {
+      isMuted: () => true,
+      getScreenShake: () => 0 as ScreenShakeLevel
+    } as unknown as SettingsController;
+    expect(getSettingsSummary(fakeMutedOff)).toEqual({
+      muted: true,
+      shakeScale: 0,
+      shakeLabel: 'OFF',
+      summaryLine: 'AUDIO: MUTED · SHAKE: OFF'
+    });
+  });
+
+  it('extracts live telemetry from mounted SettingsController instance', () => {
+    setupDom();
+    const port = makePort();
+    const ctrl = new SettingsController({ audio: port });
+    ctrl.mount();
+
+    expect(ctrl.isMuted()).toBe(false);
+    expect(ctrl.getScreenShake()).toBe(1);
+    expect(getSettingsSummary(ctrl)).toEqual({
+      muted: false,
+      shakeScale: 1,
+      shakeLabel: '100%',
+      summaryLine: 'AUDIO: ACTIVE · SHAKE: 100%'
+    });
+
+    port.muted = true;
+    ctrl.setScreenShake(0.5);
+    expect(getSettingsSummary(ctrl)).toEqual({
+      muted: true,
+      shakeScale: 0.5,
+      shakeLabel: '50%',
+      summaryLine: 'AUDIO: MUTED · SHAKE: 50%'
+    });
   });
 });
 

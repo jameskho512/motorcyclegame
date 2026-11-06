@@ -21,6 +21,7 @@ import {
   getMinimapFloorSummary,
   HUDController,
   getModStackTierClass,
+  updateWeaponDeck,
   type ModStackTierClass,
   type MinimapFloorSummary,
   type DungeonGrid
@@ -37,8 +38,14 @@ import {
   getStashSalvageSummary,
   getDowngradeStashItems,
   getBuildArchetypeSummary,
+  getEquippedBikeVisualState,
+  PART_ANCHORS,
   type StashSalvageSummary
 } from '../../src/ui/garage';
+import {
+  getEquipmentVisualSpec,
+  getEquipmentItemModelSvg
+} from '../../src/ui/icons';
 
 describe('Render & UI Subsystems', () => {
   describe('Semicircular Fuel Gauge Math', () => {
@@ -616,6 +623,60 @@ describe('Render & UI Subsystems', () => {
       expect(sectorBiome.getAttribute('data-room-threat-advisory')).toBe(
         'Apex threat: Boss encounter active (1 total hostile). Maximum evasion advised.'
       );
+    });
+
+    it('sets floor exploration status and remaining pickups on #minimap-canvas and #hud-sector-biome via renderMinimap / updateRoomHazardTelemetry', () => {
+      document.body.innerHTML = `
+        <div id="game-wrapper">
+          <canvas id="minimap-canvas" width="240" height="150"></canvas>
+          <div id="hud-sector-biome"></div>
+        </div>
+      `;
+
+      const canvas = document.getElementById('minimap-canvas') as HTMLCanvasElement;
+      const sectorBiome = document.getElementById('hud-sector-biome') as HTMLElement;
+      const hud = new HUDController();
+
+      const dungeon: DungeonGrid = {
+        '0,0': makeRoom({
+          x: 0,
+          y: 0,
+          type: 'combat',
+          cleared: true,
+          visited: true,
+          pickups: []
+        }),
+        '1,0': makeRoom({
+          x: 1,
+          y: 0,
+          type: 'combat',
+          cleared: false,
+          visited: false,
+          pickups: [
+            { x: 200, y: 200, type: 'heart', radius: 15 } as any,
+            { x: 300, y: 300, type: 'hub_npc', name: 'Mechanic', cost: 0, subtitle: '', radius: 25 } as any
+          ]
+        })
+      };
+
+      hud.updateRoomHazardTelemetry(dungeon, 0, 0, 1);
+
+      // Total 2 rooms: 1 cleared, 1 pickup (excluding hub_npc)
+      expect(canvas.getAttribute('data-floor-exploration-status')).toBe('1/2 SECTORS SECURED · 1 DROP(S) DETECTED');
+      expect(canvas.getAttribute('data-remaining-pickups')).toBe('1');
+      expect(sectorBiome.getAttribute('data-floor-exploration-status')).toBe('1/2 SECTORS SECURED · 1 DROP(S) DETECTED');
+      expect(sectorBiome.getAttribute('data-remaining-pickups')).toBe('1');
+
+      // Test 100% swept & looted condition
+      const clearedDungeon: DungeonGrid = {
+        '0,0': makeRoom({ x: 0, y: 0, type: 'combat', cleared: true, visited: true, pickups: [] }),
+        '1,0': makeRoom({ x: 1, y: 0, type: 'combat', cleared: true, visited: true, pickups: [] })
+      };
+      hud.updateRoomHazardTelemetry(clearedDungeon, 0, 0, 1);
+      expect(canvas.getAttribute('data-floor-exploration-status')).toBe('★ SECTOR 100% SWEPT & LOOTED');
+      expect(canvas.getAttribute('data-remaining-pickups')).toBe('0');
+      expect(sectorBiome.getAttribute('data-floor-exploration-status')).toBe('★ SECTOR 100% SWEPT & LOOTED');
+      expect(sectorBiome.getAttribute('data-remaining-pickups')).toBe('0');
     });
   });
 
@@ -2107,6 +2168,47 @@ describe('Render & UI Subsystems', () => {
       expect(smgTip).toContain('★★★ MASTER III');
     });
 
+    it('renders weapon deck cards with Weapon Evolution Progress tooltip hints in data-tip via updateWeaponDeck and renderWeaponDeck', () => {
+      const metaSave: any = {
+        unlocked: { pistol: true, machine_gun: true, shotgun: true },
+        weaponKills: { pistol: 15 }
+      };
+
+      // Player with 1 item stack
+      const playerWithItem = {
+        ...player,
+        items: ['coffee'] as any,
+        itemStacks: { coffee: 1 } as any,
+        mods: []
+      } as unknown as PlayerState;
+
+      hud.updateWeaponDeck(playerWithItem, metaSave);
+
+      const pistolCard = document.querySelector('[data-weapon="pistol"]') as HTMLElement;
+      expect(pistolCard).not.toBeNull();
+      const pistolTip = pistolCard.getAttribute('data-tip') || '';
+      expect(pistolTip).toContain('Mastery: ★☆☆ ROOKIE I');
+      expect(pistolTip).toContain('🔧 OVERCLOCK TO RICOCHET REVOLVER:');
+      expect(pistolTip).toContain('Need "Ricochet Rounds" Mod OR 1/3 Item Stacks');
+
+      // Player with evolved weapon (e.g. signature mod in items or >=3 stacks)
+      const playerEvolved = {
+        ...player,
+        items: ['Rubberized Casings'] as any,
+        itemStacks: {},
+        mods: [{ id: 'ricochet_mod', name: 'Ricochet Rounds', desc: '' }] as any
+      } as unknown as PlayerState;
+
+      // Test standalone function updateWeaponDeck
+      updateWeaponDeck(playerEvolved, metaSave);
+
+      const evolvedPistolCard = document.querySelector('[data-weapon="pistol"]') as HTMLElement;
+      expect(evolvedPistolCard).not.toBeNull();
+      const evolvedTip = evolvedPistolCard.getAttribute('data-tip') || '';
+      expect(evolvedTip).toContain('⚡ OVERCLOCKED: RICOCHET REVOLVER ACTIVE');
+      expect(evolvedTip).toContain('+2 Bounces, +35% Damage & Golden Tracer Rounds');
+    });
+
     it('populates #hud-synergy-list with active Floor Bounty Contract (.is-bounty-contract) for Floor 1 and Floor 4', () => {
       const metaSave: any = { scrap: 50, unlocked: {}, weaponKills: {} };
 
@@ -2428,6 +2530,114 @@ describe('Render & UI Subsystems', () => {
       expect(tip).toContain('HOW TO IMPROVE:');
       expect(tip).toContain('[SPACE]');
       expect(tip).toContain('RANK REWARDS:');
+    });
+  });
+
+  describe('High-Resolution Equipment Item Models & Dynamic Large Motorcycle Model (M93)', () => {
+    it('generates 24 distinct high-resolution 128x128 3D models across all 6 slots and 4 rarity tiers', () => {
+      const slots = ['tires', 'engine', 'handlebars', 'exhaust', 'frame', 'tank'] as const;
+      const rarities = [0, 1, 2, 3] as const;
+      const modelCodes = new Set<string>();
+      const svgOutputs = new Set<string>();
+
+      for (const slot of slots) {
+        for (const rarity of rarities) {
+          const item: EquipmentItem = {
+            slot,
+            rarity,
+            name: `Test ${slot} R${rarity}`,
+            stats: { dmg: 0.1 }
+          };
+          const spec = getEquipmentVisualSpec(item, slot);
+          expect(spec.slot).toBe(slot);
+          expect(spec.rarity).toBe(rarity);
+          expect(spec.modelCode.length).toBeGreaterThan(4);
+          expect(spec.subAssemblyLabel.length).toBeGreaterThan(8);
+          modelCodes.add(spec.modelCode);
+
+          const svg = getEquipmentItemModelSvg(item, slot);
+          expect(svg).toContain('viewBox="0 0 128 128"');
+          expect(svg).toContain(`data-model-code="${spec.modelCode}"`);
+          expect(svg).toContain(spec.tierBadge);
+          svgOutputs.add(svg);
+        }
+      }
+
+      // Every single (slot, rarity) combination produces a unique model code and unique SVG model
+      expect(modelCodes.size).toBe(24);
+      expect(svgOutputs.size).toBe(24);
+    });
+
+    it('updates #bike-canvas and #garage-overlay equipped visual telemetry and slot models when items are equipped or unequipped', () => {
+      document.body.innerHTML = `
+        <div id="garage-overlay">
+          <div id="slots-left"></div>
+          <div id="slots-right"></div>
+          <canvas id="bike-canvas" width="400" height="300"></canvas>
+          <div id="stash-list"></div>
+          <div id="eq-totals"></div>
+        </div>
+      `;
+
+      const garage = new GarageController({
+        onEquipItem: vi.fn(),
+        onUnequipSlot: vi.fn(),
+        onSellItem: vi.fn(),
+        onUnlockWeapon: vi.fn(),
+        onEquipWeapon: vi.fn(),
+        onBuyUpgrade: vi.fn(),
+        onResumeRun: vi.fn(),
+        onNewRun: vi.fn(),
+        onResetSave: vi.fn()
+      });
+
+      const metaSave: MetaSaveState = {
+        scrap: 500,
+        unlocked: { machine_gun: true, shotgun: false, flamethrower: false, grenade_launcher: false, railgun: false, arc_coil: false },
+        ranks: { dmg: 1, fireRate: 0, speed: 0, maxHp: 0 },
+        equipped: {
+          engine: { slot: 'engine', rarity: 3, name: 'Valhalla Engine', stats: { dmg: 0.25 } },
+          tires: { slot: 'tires', rarity: 2, name: 'Hyper Tires', stats: { speed: 0.18 } },
+          exhaust: { slot: 'exhaust', rarity: 1, name: 'Tuned Exhaust', stats: { blast: 0.14 } }
+        },
+        stash: [
+          { slot: 'tank', rarity: 3, name: 'Hellfire Fuel Tank', stats: { siphon: 0.12 } }
+        ]
+      };
+
+      const vState = getEquippedBikeVisualState(metaSave);
+      expect(vState.equippedCount).toBe(3);
+      expect(vState.modelCodes).toContain('EN-04 VALHALLA CORE');
+
+      garage.render(metaSave, null);
+
+      const overlay = document.getElementById('garage-overlay')!;
+      const bikeCanvas = document.getElementById('bike-canvas')!;
+      expect(overlay.getAttribute('data-equipped-visual-count')).toBe('3');
+      expect(bikeCanvas.getAttribute('data-equipped-visual-count')).toBe('3');
+      expect(bikeCanvas.getAttribute('data-equipped-model-codes')).toContain('TR-03 APEX TURBINE');
+      expect(bikeCanvas.getAttribute('data-equipped-model-codes')).toContain('EN-04 VALHALLA CORE');
+      expect(bikeCanvas.getAttribute('data-equipped-model-codes')).toContain('EX-02 PIE-CUT TI');
+
+      // Verify filled slot cards render the bespoke 128x128 model and .sl-model-tag
+      const filledEngineSlot = document.querySelector('.eq-slot.is-filled[data-slot-id="engine"]') as HTMLElement;
+      expect(filledEngineSlot).not.toBeNull();
+      expect(filledEngineSlot.getAttribute('data-model-code')).toBe('EN-04 VALHALLA CORE');
+      expect(filledEngineSlot.getAttribute('data-tier-badge')).toBe('OMEGA');
+      expect(filledEngineSlot.innerHTML).toContain('gx-equip-model');
+
+      // Verify stash card renders the bespoke 128x128 model
+      const stashCard = document.querySelector('#stash-list .stash-item') as HTMLElement;
+      expect(stashCard).not.toBeNull();
+      expect(stashCard.getAttribute('data-model-code')).toBe('TK-04 BLOOD SIPHON');
+      expect(stashCard.innerHTML).toContain('gx-equip-model');
+
+      // Unequip all and verify bike visual state resets to 0/6 Stock Chassis
+      metaSave.equipped = {};
+      garage.render(metaSave, null);
+      expect(bikeCanvas.getAttribute('data-equipped-visual-count')).toBe('0');
+      expect(bikeCanvas.getAttribute('data-equipped-visual-summary')).toContain('STOCK CHASSIS');
+      expect(PART_ANCHORS.engine).toEqual([198, 160]);
     });
   });
 });

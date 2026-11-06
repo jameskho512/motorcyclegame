@@ -27,8 +27,8 @@ import {
   DROP_ITEM_HI_FI_SVG,
   getModIconSvg
 } from './icons';
-import { formatWeaponMasteryHint, formatStyleRankTooltip } from './tooltip';
-import { getFloorBountyContract, getRoomHazardSummary, type RoomHazardSummary } from '@/world/dungeon';
+import { formatWeaponMasteryHint, formatStyleRankTooltip, formatWeaponEvolutionTooltipHint } from '@/ui/tooltip';
+import { getFloorBountyContract, getRoomHazardSummary, getFloorExplorationStatus, type RoomHazardSummary } from '@/world/dungeon';
 import { getCombatOffenseSummary } from '@/systems/combat';
 import { getRoomThreatAssessment } from '@/systems/enemyAI';
 import { getRiderMobilitySummary } from '@/systems/physics';
@@ -444,6 +444,7 @@ export class HUDController {
     const tacticalHint = hazardInfo.tacticalHint;
 
     const threatInfo = getRoomThreatAssessment(currentRoom, floorNum);
+    const expStatus = getFloorExplorationStatus(dungeon);
 
     const sectorBiomeEl = document.getElementById('hud-sector-biome');
     if (sectorBiomeEl) {
@@ -453,6 +454,8 @@ export class HUDController {
       sectorBiomeEl.setAttribute('data-room-threat-tier', threatInfo.threatTier);
       sectorBiomeEl.setAttribute('data-room-threat-score', String(threatInfo.threatScore));
       sectorBiomeEl.setAttribute('data-room-threat-advisory', threatInfo.advisory);
+      sectorBiomeEl.setAttribute('data-floor-exploration-status', expStatus.statusLine);
+      sectorBiomeEl.setAttribute('data-remaining-pickups', String(expStatus.remainingPickups));
     }
 
     if (this.minimapCanvas) {
@@ -462,6 +465,8 @@ export class HUDController {
       this.minimapCanvas.setAttribute('data-room-threat-tier', threatInfo.threatTier);
       this.minimapCanvas.setAttribute('data-room-threat-score', String(threatInfo.threatScore));
       this.minimapCanvas.setAttribute('data-room-threat-advisory', threatInfo.advisory);
+      this.minimapCanvas.setAttribute('data-floor-exploration-status', expStatus.statusLine);
+      this.minimapCanvas.setAttribute('data-remaining-pickups', String(expStatus.remainingPickups));
     }
   }
 
@@ -1161,12 +1166,20 @@ export class HUDController {
   }
 
   /**
-   * Renders the weapon selection deck cards with evolution badges, status, and mastery hints.
+   * Updates weapon selection deck cards with evolution badges, status, mastery hints, and evolution tooltip hints.
    */
-  public renderWeaponDeck(player: PlayerState, metaSave?: any): void {
+  public updateWeaponDeck(player: PlayerState, metaSave?: any): void {
     if (metaSave) this.lastMetaSave = metaSave;
     const unlockedWeapons = metaSave?.unlocked || {};
     this.updateWeapons(player, unlockedWeapons, metaSave);
+  }
+
+  /**
+   * Renders the weapon selection deck cards with evolution badges, status, and mastery hints.
+   * Alias for updateWeaponDeck.
+   */
+  public renderWeaponDeck(player: PlayerState, metaSave?: any): void {
+    this.updateWeaponDeck(player, metaSave);
   }
 
   /**
@@ -1219,7 +1232,8 @@ export class HUDController {
         card.onclick = () => this.onSelectWeapon!(w.id);
       }
       const kills = (effectiveMeta as any)?.weaponKills?.[w.id] ?? (player as any)?.metaSave?.weaponKills?.[w.id] ?? 0;
-      const tipText = `<b style="color:${w.color}">${w.name}</b>${evolved ? ' <span style="color:#00f5d4">★ EVOLVED</span>' : ''}<br/>${w.desc}<br/>Damage ${w.baseDmg} | Cooldown ${w.cooldown}s${isAvail ? '' : `<br/>🔒 Unlock in Garage: ${w.cost} scrap`}\n${formatWeaponMasteryHint(kills)}`;
+      const wId = w.id;
+      const tipText = `<b style="color:${w.color}">${w.name}</b>${evolved ? ' <span style="color:#00f5d4">★ EVOLVED</span>' : ''}<br/>${w.desc}<br/>Damage ${w.baseDmg} | Cooldown ${w.cooldown}s${isAvail ? '' : `<br/>🔒 Unlock in Garage: ${w.cost} scrap`}\n${formatWeaponMasteryHint(kills)}\n${formatWeaponEvolutionTooltipHint(wId, player)}`;
       card.dataset.tip = tipText;
       card.setAttribute('data-tip', tipText);
       bar.appendChild(card);
@@ -1671,3 +1685,14 @@ export class HUDController {
     }
   }
 }
+
+/**
+ * Standalone helper to render or update weapon selection deck cards with evolution tooltip hints.
+ */
+export function updateWeaponDeck(player: PlayerState, metaSave?: any): void {
+  const bar = document.getElementById('weapon-bar') || document.getElementById('hud-weapon-deck') || document.getElementById('weapon-deck');
+  if (!bar) return;
+  const tempHud = new HUDController();
+  tempHud.updateWeaponDeck(player, metaSave);
+}
+

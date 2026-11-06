@@ -19,7 +19,9 @@ import {
   getEvolutionsForMod,
   WEAPON_PROC_COEFFICIENTS,
   getWeaponEvolutionProgress,
-  WeaponEvolutionProgress
+  WeaponEvolutionProgress,
+  WeaponTacticalProfile,
+  getWeaponTacticalProfile
 } from '@/data/weapons';
 import {
   META_UPGRADES,
@@ -799,6 +801,98 @@ describe('Tooltip: formatHubNpcTooltip', () => {
       expect(hintOverflow).toBe(
         '⚡ OVERCLOCKED: RICOCHET REVOLVER ACTIVE (+2 Bounces, +35% Damage & Golden Tracer Rounds)'
       );
+    });
+  });
+
+  describe('Weapon Tactical Role & Base DPS Classifier (M91: getWeaponTacticalProfile)', () => {
+    it('returns distinct tactical role profiles and computed base DPS for all 7 weapons', () => {
+      const expectedProfiles: Record<
+        WeaponId,
+        {
+          roleTag: WeaponTacticalProfile['roleTag'];
+          optimalRangeText: string;
+          baseDps: number;
+          summaryLine: string;
+        }
+      > = {
+        pistol: {
+          roleTag: 'PRECISION SIDEARM',
+          optimalRangeText: 'MID RANGE',
+          baseDps: 48,
+          summaryLine: 'PRECISION SIDEARM · 48 BASE DPS · MID RANGE'
+        },
+        machine_gun: {
+          roleTag: 'RAPID SUPPRESSION',
+          optimalRangeText: 'CLOSE-TO-MID RANGE',
+          baseDps: 58,
+          summaryLine: 'RAPID SUPPRESSION · 58 BASE DPS · CLOSE-TO-MID RANGE'
+        },
+        flamethrower: {
+          roleTag: 'AREA DENIAL',
+          optimalRangeText: 'SHORT RANGE',
+          baseDps: 36,
+          summaryLine: 'AREA DENIAL · 36 BASE DPS · SHORT RANGE'
+        },
+        grenade_launcher: {
+          roleTag: 'HEAVY ARTILLERY',
+          optimalRangeText: 'MID-TO-LONG RANGE',
+          baseDps: 15,
+          summaryLine: 'HEAVY ARTILLERY · 15 BASE DPS · MID-TO-LONG RANGE'
+        },
+        shotgun: {
+          roleTag: 'CLOSE-QUARTERS BURST',
+          optimalRangeText: 'POINT-BLANK RANGE',
+          baseDps: 56,
+          summaryLine: 'CLOSE-QUARTERS BURST · 56 BASE DPS · POINT-BLANK RANGE'
+        },
+        railgun: {
+          roleTag: 'SNIPER PIERCE',
+          optimalRangeText: 'LONG RANGE',
+          baseDps: 44,
+          summaryLine: 'SNIPER PIERCE · 44 BASE DPS · LONG RANGE'
+        },
+        arc_coil: {
+          roleTag: 'CHAIN CROWD-CONTROL',
+          optimalRangeText: 'MID-RANGE CHAIN',
+          baseDps: 38,
+          summaryLine: 'CHAIN CROWD-CONTROL · 38 BASE DPS · MID-RANGE CHAIN'
+        }
+      };
+
+      const rolesSet = new Set<string>();
+      const rangeSet = new Set<string>();
+
+      for (const [id, expected] of Object.entries(expectedProfiles) as Array<[WeaponId, typeof expectedProfiles[WeaponId]]>) {
+        const profile = getWeaponTacticalProfile(id);
+        expect(profile.weaponId).toBe(id);
+        expect(profile.roleTag).toBe(expected.roleTag);
+        expect(profile.optimalRangeText).toBe(expected.optimalRangeText);
+        expect(profile.baseDps).toBe(expected.baseDps);
+        expect(profile.summaryLine).toBe(expected.summaryLine);
+
+        rolesSet.add(profile.roleTag);
+        rangeSet.add(profile.optimalRangeText);
+      }
+
+      // All 7 weapons have distinct role tags and distinct optimal range texts
+      expect(rolesSet.size).toBe(7);
+      expect(rangeSet.size).toBe(7);
+    });
+
+    it('safely falls back to pistol tactical profile on unknown weapon IDs', () => {
+      const fallbackProfile = getWeaponTacticalProfile('plasma_cutter' as WeaponId);
+      expect(fallbackProfile.weaponId).toBe('pistol');
+      expect(fallbackProfile.roleTag).toBe('PRECISION SIDEARM');
+      expect(fallbackProfile.baseDps).toBe(48);
+      expect(fallbackProfile.summaryLine).toBe('PRECISION SIDEARM · 48 BASE DPS · MID RANGE');
+    });
+
+    it('matches mathematical formula Math.round((w.dmg * (w.count || 1)) / Math.max(0.05, w.fireRate))', () => {
+      for (const [id, w] of Object.entries(WEAPONS) as Array<[WeaponId, typeof WEAPONS[WeaponId]]>) {
+        const profile = getWeaponTacticalProfile(id);
+        const expectedDps = Math.round((w.dmg * (w.count || 1)) / Math.max(0.05, w.fireRate));
+        expect(profile.baseDps).toBe(expectedDps);
+      }
     });
   });
 });

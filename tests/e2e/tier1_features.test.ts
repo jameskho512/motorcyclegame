@@ -42,7 +42,8 @@ import {
   PlayerState,
   WeaponId,
   RegularEnemyType,
-  Room
+  Room,
+  Pickup
 } from '@/types/game';
 
 import { WEAPONS } from '@/data/weapons';
@@ -55,11 +56,15 @@ import {
   saveRunCheckpoint,
   loadRunCheckpoint,
   loadMetaSave,
-  writeMetaSave
+  writeMetaSave,
+  getCareerOutlawRank
 } from '@/core/state';
 import { InputManager, KEY_WEAPON_MAP } from '@/core/input';
 import { SoundSynthesizer, calculateEngineParams } from '@/audio/sfx';
-import { generateDungeon, OBSTACLE_PATTERNS, createBoss } from '@/world/dungeon';
+import { generateDungeon, OBSTACLE_PATTERNS, createBoss, getFloorExplorationStatus } from '@/world/dungeon';
+import { formatWeaponEvolutionTooltipHint } from '@/ui/tooltip';
+import { getShopBuildSynergyHint } from '@/ui/shopModal';
+import { getPortalHeatBriefing } from '@/ui/portalModal';
 import {
   calculateEffectiveSpeed,
   updateNos,
@@ -817,6 +822,215 @@ describe('Tier 1: Feature Coverage — 28 Features in Isolation', () => {
       const lowRatio = player.hp / player.maxHp;
       expect(lowRatio).toBe(0.3);
       expect(lowRatio <= 0.34).toBe(true); // Triggers low fuel needle wobble
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Feature 8: Sanctuary Station, Career Rank & Exploration Telemetry (M92)
+  // --------------------------------------------------------------------------
+  describe('Feature 8: Sanctuary Station, Career Rank & Exploration Telemetry (M92)', () => {
+    it('evaluates floor exploration progress, visited sectors, and loot completion on freshly generated Floor 1 and Floor 6 dungeons', () => {
+      // Floor 1 fresh dungeon: targetRooms = 7 + min(10, 2) = 9
+      const d1 = generateDungeon(1);
+      const status1 = getFloorExplorationStatus(d1);
+
+      expect(status1.totalRooms).toBe(9);
+      expect(status1.visitedRooms).toBe(1); // Starting sector visited
+      expect(status1.clearedRooms).toBeGreaterThanOrEqual(3); // Start, treasure, and shop rooms
+      expect(status1.remainingPickups).toBeGreaterThanOrEqual(4); // Mod pedestal + 3 shop items
+      expect(status1.isFullyCleared).toBe(false);
+      expect(status1.statusLine).toBe(
+        `${status1.clearedRooms}/${status1.totalRooms} SECTORS SECURED · ${status1.remainingPickups} DROP(S) DETECTED`
+      );
+
+      // Floor 6 fresh dungeon: targetRooms = 7 + min(10, 12) = 17
+      const d6 = generateDungeon(6);
+      const status6 = getFloorExplorationStatus(d6);
+
+      expect(status6.totalRooms).toBe(17);
+      expect(status6.visitedRooms).toBe(1);
+      expect(status6.clearedRooms).toBeGreaterThanOrEqual(3);
+      expect(status6.remainingPickups).toBeGreaterThanOrEqual(4);
+      expect(status6.isFullyCleared).toBe(false);
+      expect(status6.statusLine).toBe(
+        `${status6.clearedRooms}/${status6.totalRooms} SECTORS SECURED · ${status6.remainingPickups} DROP(S) DETECTED`
+      );
+
+      // Verify passing rooms mapping directly gives identical telemetry
+      expect(getFloorExplorationStatus(d1.rooms)).toEqual(status1);
+    });
+
+    it('formats weapon overclock evolution progress hints for pistol, railgun, and arc_coil before and after evolution', () => {
+      // 1. Pistol: Ricochet Revolver
+      const pistolBefore = formatWeaponEvolutionTooltipHint('pistol', { items: [], itemStacks: {} });
+      expect(pistolBefore).toBe(
+        '🔧 OVERCLOCK TO RICOCHET REVOLVER: Need "Ricochet Rounds" Mod OR 0/3 Item Stacks (+2 Bounces, +35% Damage & Golden Tracer Rounds)'
+      );
+      expect(pistolBefore).not.toContain('ACTIVE');
+
+      const pistolAfterMod = formatWeaponEvolutionTooltipHint('pistol', { items: ['Ricochet Rounds'], itemStacks: {} });
+      expect(pistolAfterMod).toBe(
+        '⚡ OVERCLOCKED: RICOCHET REVOLVER ACTIVE (+2 Bounces, +35% Damage & Golden Tracer Rounds)'
+      );
+
+      const pistolAfterStacks = formatWeaponEvolutionTooltipHint('pistol', { items: [], itemStacks: { lens: 3 } });
+      expect(pistolAfterStacks).toBe(
+        '⚡ OVERCLOCKED: RICOCHET REVOLVER ACTIVE (+2 Bounces, +35% Damage & Golden Tracer Rounds)'
+      );
+
+      // 2. Railgun: Orbital Ion Lance
+      const railgunBefore = formatWeaponEvolutionTooltipHint('railgun', { items: [], itemStacks: {} });
+      expect(railgunBefore).toBe(
+        '🔧 OVERCLOCK TO ORBITAL ION LANCE: Need "Piercing Core" Mod OR 0/3 Item Stacks (Hyper-Wide Golden Ion Lance & +35% Damage)'
+      );
+      expect(railgunBefore).not.toContain('ACTIVE');
+
+      const railgunAfterMod = formatWeaponEvolutionTooltipHint('railgun', { items: ['piercing_core'], itemStacks: {} });
+      expect(railgunAfterMod).toBe(
+        '⚡ OVERCLOCKED: ORBITAL ION LANCE ACTIVE (Hyper-Wide Golden Ion Lance & +35% Damage)'
+      );
+
+      // 3. Arc Coil: Thunderlord Storm Coil
+      const arcCoilBefore = formatWeaponEvolutionTooltipHint('arc_coil', { items: [], itemStacks: {} });
+      expect(arcCoilBefore).toBe(
+        '🔧 OVERCLOCK TO THUNDERLORD STORM COIL: Need "Vampiric Siphon" Mod OR 0/3 Item Stacks (Chains to 6 Targets for 85% Damage)'
+      );
+      expect(arcCoilBefore).not.toContain('ACTIVE');
+
+      const arcCoilAfterMod = formatWeaponEvolutionTooltipHint('arc_coil', { items: ['vamp_siphon'], itemStacks: {} });
+      expect(arcCoilAfterMod).toBe(
+        '⚡ OVERCLOCKED: THUNDERLORD STORM COIL ACTIVE (Chains to 6 Targets for 85% Damage)'
+      );
+    });
+
+    it('classifies player career rank progression through all 5 outlaw tiers up to legend_of_valhalla', () => {
+      // Tier 1: Rookie Courier (<40 score, floor 1)
+      const rank1 = getCareerOutlawRank({ totalKills: 0, bossesSlain: 0, bestFloor: 1 });
+      expect(rank1.rankId).toBe('rookie_courier');
+      expect(rank1.tierNumber).toBe(1);
+      expect(rank1.title).toBe('⚙️ ROOKIE COURIER');
+      expect(rank1.careerScore).toBe(0);
+      expect(rank1.nextMilestoneText).toBe('Reach 40 Career Score or Floor 2 for HIGHWAY OUTLAW');
+
+      // Tier 2: Highway Outlaw (score >= 40 or floor >= 2)
+      const rank2 = getCareerOutlawRank({ totalKills: 40, bossesSlain: 0, bestFloor: 1 });
+      expect(rank2.rankId).toBe('highway_outlaw');
+      expect(rank2.tierNumber).toBe(2);
+      expect(rank2.title).toBe('🔥 HIGHWAY OUTLAW');
+      expect(rank2.careerScore).toBe(40);
+      expect(rank2.nextMilestoneText).toBe('Reach 120 Career Score or Floor 3 for SYNDICATE ENFORCER');
+
+      // Tier 3: Syndicate Enforcer (score >= 120 or floor >= 3)
+      const rank3 = getCareerOutlawRank({ totalKills: 120, bossesSlain: 0, bestFloor: 1 });
+      expect(rank3.rankId).toBe('syndicate_enforcer');
+      expect(rank3.tierNumber).toBe(3);
+      expect(rank3.title).toBe('⚡ SYNDICATE ENFORCER');
+      expect(rank3.careerScore).toBe(120);
+      expect(rank3.nextMilestoneText).toBe('Reach 250 Career Score or Floor 5 for APEX ROADLORD');
+
+      // Tier 4: Apex Roadlord (score >= 250 or floor >= 5)
+      const rank4 = getCareerOutlawRank({ totalKills: 250, bossesSlain: 0, bestFloor: 1 });
+      expect(rank4.rankId).toBe('apex_roadlord');
+      expect(rank4.tierNumber).toBe(4);
+      expect(rank4.title).toBe('☠️ APEX ROADLORD');
+      expect(rank4.careerScore).toBe(250);
+      expect(rank4.nextMilestoneText).toBe('Reach 500 Career Score or clear Floor 6 for LEGEND OF VALHALLA');
+
+      // Tier 5: Legend of Valhalla (score >= 500 or floor 6 + 6 bosses)
+      const rank5ByScore = getCareerOutlawRank({ totalKills: 500, bossesSlain: 0, bestFloor: 1 });
+      expect(rank5ByScore.rankId).toBe('legend_of_valhalla');
+      expect(rank5ByScore.tierNumber).toBe(5);
+      expect(rank5ByScore.title).toBe('👑 LEGEND OF VALHALLA');
+      expect(rank5ByScore.careerScore).toBe(500);
+      expect(rank5ByScore.nextMilestoneText).toBe('MAX CAREER RANK ACHIEVED');
+
+      const rank5ByFloorAndBosses = getCareerOutlawRank({ totalKills: 0, bossesSlain: 6, bestFloor: 6 });
+      expect(rank5ByFloorAndBosses.rankId).toBe('legend_of_valhalla');
+      expect(rank5ByFloorAndBosses.tierNumber).toBe(5);
+      expect(rank5ByFloorAndBosses.nextMilestoneText).toBe('MAX CAREER RANK ACHIEVED');
+    });
+
+    it('identifies shop build synergies for signature weapon evolution mods and critical low-hull repairs', () => {
+      // Signature mod synergy with equipped weapon
+      const ricochetPickup: Pickup = {
+        x: 120,
+        y: 120,
+        radius: 20,
+        type: 'mod_pedestal',
+        mod: {
+          id: 'ricochet_mod',
+          name: 'Ricochet Rounds',
+          desc: '+2 Bounces',
+          cost: 25
+        } as any,
+        cost: 25
+      };
+
+      const synWithPistol = getShopBuildSynergyHint(ricochetPickup, { weapon: 'pistol' });
+      expect(synWithPistol.hasSynergy).toBe(true);
+      expect(synWithPistol.synergyType).toBe('EVOLUTION_KEY');
+      expect(synWithPistol.hintText).toBe('⚡ UNLOCKS RICOCHET REVOLVER EVOLUTION!');
+
+      // Non-matching weapon mod has standard ordnance synergy
+      const synWithShotgun = getShopBuildSynergyHint(ricochetPickup, { weapon: 'shotgun' });
+      expect(synWithShotgun.hasSynergy).toBe(false);
+      expect(synWithShotgun.synergyType).toBe('STANDARD');
+      expect(synWithShotgun.hintText).toBe('Standard Black Market Ordnance');
+
+      // Low-hull repair synergy: HP <= 50% maxHp
+      const heartPickup: Pickup = {
+        x: 150,
+        y: 150,
+        radius: 20,
+        type: 'shop_heart',
+        name: 'Field Suture Kit',
+        cost: 15
+      };
+
+      // 3/6 HP (<= 50%) -> triggers critical repair synergy
+      const lowHullSyn = getShopBuildSynergyHint(heartPickup, { hp: 3, maxHp: 6 });
+      expect(lowHullSyn.hasSynergy).toBe(true);
+      expect(lowHullSyn.synergyType).toBe('LOW_HULL_REPAIR');
+      expect(lowHullSyn.hintText).toBe('⚠️ CRITICAL HULL REPAIR RECOMMENDED!');
+
+      // 4/6 HP (> 50%) -> standard issue
+      const healthyHullSyn = getShopBuildSynergyHint(heartPickup, { hp: 4, maxHp: 6 });
+      expect(healthyHullSyn.hasSynergy).toBe(false);
+      expect(healthyHullSyn.synergyType).toBe('STANDARD');
+      expect(healthyHullSyn.hintText).toBe('Standard Black Market Ordnance');
+    });
+
+    it('provides accurate threat escalation briefings and scrap multipliers across Heat 0 through Heat 3', () => {
+      // Heat 0: Standard
+      const h0 = getPortalHeatBriefing(0);
+      expect(h0.heatLevel).toBe(0);
+      expect(h0.label).toBe('HEAT 0 // STANDARD');
+      expect(h0.enemyScaleText).toBe('Standard Enemy HP & Speed');
+      expect(h0.scrapBonusText).toBe('+0% Bonus Scrap');
+
+      // Heat 1: Overclocked
+      const h1 = getPortalHeatBriefing(1);
+      expect(h1.heatLevel).toBe(1);
+      expect(h1.label).toBe('HEAT 1 // OVERCLOCKED');
+      expect(h1.enemyScaleText).toBe('+24% Enemy HP · +12% Speed');
+      expect(h1.scrapBonusText).toBe('+25% Bonus Scrap');
+
+      // Heat 2: Blood Pact
+      const h2 = getPortalHeatBriefing(2);
+      expect(h2.heatLevel).toBe(2);
+      expect(h2.label).toBe('HEAT 2 // BLOOD PACT');
+      expect(h2.enemyScaleText).toBe('+48% Enemy HP · +24% Speed');
+      expect(h2.scrapBonusText).toBe('+50% Bonus Scrap');
+
+      // Heat 3: Valhalla Inferno
+      const h3 = getPortalHeatBriefing(3);
+      expect(h3.heatLevel).toBe(3);
+      expect(h3.label).toBe('HEAT 3 // VALHALLA INFERNO');
+      expect(h3.enemyScaleText).toBe('+72% Enemy HP · +36% Speed');
+      expect(h3.scrapBonusText).toBe('+75% Bonus Scrap');
+
+      // Default parameter matches Heat 0
+      expect(getPortalHeatBriefing()).toEqual(h0);
     });
   });
 });

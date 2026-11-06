@@ -33,10 +33,16 @@ export interface WeaponDef {
   cost: number;
   /** Base fire cooldown interval in seconds */
   cooldown: number;
+  /** Alias for cooldown / fire interval */
+  fireRate: number;
   /** Base impact damage per projectile */
   damage: number;
   /** Alias for damage matching original monolith property */
   baseDmg: number;
+  /** Short alias for damage */
+  dmg: number;
+  /** Base projectile count per shot (default 1) */
+  count?: number;
   /** Projectile travel speed in pixels/second */
   speed: number;
   /** Alias for speed matching original monolith property */
@@ -61,8 +67,11 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     description: 'Accurate semi-auto sidearm. Reliable range & steady damage.',
     cost: 0,
     cooldown: 0.27,
+    fireRate: 0.27,
     damage: 13,
     baseDmg: 13,
+    dmg: 13,
+    count: 1,
     speed: 540,
     projSpeed: 540,
     color: '#ffd166',
@@ -77,8 +86,11 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     description: 'High fire-rate SMG. Lower damage per round with recoil spread.',
     cost: 55,
     cooldown: 0.095,
+    fireRate: 0.095,
     damage: 5.5,
     baseDmg: 5.5,
+    dmg: 5.5,
+    count: 1,
     speed: 620,
     projSpeed: 620,
     color: '#4cc9f0',
@@ -93,8 +105,11 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     description: 'Short-range fire cone. Each puff hits once & applies Burn DoT.',
     cost: 95,
     cooldown: 0.09,
+    fireRate: 0.09,
     damage: 3.2,
     baseDmg: 3.2,
+    dmg: 3.2,
+    count: 1,
     speed: 290,
     projSpeed: 290,
     color: '#ff6b2b',
@@ -109,8 +124,11 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     description: 'Lobbed explosive shells. Heavy AoE blast with slower reload.',
     cost: 140,
     cooldown: 1.17,
+    fireRate: 1.17,
     damage: 18,
     baseDmg: 18,
+    dmg: 18,
+    count: 1,
     speed: 410,
     projSpeed: 410,
     color: '#f72585',
@@ -125,8 +143,11 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     description: '6-pellet buckshot cone. Devastating close-range burst & knockback.',
     cost: 70,
     cooldown: 0.56,
+    fireRate: 0.56,
     damage: 5.2,
     baseDmg: 5.2,
+    dmg: 5.2,
+    count: 6,
     speed: 560,
     projSpeed: 560,
     color: '#ffbe0b',
@@ -141,8 +162,11 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     description: 'Hyper-velocity electromagnetic slug that pierces all enemies in a line.',
     cost: 120,
     cooldown: 0.80,
+    fireRate: 0.80,
     damage: 35,
     baseDmg: 35,
+    dmg: 35,
+    count: 1,
     speed: 980,
     projSpeed: 980,
     color: '#00f5d4',
@@ -157,8 +181,11 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     description: 'High-voltage lightning orb that chains arcs to up to 3 nearby enemies.',
     cost: 165,
     cooldown: 0.40,
+    fireRate: 0.40,
     damage: 15,
     baseDmg: 15,
+    dmg: 15,
+    count: 1,
     speed: 520,
     projSpeed: 520,
     color: '#c77dff',
@@ -395,5 +422,81 @@ export function getWeaponEvolutionProgress(
     statusText
   };
 }
+
+// ============================================================================
+// WEAPON TACTICAL PROFILES (ROLE & BASE DPS CLASSIFIER - M91)
+// ============================================================================
+
+export interface WeaponTacticalProfile {
+  weaponId: WeaponId;
+  roleTag:
+    | 'PRECISION SIDEARM'
+    | 'RAPID SUPPRESSION'
+    | 'AREA DENIAL'
+    | 'HEAVY ARTILLERY'
+    | 'CLOSE-QUARTERS BURST'
+    | 'SNIPER PIERCE'
+    | 'CHAIN CROWD-CONTROL';
+  optimalRangeText: string;
+  baseDps: number;
+  summaryLine: string;
+}
+
+export const WEAPON_TACTICAL_ROLES: Record<
+  WeaponId,
+  {
+    roleTag: WeaponTacticalProfile['roleTag'];
+    optimalRangeText: string;
+  }
+> = {
+  pistol: {
+    roleTag: 'PRECISION SIDEARM',
+    optimalRangeText: 'MID RANGE'
+  },
+  machine_gun: {
+    roleTag: 'RAPID SUPPRESSION',
+    optimalRangeText: 'CLOSE-TO-MID RANGE'
+  },
+  flamethrower: {
+    roleTag: 'AREA DENIAL',
+    optimalRangeText: 'SHORT RANGE'
+  },
+  grenade_launcher: {
+    roleTag: 'HEAVY ARTILLERY',
+    optimalRangeText: 'MID-TO-LONG RANGE'
+  },
+  shotgun: {
+    roleTag: 'CLOSE-QUARTERS BURST',
+    optimalRangeText: 'POINT-BLANK RANGE'
+  },
+  railgun: {
+    roleTag: 'SNIPER PIERCE',
+    optimalRangeText: 'LONG RANGE'
+  },
+  arc_coil: {
+    roleTag: 'CHAIN CROWD-CONTROL',
+    optimalRangeText: 'MID-RANGE CHAIN'
+  }
+};
+
+/**
+ * Pure function returning tactical role, optimal combat engagement range,
+ * base DPS classification, and single-line summary badge string for any weapon.
+ */
+export function getWeaponTacticalProfile(weaponId: WeaponId): WeaponTacticalProfile {
+  const w = WEAPONS[weaponId] || WEAPONS.pistol;
+  const config = WEAPON_TACTICAL_ROLES[weaponId] || WEAPON_TACTICAL_ROLES.pistol;
+  const baseDps = Math.round((w.dmg * (w.count || 1)) / Math.max(0.05, w.fireRate));
+  const summaryLine = `${config.roleTag} · ${baseDps} BASE DPS · ${config.optimalRangeText}`;
+
+  return {
+    weaponId: isWeaponId(weaponId) ? weaponId : 'pistol',
+    roleTag: config.roleTag,
+    optimalRangeText: config.optimalRangeText,
+    baseDps,
+    summaryLine
+  };
+}
+
 
 
