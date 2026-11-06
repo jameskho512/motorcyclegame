@@ -738,11 +738,10 @@ describe('Tier 5: Playability Verification & End-to-End Simulation', () => {
       expect(runSave).not.toBeNull();
       expect(JSON.parse(runSave!).floorNum).toBe(1);
 
-      // 7. Player death & checkpoint eradication
+      // 7. Player death -> evacuates to Outlaw Home Base Sanctuary & clears run save
       app.handlePlayerDeath();
-      expect(app.stateManager.gameOver).toBe(true);
       expect(localStorage.getItem(SAVE_KEY_RUN)).toBeNull();
-      expect(app.garage.isOpen()).toBe(true);
+      expect(app.getCurrentRoom()?.type).toBe('hub');
 
       input.destroy();
     });

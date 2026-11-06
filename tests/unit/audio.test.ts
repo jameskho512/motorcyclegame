@@ -222,7 +222,7 @@ describe('Web Audio Procedural Synthesizer', () => {
 
     it('sanitizeVolumeSettings clamps to 0..1, ignores non-finite, and parses JSON strings', () => {
       const s = sanitizeVolumeSettings({ master: 2, engine: -1, weapons: 0.5, impacts: 'x', pickups: NaN, ui: 0.25 });
-      expect(s).toEqual({ master: 1, engine: 0, weapons: 0.5, impacts: 1, pickups: 1, ui: 0.25 });
+      expect(s).toEqual({ master: 1, music: 0.75, engine: 0, weapons: 0.5, impacts: 1, pickups: 1, ui: 0.25 });
       const fromStr = sanitizeVolumeSettings(JSON.stringify({ weapons: 0.3 }));
       expect(fromStr.weapons).toBeCloseTo(0.3);
       expect(fromStr.master).toBe(1);
@@ -263,7 +263,7 @@ describe('Web Audio Procedural Synthesizer', () => {
       const saved = JSON.parse(mockStorage.getItem(SAVE_KEY_AUDIO) as string);
       expect(saved.weapons).toBeCloseTo(0.35);
       expect(saved.ui).toBe(1);
-      expect(Object.keys(saved).sort()).toEqual(['engine', 'impacts', 'master', 'pickups', 'ui', 'weapons']);
+      expect(Object.keys(saved).sort()).toEqual(['engine', 'impacts', 'master', 'music', 'pickups', 'ui', 'weapons']);
 
       sfx.resetVolumes();
       expect(sfx.getVolumes()).toEqual(DEFAULT_VOLUME_SETTINGS);
@@ -333,8 +333,8 @@ describe('Web Audio Procedural Synthesizer', () => {
         const master = gains[0];
         expect(master.gain.value).toBeCloseTo(0.38 * 0.5);
         const buses = gains.filter((n) => n.connect.mock.calls.some((c) => c[0] === master));
-        expect(buses.length).toBe(5);
-        expect(buses.map((b) => b.gain.value).sort()).toEqual([0.25, 1, 1, 1, 1]);
+        expect(buses.length).toBe(6);
+        expect(buses.map((b) => b.gain.value).sort()).toEqual([0.25, 0.75, 1, 1, 1, 1]);
         const weaponsBus = buses.find((b) => b.gain.value === 0.25) as FakeNode;
 
         // engine gain must feed the engine bus, not master directly

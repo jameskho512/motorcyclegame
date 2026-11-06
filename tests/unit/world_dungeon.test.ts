@@ -332,8 +332,8 @@ describe('World Module: Procedural Dungeon Generation (src/world/dungeon.ts)', (
       expect(bossF3.color).toBe('#9d4edd');
 
       const bossF4 = createBoss(4, 360, 270);
-      expect(bossF4.name).toBe('SCRAP GOLIATH');
-      expect(bossF4.bossVariant).toBe(0);
+      expect(bossF4.name).toBe('CRYO VALKYRIE');
+      expect(bossF4.bossVariant).toBe(3);
     });
 
     it('scales enemy stats and applies elite multipliers', () => {

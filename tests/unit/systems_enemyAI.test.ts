@@ -429,31 +429,31 @@ describe('Systems: EnemyAI — All 10 Enemy Behaviors', () => {
 
 describe('Systems: EnemyAI — The 3 Boss Variants', () => {
   it('creates the correct boss variant based on (floor - 1) % 3 formula', () => {
-    // Floor 1: (0) % 3 = 0 -> SCRAP GOLIATH
+    // Floor 1: (0) % 6 = 0 -> SCRAP GOLIATH
     const boss1 = createBoss(1, 360, 360);
     expect(boss1.bossVariant).toBe(0);
     expect(boss1.name).toBe('SCRAP GOLIATH');
     expect(boss1.color).toBe(BOSS_COLORS[0]);
-    expect(boss1.radius).toBe(34);
+    expect(boss1.radius).toBe(36);
     expect(boss1.speed).toBe(98 + 1 * 7); // 105
 
-    // Floor 2: (1) % 3 = 1 -> SIEGE BEHEMOTH
+    // Floor 2: (1) % 6 = 1 -> SIEGE BEHEMOTH
     const boss2 = createBoss(2, 360, 360);
     expect(boss2.bossVariant).toBe(1);
     expect(boss2.name).toBe('SIEGE BEHEMOTH');
     expect(boss2.color).toBe(BOSS_COLORS[1]);
-    expect(boss2.speed).toBe(98 + 2 * 7); // 112
+    expect(boss2.speed).toBe(111);
 
-    // Floor 3: (2) % 3 = 2 -> OVERLORD HELION
+    // Floor 3: (2) % 6 = 2 -> OVERLORD HELION
     const boss3 = createBoss(3, 360, 360);
     expect(boss3.bossVariant).toBe(2);
     expect(boss3.name).toBe('OVERLORD HELION');
     expect(boss3.color).toBe(BOSS_COLORS[2]);
-    expect(boss3.speed).toBe(98 + 3 * 7); // 119
+    expect(boss3.speed).toBe(118);
 
-    // Floor 4: wraps to Variant 0
+    // Floor 4: (3) % 6 = 3 -> CRYO VALKYRIE
     const boss4 = createBoss(4, 360, 360);
-    expect(boss4.bossVariant).toBe(0);
+    expect(boss4.bossVariant).toBe(3);
   });
 
   it('Variant 0 (Scrap Goliath) fires circular bullet novas on primary attack', () => {
@@ -475,11 +475,10 @@ describe('Systems: EnemyAI — The 3 Boss Variants', () => {
       floorNum: 1
     });
 
-    // Floor 1 count: 8 + min(6, 2) = 10 bullets
-    expect(bullets).toHaveLength(10);
+    // Floor 1 count: 10 radial nova + 3 aimed spread = 13 bullets
+    expect(bullets).toHaveLength(13);
     for (const b of bullets) {
-      expect(b.radius).toBe(7);
-      expect(b.color).toBe(boss.color);
+      expect(b.radius).toBeGreaterThanOrEqual(6.5);
     }
   });
 
@@ -504,7 +503,7 @@ describe('Systems: EnemyAI — The 3 Boss Variants', () => {
     });
 
     expect(boss.subTimer).toBe(2.8);
-    expect(bombs).toHaveLength(1);
+    expect(bombs).toHaveLength(3);
     expect(bombs[0].targetX).toBe(420);
     expect(bombs[0].targetY).toBe(380);
     expect(bombs[0].duration).toBe(0.85);

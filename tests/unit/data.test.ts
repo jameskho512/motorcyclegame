@@ -162,8 +162,8 @@ describe('Data Module: upgrades.ts', () => {
     expect(calcUpgradeCost('maxHp', 1)).toBe(61); // 35 * 1.75 = 61.25 -> 61
   });
 
-  it('defines all 9 in-run pedestal mods with costs and valid apply functions', () => {
-    expect(RUN_MOD_POOL.length).toBe(9);
+  it('defines all 15 in-run pedestal mods with costs and valid apply functions', () => {
+    expect(RUN_MOD_POOL.length).toBe(15);
 
     const initialPlayer: ModPlayerTarget = {
       hp: 4,
@@ -229,8 +229,8 @@ describe('Data Module: upgrades.ts', () => {
     expect(p.vampChance).toBe(0.6);
   });
 
-  it('defines 6 RoR2 stacking drop items with badges and icons', () => {
-    expect(DROP_ITEM_IDS.length).toBe(6);
+  it('defines 12 RoR2 stacking drop items with badges and icons', () => {
+    expect(DROP_ITEM_IDS.length).toBe(12);
     for (const id of DROP_ITEM_IDS) {
       const it = DROP_ITEMS[id];
       expect(it).toBeDefined();

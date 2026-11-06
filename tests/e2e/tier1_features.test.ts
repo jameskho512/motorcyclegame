@@ -759,11 +759,11 @@ describe('Tier 1: Feature Coverage — 28 Features in Isolation', () => {
   // Feature 26: 3 Muscle-Car Bosses
   // --------------------------------------------------------------------------
   describe('Feature 26: 3 Muscle-Car Bosses', () => {
-    it('creates Scrap Goliath, Siege Behemoth, and Overlord Helion with 280 base HP and floor scaling', () => {
+    it('creates Scrap Goliath, Siege Behemoth, and Overlord Helion with 1120 base HP and floor scaling', () => {
       const b0 = createBoss(1, 360, 360); // floor 1 -> Goliath
       expect(b0.name).toBe('SCRAP GOLIATH');
       expect(b0.bossVariant).toBe(0);
-      expect(b0.hp).toBe(280);
+      expect(b0.hp).toBe(1120);
 
       const b1 = createBoss(2, 360, 360); // floor 2 -> Behemoth
       expect(b1.name).toBe('SIEGE BEHEMOTH');
@@ -779,10 +779,10 @@ describe('Tier 1: Feature Coverage — 28 Features in Isolation', () => {
   // Feature 27: In-Run Mods & RoR2 Drops
   // --------------------------------------------------------------------------
   describe('Feature 27: In-Run Mods & RoR2 Drops', () => {
-    it('verifies 9 in-run pedestal mods mutate player stats and 6 RoR2 stacking items exist', () => {
-      expect(RUN_MOD_POOL).toHaveLength(9);
-      expect(Object.keys(DROP_ITEMS)).toHaveLength(6);
-      expect(DROP_ITEM_IDS).toHaveLength(6);
+    it('verifies 15 in-run pedestal mods mutate player stats and 12 RoR2 stacking items exist', () => {
+      expect(RUN_MOD_POOL).toHaveLength(15);
+      expect(Object.keys(DROP_ITEMS)).toHaveLength(12);
+      expect(DROP_ITEM_IDS).toHaveLength(12);
 
       // Test mod application: Hollow-Point (+25% damage)
       const hpMod = RUN_MOD_POOL.find(m => m.id === 'hollow_point')!;

@@ -127,7 +127,7 @@ describe('Tier 4: Real-World Application Scenarios', () => {
       const boss = bossRoom.enemies.find(e => e.type === 'boss')!;
       expect(boss.name).toBe('SCRAP GOLIATH');
       const initialBossHp = boss.hp;
-      expect(initialBossHp).toBe(280);
+      expect(initialBossHp).toBe(1120);
 
       // Defeat boss minions first
       for (let i = bossRoom.enemies.length - 1; i >= 0; i--) {
@@ -318,21 +318,21 @@ describe('Tier 4: Real-World Application Scenarios', () => {
       const b1 = createBoss(1, 360, 360);
       expect(b1.name).toBe('SCRAP GOLIATH');
       expect(b1.bossVariant).toBe(0);
-      expect(b1.hp).toBe(280);
+      expect(b1.hp).toBe(1120);
 
       // Floor 2: Siege Behemoth (Variant 1) with scaled HP
       const b2 = createBoss(2, 360, 360);
       expect(b2.name).toBe('SIEGE BEHEMOTH');
       expect(b2.bossVariant).toBe(1);
       expect(b2.hp).toBeGreaterThan(b1.hp);
-      expect(b2.hp).toBe(Math.round(280 * getFloorScale(2)));
+      expect(b2.hp).toBe(Math.round(1120 * getFloorScale(2)));
 
       // Floor 3: Overlord Helion (Variant 2) with further scaled HP
       const b3 = createBoss(3, 360, 360);
       expect(b3.name).toBe('OVERLORD HELION');
       expect(b3.bossVariant).toBe(2);
       expect(b3.hp).toBeGreaterThan(b2.hp);
-      expect(b3.hp).toBe(Math.round(280 * getFloorScale(3)));
+      expect(b3.hp).toBe(Math.round(1120 * getFloorScale(3)));
     });
   });
 });

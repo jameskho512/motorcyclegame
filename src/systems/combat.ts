@@ -835,7 +835,7 @@ export function updatePlayerBullets(
         x2: b.x,
         y2: b.y,
         color: b.color || '#00f5d4',
-        width: b.radius ? Math.round(b.radius * 0.8) : 4,
+        width: b.radius && b.radius > 7 ? 6 : 4,
         life: 0.22,
         maxLife: 0.22
       });

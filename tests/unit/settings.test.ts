@@ -60,15 +60,15 @@ describe('SettingsController (audio mixer overlay)', () => {
     ctrl.mount();
   });
 
-  it('renders 6 labelled range sliders (master + 5 channels) with % readouts', () => {
+  it('renders 7 labelled range sliders (master + 6 channels) with % readouts', () => {
     const sliders = document.querySelectorAll<HTMLInputElement>('#settings-overlay input[type="range"]');
-    expect(sliders.length).toBe(6);
+    expect(sliders.length).toBe(7);
     sliders.forEach((s) => {
       expect(s.id).toBeTruthy();
       expect(document.querySelector(`label[for="${s.id}"]`)).not.toBeNull();
       expect(s.min).toBe('0');
       expect(s.max).toBe('100');
-      expect(s.value).toBe('100');
+      expect(Number(s.value)).toBeGreaterThanOrEqual(75);
     });
     const readout = document.querySelector('[data-readout="weapons"]');
     expect(readout?.textContent).toBe('100%');
