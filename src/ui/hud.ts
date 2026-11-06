@@ -196,19 +196,62 @@ export class HUDController {
     if (!this.minimapCanvas || !this.minimapCtx) return;
     const mc = this.minimapCanvas;
     const g = this.minimapCtx;
-    const mw = (mc as any)._lw || 240;
-    const mh = (mc as any)._lh || 145;
 
-    const scale = mc.width / mw;
-    g.setTransform(scale, 0, 0, scale, 0, 0);
+    const rectW = mc.clientWidth || mc.width || 240;
+    const rectH = mc.clientHeight || mc.height || 260;
+    const mw = Math.max(240, Math.round(rectW));
+    const mh = Math.max(220, Math.round(rectH));
+
+    if (mc.width !== mw || mc.height !== mh) {
+      mc.width = mw;
+      mc.height = mh;
+    }
+
+    g.setTransform(1, 0, 0, 1, 0, 0);
     g.clearRect(0, 0, mw, mh);
+
+    // Dynamic cell size scaled to fill the minimap card
+    const cellSize = Math.min(32, Math.max(24, Math.round(Math.min(mw, mh) * 0.125)));
+    const gap = Math.max(4, Math.round(cellSize * 0.18));
 
     for (const key in dungeon) {
       const r = dungeon[key];
-      const { rx, ry, cell, visible } = calcMinimapRoomCoords(r.x, r.y, curRoomX, curRoomY, mw, mh);
+      const { rx, ry, cell, visible } = calcMinimapRoomCoords(r.x, r.y, curRoomX, curRoomY, mw, mh, cellSize, gap);
       if (!visible) continue;
 
-      if (r.x === curRoomX && r.y === curRoomY) {
+      // Draw corridor connections between adjacent rooms
+      if (r.doors && (r.visited || (r.x === curRoomX && r.y === curRoomY))) {
+        g.strokeStyle = r.cleared ? '#484b60' : '#7209b7';
+        g.lineWidth = 3;
+        if (r.doors.N) {
+          g.beginPath();
+          g.moveTo(rx + cell / 2, ry);
+          g.lineTo(rx + cell / 2, ry - gap);
+          g.stroke();
+        }
+        if (r.doors.S) {
+          g.beginPath();
+          g.moveTo(rx + cell / 2, ry + cell);
+          g.lineTo(rx + cell / 2, ry + cell + gap);
+          g.stroke();
+        }
+        if (r.doors.W) {
+          g.beginPath();
+          g.moveTo(rx, ry + cell / 2);
+          g.lineTo(rx - gap, ry + cell / 2);
+          g.stroke();
+        }
+        if (r.doors.E) {
+          g.beginPath();
+          g.moveTo(rx + cell, ry + cell / 2);
+          g.lineTo(rx + cell + gap, ry + cell / 2);
+          g.stroke();
+        }
+      }
+
+      // Room block fill
+      const isCurrent = (r.x === curRoomX && r.y === curRoomY);
+      if (isCurrent) {
         g.fillStyle = '#ff6b2b';
       } else if (r.visited) {
         g.fillStyle = r.cleared ? '#5c677d' : '#9d4edd';
@@ -217,8 +260,8 @@ export class HUDController {
       }
 
       g.fillRect(rx, ry, cell, cell);
-      g.strokeStyle = '#0a0b10';
-      g.lineWidth = 1.5;
+      g.strokeStyle = isCurrent ? '#ffd166' : '#0a0b10';
+      g.lineWidth = isCurrent ? 2.5 : 1.5;
       g.strokeRect(rx, ry, cell, cell);
 
       // Special room markers: Boss ☠, Mod ★, Shop $
@@ -226,12 +269,14 @@ export class HUDController {
         g.fillStyle = r.type === 'boss'
           ? '#ff4d6d'
           : (r.type === 'treasure' ? '#ffd166' : '#06d6a0');
-        g.font = 'bold 11px sans-serif';
+        const iconSize = Math.round(cell * 0.54);
+        g.font = `bold ${iconSize}px sans-serif`;
         g.textAlign = 'center';
+        g.textBaseline = 'middle';
         const icon = r.type === 'boss'
           ? '☠'
           : (r.type === 'treasure' ? '★' : '$');
-        g.fillText(icon, rx + cell / 2, ry + cell - 4);
+        g.fillText(icon, rx + cell / 2, ry + cell / 2);
       }
     }
   }

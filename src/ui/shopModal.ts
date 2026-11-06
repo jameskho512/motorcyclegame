@@ -38,6 +38,11 @@ export class ShopModalController {
 
       this.confirmBtn?.addEventListener('click', () => this.confirm());
       this.cancelBtn?.addEventListener('click', () => this.cancel());
+      this.overlay?.addEventListener('click', (e) => {
+        if (e.target === this.overlay) {
+          this.cancel();
+        }
+      });
     }
   }
 

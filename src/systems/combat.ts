@@ -679,6 +679,9 @@ export function handleEnemyDeath({
       item: genLoot(floorNum),
       radius: 20
     });
+
+    // Spawn exit trapdoor / dimensional portal to next floor
+    room.trapdoor = true;
   } else if (en.type !== 'mini_swarmer') {
     // 65% chance for coins (1 or 3 for elite)
     if (rng() < 0.65) {

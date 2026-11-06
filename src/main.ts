@@ -20,7 +20,8 @@ import {
   EquipmentItem,
   UnlockableWeaponId,
   MetaUpgradeId,
-  Room
+  Room,
+  Pickup
 } from './types/game';
 
 import { StateManager } from './core/state';
@@ -55,6 +56,7 @@ export class MotoRogueApp {
   public garage: GarageController;
   public shopModal: ShopModalController;
   public tooltip: TooltipManager;
+  public dismissedPickup: Pickup | null = null;
 
   public curRoomX: number = 0;
   public curRoomY: number = 0;
@@ -190,6 +192,8 @@ export class MotoRogueApp {
       },
       onShopCancel: () => {
         if (this.shopModal.isOpen()) {
+          const active = this.shopModal.getActivePickup();
+          if (active) this.dismissedPickup = active;
           this.shopModal.cancel();
         }
       },
@@ -250,6 +254,7 @@ export class MotoRogueApp {
    * Starts a run, either restoring checkpoint state or creating fresh floor 1 dungeon.
    */
   public startNewRun(restored: boolean): void {
+    this.dismissedPickup = null;
     if (!restored) {
       this.stateManager.resetRun();
     }
@@ -465,6 +470,7 @@ export class MotoRogueApp {
         nextRoom.visited = true;
       }
       this.audio.doorTransition();
+      this.dismissedPickup = null;
       this.stateManager.saveRun();
       this.updateHUD();
       return;
@@ -474,7 +480,7 @@ export class MotoRogueApp {
     if (room.trapdoor) {
       const tx = ARENA_WIDTH / 2;
       const ty = ARENA_HEIGHT / 2 - 45;
-      if (Math.hypot(player.x - tx, player.y - ty) < 28) {
+      if (Math.hypot(player.x - tx, player.y - ty) < 36) {
         this.nextFloor();
         return;
       }
@@ -532,8 +538,19 @@ export class MotoRogueApp {
     // 8. Room Clearance Check
     if (!room.cleared && room.enemies.length === 0) {
       room.cleared = true;
+      if (room.type === 'boss') {
+        room.trapdoor = true;
+      }
       this.audio.roomClear();
       this.updateHUD();
+    }
+
+    // Clear dismissed shop pickup if player moved away from it
+    if (this.dismissedPickup) {
+      const dist = Math.hypot(this.dismissedPickup.x - player.x, this.dismissedPickup.y - player.y);
+      if (dist > player.radius + this.dismissedPickup.radius + 12) {
+        this.dismissedPickup = null;
+      }
     }
 
     // 9. Pickup Interactions
@@ -563,36 +580,47 @@ export class MotoRogueApp {
           room.pickups.splice(i, 1);
           this.updateHUD();
         } else if (p.type === 'shop_heart' || p.type === 'mod_pedestal' || p.type === 'run_weapon') {
+          // Do not re-prompt if the player explicitly cancelled this purchase until they step away
+          if (this.dismissedPickup === p) {
+            continue;
+          }
           // Proximity shop prompt confirmation
           if (!this.shopModal.isOpen()) {
-            this.shopModal.open(p, () => {
-              if (player.coins >= p.cost) {
-                player.coins -= p.cost;
-                this.audio.shopBuy();
-                if (p.type === 'shop_heart') {
-                  player.hp = Math.min(player.maxHp, player.hp + 2);
-                } else if (p.type === 'mod_pedestal') {
-                  p.mod.apply(player);
-                  player.items.push(p.mod.name);
-                } else if (p.type === 'run_weapon') {
-                  player.runWeapons[p.weaponId] = true;
-                  player.weapon = p.weaponId;
+            this.shopModal.open(
+              p,
+              () => {
+                this.dismissedPickup = null;
+                if (player.coins >= p.cost) {
+                  player.coins -= p.cost;
+                  this.audio.shopBuy();
+                  if (p.type === 'shop_heart') {
+                    player.hp = Math.min(player.maxHp, player.hp + 2);
+                  } else if (p.type === 'mod_pedestal') {
+                    p.mod.apply(player);
+                    player.items.push(p.mod.name);
+                  } else if (p.type === 'run_weapon') {
+                    player.runWeapons[p.weaponId] = true;
+                    player.weapon = p.weaponId;
+                  }
+                  const pIdx = room.pickups.indexOf(p);
+                  if (pIdx >= 0) room.pickups.splice(pIdx, 1);
+                  this.updateHUD();
+                } else {
+                  this.audio.shopError();
+                  this.combatState.damageNumbers.push({
+                    x: player.x,
+                    y: player.y - 30,
+                    text: `NEED ${p.cost} COINS!`,
+                    color: '#ef233c',
+                    life: 0.8,
+                    maxLife: 0.8
+                  });
                 }
-                const pIdx = room.pickups.indexOf(p);
-                if (pIdx >= 0) room.pickups.splice(pIdx, 1);
-                this.updateHUD();
-              } else {
-                this.audio.shopError();
-                this.combatState.damageNumbers.push({
-                  x: player.x,
-                  y: player.y - 30,
-                  text: `NEED ${p.cost} COINS!`,
-                  color: '#ef233c',
-                  life: 0.8,
-                  maxLife: 0.8
-                });
+              },
+              () => {
+                this.dismissedPickup = p;
               }
-            });
+            );
           }
         }
       }

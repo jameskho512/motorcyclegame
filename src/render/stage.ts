@@ -16,7 +16,7 @@
  * Parity reference: moto-rogue/index.html L2845-L3274
  */
 
-import { Application, Container, Graphics } from 'pixi.js';
+import { Application, Container, Graphics, Text, TextStyle } from 'pixi.js';
 import {
   ARENA_WIDTH,
   ARENA_HEIGHT,
@@ -69,6 +69,7 @@ export class StageManager {
   private vfxGraphics: Graphics;
   private hudGraphics: Graphics;
   private floatingTextContainer: Container;
+  private priceTextContainer: Container;
 
   private isInitialized: boolean = false;
 
@@ -91,6 +92,7 @@ export class StageManager {
     this.vfxGraphics = new Graphics();
     this.hudGraphics = new Graphics();
     this.floatingTextContainer = new Container();
+    this.priceTextContainer = new Container();
   }
 
   /**
@@ -118,6 +120,7 @@ export class StageManager {
     this.entityLayer.addChild(this.entityGraphics);
     this.vfxLayer.addChild(this.vfxGraphics);
     this.hudLayer.addChild(this.hudGraphics);
+    this.hudLayer.addChild(this.priceTextContainer);
     this.hudLayer.addChild(this.floatingTextContainer);
 
     this.app.stage.addChild(this.floorLayer);
@@ -476,6 +479,39 @@ export class StageManager {
   }
 
   private renderHUD(g: Graphics, room: Room, damageNumbers: DamageNumber[]): void {
+    // Clear previous price text labels
+    this.priceTextContainer.removeChildren();
+
+    // Render price tags below each shop/priced item
+    for (const p of room.pickups) {
+      if ('cost' in p && typeof p.cost === 'number') {
+        const badgeY = p.y + p.radius + 15;
+        const isFree = p.cost === 0;
+        const textStr = isFree ? 'FREE' : `${p.cost} 🪙`;
+        const col = isFree ? 0x06d6a0 : 0xffd166;
+        const textCol = isFree ? '#06d6a0' : '#ffd166';
+
+        // Draw small badge pill background
+        g.roundRect(p.x - 26, badgeY - 10, 52, 20, 5)
+          .fill({ color: 0x0a0b10, alpha: 0.9 })
+          .stroke({ color: col, width: 1.5 });
+
+        const priceText = new Text({
+          text: textStr,
+          style: new TextStyle({
+            fontFamily: "'Segoe UI', Impact, Arial, sans-serif",
+            fontSize: 12,
+            fontWeight: '800',
+            fill: textCol,
+            stroke: { color: '#0a0b10', width: 2 }
+          })
+        });
+        priceText.anchor.set(0.5, 0.5);
+        priceText.position.set(p.x, badgeY);
+        this.priceTextContainer.addChild(priceText);
+      }
+    }
+
     // Enemy & Boss Health Bars
     for (const en of room.enemies) {
       if (en.hp < en.maxHp || en.type === 'boss' || en.isElite) {

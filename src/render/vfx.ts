@@ -72,35 +72,10 @@ export class VFXManager {
 
   /**
    * Renders Anime Speed Lines when NOS boost is active.
+   * Speed lines behind motorcycle removed per design specification.
    */
-  public renderSpeedLines(g: Graphics, player: PlayerState, isBoosting: boolean): void {
-    if (!isBoosting || player.nosLock || player.nos <= 0) return;
-
-    const angle = player.bikeAngle;
-    const oppAngle = angle + Math.PI;
-    const count = 14;
-
-    for (let i = 0; i < count; i++) {
-      const offsetDist = 18 + ((i * 19 + Math.floor(this.speedLineTimer * 60)) % 80);
-      const perp = (i % 2 === 0 ? 1 : -1) * (14 + (i * 7) % 36);
-      const startX = player.x + Math.cos(oppAngle) * offsetDist - Math.sin(oppAngle) * perp;
-      const startY = player.y + Math.sin(oppAngle) * offsetDist + Math.cos(oppAngle) * perp;
-
-      const length = 45 + ((i * 23) % 65);
-      const endX = startX + Math.cos(oppAngle) * length;
-      const endY = startY + Math.sin(oppAngle) * length;
-
-      // Outer bold black speed line contour
-      g.moveTo(startX, startY)
-        .lineTo(endX, endY)
-        .stroke({ color: 0x0a0b10, width: 3.5, alpha: 0.85 });
-
-      // Core bright cyan/white speed streak
-      const color = i % 3 === 0 ? 0xffffff : (i % 3 === 1 ? 0x4cc9f0 : 0x00f5d4);
-      g.moveTo(startX, startY)
-        .lineTo(endX, endY)
-        .stroke({ color, width: 2, alpha: 0.95 });
-    }
+  public renderSpeedLines(_g: Graphics, _player: PlayerState, _isBoosting: boolean): void {
+    // Removed speed lines behind motorcycle for cleaner visual clarity
   }
 
   /**
@@ -127,74 +102,67 @@ export class VFXManager {
       ];
     };
 
-    // 1. Subtle translucent rim contour around bike perimeter (NO opaque fill over bike body)
+    // 1. Subtle translucent rim contour around bike perimeter (soft, non-distracting)
     const rimPoints: number[] = [];
     const rimSteps = 16;
-    const rx = 28; // Longitudinal semi-axis
-    const ry = 16; // Lateral semi-axis
+    const rx = 27; // Longitudinal semi-axis
+    const ry = 15; // Lateral semi-axis
     for (let i = 0; i < rimSteps; i++) {
       const theta = (i / rimSteps) * Math.PI * 2;
       const [wx, wy] = toWorld(Math.cos(theta) * rx, Math.sin(theta) * ry);
       rimPoints.push(wx, wy);
     }
-    const pulseAlpha = 0.42 + Math.sin(this.speedLineTimer * 14) * 0.18;
+    const pulseAlpha = 0.16 + Math.sin(this.speedLineTimer * 10) * 0.08;
     g.poly(rimPoints)
-      .stroke({ color: 0x4cc9f0, width: 2, alpha: pulseAlpha });
+      .stroke({ color: 0x4cc9f0, width: 1.5, alpha: pulseAlpha });
 
-    // 2. Twin-exhaust afterburner jet cones shooting backward from rear pipes (-23, -8) and (-23, 8)
+    // 2. Twin-exhaust subtle jet cones shooting backward from rear pipes (-23, -8) and (-23, 8)
     const pipeYOffsets = [-8, 8];
-    const flicker = Math.sin(this.speedLineTimer * 46) * 4.5 + Math.cos(this.speedLineTimer * 31) * 2.5;
-    const outerLen = Math.max(20, 32 + flicker);
-    const coreLen = outerLen * 0.62;
+    const flicker = Math.sin(this.speedLineTimer * 46) * 2.0 + Math.cos(this.speedLineTimer * 31) * 1.5;
+    const outerLen = Math.max(9, 14 + flicker);
+    const coreLen = outerLen * 0.55;
 
     for (const pyOff of pipeYOffsets) {
       const [tipX, tipY] = toWorld(-23, pyOff);
 
-      // Outer expanding cyan flame plume
+      // Outer gentle cyan flame plume
       const outerCone = [
-        tipX + perpX * 3.2, tipY + perpY * 3.2,
-        tipX + cosOpp * (outerLen * 0.35) + perpX * 5.0, tipY + sinOpp * (outerLen * 0.35) + perpY * 5.0,
+        tipX + perpX * 1.5, tipY + perpY * 1.5,
+        tipX + cosOpp * (outerLen * 0.4) + perpX * 2.2, tipY + sinOpp * (outerLen * 0.4) + perpY * 2.2,
         tipX + cosOpp * outerLen, tipY + sinOpp * outerLen,
-        tipX + cosOpp * (outerLen * 0.35) - perpX * 5.0, tipY + sinOpp * (outerLen * 0.35) - perpY * 5.0,
-        tipX - perpX * 3.2, tipY - perpY * 3.2
+        tipX + cosOpp * (outerLen * 0.4) - perpX * 2.2, tipY + sinOpp * (outerLen * 0.4) - perpY * 2.2,
+        tipX - perpX * 1.5, tipY - perpY * 1.5
       ];
 
       g.poly(outerCone)
-        .fill({ color: 0x4895ef, alpha: 0.72 })
-        .stroke({ color: 0x0a0b10, width: 1.5, alpha: 0.6 });
+        .fill({ color: 0x4895ef, alpha: 0.28 });
 
-      // High-intensity electric cyan mid-core
+      // Mid electric cyan core
       const midCone = [
-        tipX + perpX * 2.2, tipY + perpY * 2.2,
+        tipX + perpX * 1.0, tipY + perpY * 1.0,
         tipX + cosOpp * coreLen, tipY + sinOpp * coreLen,
-        tipX - perpX * 2.2, tipY - perpY * 2.2
+        tipX - perpX * 1.0, tipY - perpY * 1.0
       ];
 
       g.poly(midCone)
-        .fill({ color: 0x4cc9f0, alpha: 0.88 });
+        .fill({ color: 0x4cc9f0, alpha: 0.45 });
 
-      // Blinding white heat core at nozzle
+      // Soft white nozzle heat core
       const whiteCore = [
-        tipX + perpX * 1.2, tipY + perpY * 1.2,
-        tipX + cosOpp * (coreLen * 0.55), tipY + sinOpp * (coreLen * 0.55),
-        tipX - perpX * 1.2, tipY - perpY * 1.2
+        tipX + perpX * 0.6, tipY + perpY * 0.6,
+        tipX + cosOpp * (coreLen * 0.5), tipY + sinOpp * (coreLen * 0.5),
+        tipX - perpX * 0.6, tipY - perpY * 0.6
       ];
 
       g.poly(whiteCore)
-        .fill({ color: 0xffffff, alpha: 0.96 });
+        .fill({ color: 0xffffff, alpha: 0.55 });
 
-      // Mach shock diamond pulse
-      const diamondDist = outerLen * 0.45;
+      // Subtle pulse dot
+      const diamondDist = outerLen * 0.4;
       const dX = tipX + cosOpp * diamondDist;
       const dY = tipY + sinOpp * diamondDist;
-      const diamondPts = [
-        dX + cosOpp * 4, dY + sinOpp * 4,
-        dX + perpX * 2.5, dY + perpY * 2.5,
-        dX - cosOpp * 4, dY - sinOpp * 4,
-        dX - perpX * 2.5, dY - perpY * 2.5
-      ];
-      g.poly(diamondPts)
-        .fill({ color: 0xffffff, alpha: 0.85 });
+      g.circle(dX, dY, 1.2)
+        .fill({ color: 0xffffff, alpha: 0.25 });
     }
   }
 

@@ -787,6 +787,92 @@ describe('Tier 5: Playability Verification & End-to-End Simulation', () => {
       app.inputManager.destroy();
     });
 
+    it('allows player to cancel shop purchase without modal immediately re-opening', () => {
+      setupAppDom();
+      const app = new MotoRogueApp();
+      app.startNewRun(false);
+
+      const room = app.getCurrentRoom()!;
+      room.cleared = true;
+
+      const shopPickup = {
+        x: app.stateManager.player.x,
+        y: app.stateManager.player.y,
+        radius: 16,
+        type: 'mod_pedestal' as const,
+        cost: 15,
+        mod: {
+          id: 'lead_foot',
+          name: 'Lead Foot Accelerators',
+          desc: '+20% Speed',
+          cost: 15,
+          apply: (p: PlayerState) => { p.speedMult += 0.20; }
+        }
+      };
+      room.pickups.push(shopPickup);
+
+      // Trigger shop modal prompt
+      app.update(0.016);
+      expect(app.shopModal.isOpen()).toBe(true);
+
+      // Cancel purchase
+      app.shopModal.cancel();
+      expect(app.shopModal.isOpen()).toBe(false);
+
+      // Next game loop tick while still standing on pickup: should NOT re-open
+      app.update(0.016);
+      expect(app.shopModal.isOpen()).toBe(false);
+
+      // Move player away from pickup
+      app.stateManager.player.x += 100;
+      app.update(0.016);
+      expect(app.dismissedPickup).toBeNull();
+
+      // Move back onto pickup: re-opens modal
+      app.stateManager.player.x = shopPickup.x;
+      app.update(0.016);
+      expect(app.shopModal.isOpen()).toBe(true);
+
+      app.inputManager.destroy();
+    });
+
+    it('spawns exit portal / trapdoor upon boss defeat', () => {
+      setupAppDom();
+      const app = new MotoRogueApp();
+      app.startNewRun(false);
+
+      const room = app.getCurrentRoom()!;
+      room.type = 'boss';
+      room.cleared = false;
+      room.trapdoor = false;
+
+      // Spawn a boss in room
+      const bossEnemy: any = {
+        id: 9999,
+        type: 'boss',
+        variant: 'goliath',
+        x: 360,
+        y: 200,
+        vx: 0,
+        vy: 0,
+        radius: 36,
+        hp: 10,
+        maxHp: 300,
+        color: '#ff4d6d'
+      };
+      room.enemies.push(bossEnemy);
+
+      // Kill the boss
+      bossEnemy.hp = 0;
+      app.update(0.016);
+
+      // Boss room is cleared and trapdoor portal is spawned
+      expect(room.cleared).toBe(true);
+      expect(room.trapdoor).toBe(true);
+
+      app.inputManager.destroy();
+    });
+
     it('simulates doorway room transition and autosaves checkpoint', () => {
       setupAppDom();
       const app = new MotoRogueApp();
