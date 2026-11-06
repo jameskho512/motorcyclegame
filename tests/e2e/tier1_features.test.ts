@@ -521,8 +521,8 @@ describe('Tier 1: Feature Coverage — 28 Features in Isolation', () => {
       expect(WEAPONS.flamethrower.cost).toBe(95);
 
       // Grenade Launcher
-      expect(WEAPONS.grenade_launcher.damage).toBe(36);
-      expect(WEAPONS.grenade_launcher.cooldown).toBe(0.78);
+      expect(WEAPONS.grenade_launcher.damage).toBe(18);
+      expect(WEAPONS.grenade_launcher.cooldown).toBe(1.17);
       expect(WEAPONS.grenade_launcher.speed).toBe(410);
       expect(WEAPONS.grenade_launcher.cost).toBe(140);
 

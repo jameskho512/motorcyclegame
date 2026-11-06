@@ -265,7 +265,7 @@ describe('EMPIRICAL STRESS TEST: Parity with Original index.html Monolith', () =
       pistol: { cost: 0, cooldown: 0.27, baseDmg: 13, projSpeed: 540, color: '#ffd166', radius: 5, life: 1.15 },
       machine_gun: { cost: 55, cooldown: 0.095, baseDmg: 5.5, projSpeed: 620, color: '#4cc9f0', radius: 4, life: 0.95 },
       flamethrower: { cost: 95, cooldown: 0.09, baseDmg: 3.2, projSpeed: 290, color: '#ff6b2b', radius: 6, life: 0.36 },
-      grenade_launcher: { cost: 140, cooldown: 0.78, baseDmg: 36, projSpeed: 410, color: '#f72585', radius: 8, life: 0.95 },
+      grenade_launcher: { cost: 140, cooldown: 1.17, baseDmg: 18, projSpeed: 410, color: '#f72585', radius: 8, life: 0.95 },
       shotgun: { cost: 70, cooldown: 0.56, baseDmg: 5.2, projSpeed: 560, color: '#ffbe0b', radius: 4.5, life: 0.46 },
       railgun: { cost: 120, cooldown: 0.80, baseDmg: 35, projSpeed: 980, color: '#00f5d4', radius: 6.5, life: 0.85 },
       arc_coil: { cost: 165, cooldown: 0.40, baseDmg: 15, projSpeed: 520, color: '#c77dff', radius: 6, life: 1.0 }

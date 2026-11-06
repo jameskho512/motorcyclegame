@@ -291,7 +291,7 @@ export function fireWeapon({
 
   const mx = player.x + Math.cos(player.aimAngle) * 20;
   const my = player.y + Math.sin(player.aimAngle) * 20;
-  const shots = Math.max(1, player.multiShot || 1);
+  const shots = player.weapon === 'grenade_launcher' ? 1 : Math.max(1, player.multiShot || 1);
 
   for (let s = 0; s < shots; s++) {
     const multiOffset = calcMultiShotOffset(shots, s);

@@ -223,14 +223,17 @@ describe('Systems: Combat — Weapon Firing & Cooldown Math', () => {
 
     // 4. Grenade Launcher
     {
-      const player = createMockPlayer({ weapon: 'grenade_launcher' });
+      const player = createMockPlayer({ weapon: 'grenade_launcher', multiShot: 4 });
       const state = createCombatState();
       fireWeapon({ player, target: { x: 500, y: 360 }, state, audio, rng: deterministicRng });
+      // Multi-shot must not affect grenade launcher: always 1 grenade
       expect(state.grenades).toHaveLength(1);
       const g = state.grenades[0];
       expect(g.radius).toBe(8);
       expect(g.blastRadius).toBe(92);
+      expect(g.dmg).toBe(18);
       expect(g.dmg).toBe(WEAPONS.grenade_launcher.baseDmg);
+      expect(player.fireTimer).toBeCloseTo(1.17, 5);
       expect(state.screenShake).toBeGreaterThanOrEqual(2.5);
     }
 
