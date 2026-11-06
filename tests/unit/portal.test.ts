@@ -29,7 +29,9 @@ import {
 import {
   ShopModalController,
   getShopItemAppraisal,
-  ShopItemAppraisal
+  ShopItemAppraisal,
+  getShopBuildSynergyHint,
+  ShopBuildSynergyHint
 } from '../../src/ui/shopModal';
 import {
   HubStationModalController,
@@ -701,6 +703,212 @@ describe('ShopModalController appraisal DOM attributes & pills', () => {
     const pill = descEl.querySelector('.shop-appraisal-pill');
     expect(pill).not.toBeNull();
     expect(pill?.textContent).toBe('⚡ HIGH-GRADE ORDNANCE · AFFORDABLE');
+  });
+});
+
+describe('getShopBuildSynergyHint pure helper', () => {
+  const createModPedestal = (mod: any, cost = 25): Pickup => ({
+    x: 100,
+    y: 100,
+    radius: 20,
+    type: 'mod_pedestal',
+    cost,
+    mod
+  });
+
+  it('identifies EVOLUTION_KEY synergy when pedestal mod matches player weapon signature mod id or name', () => {
+    // 1. Pistol with ricochet_mod by id
+    const pistolPickup = createModPedestal({
+      id: 'ricochet_mod',
+      name: 'Rubberized Casings',
+      desc: 'Bounce rounds'
+    });
+    const hint1: ShopBuildSynergyHint = getShopBuildSynergyHint(pistolPickup, { weapon: 'pistol' });
+    expect(hint1).toEqual({
+      hasSynergy: true,
+      synergyType: 'EVOLUTION_KEY',
+      hintText: '⚡ UNLOCKS RICOCHET REVOLVER EVOLUTION!'
+    });
+
+    // 2. Pistol with signatureModName ('Ricochet Rounds')
+    const pistolByName = createModPedestal({
+      id: 'other_id',
+      name: 'Ricochet Rounds',
+      desc: 'Bounce rounds'
+    });
+    const hint2 = getShopBuildSynergyHint(pistolByName, { weapon: 'pistol' });
+    expect(hint2.hasSynergy).toBe(true);
+    expect(hint2.synergyType).toBe('EVOLUTION_KEY');
+    expect(hint2.hintText).toBe('⚡ UNLOCKS RICOCHET REVOLVER EVOLUTION!');
+
+    // 3. Machine Gun with hair_trigger
+    const mgPickup = createModPedestal({
+      id: 'hair_trigger',
+      name: 'Hair Trigger',
+      desc: 'Faster fire'
+    });
+    const hint3 = getShopBuildSynergyHint(mgPickup, { weapon: 'machine_gun' });
+    expect(hint3).toEqual({
+      hasSynergy: true,
+      synergyType: 'EVOLUTION_KEY',
+      hintText: '⚡ UNLOCKS HYPER-VULCAN GATLING EVOLUTION!'
+    });
+
+    // 4. Shotgun with Split Chamber
+    const flakPickup = createModPedestal({
+      id: 'split_chamber',
+      name: 'Split Chamber',
+      desc: 'More pellets'
+    });
+    const hint4 = getShopBuildSynergyHint(flakPickup, { weapon: 'shotgun' });
+    expect(hint4).toEqual({
+      hasSynergy: true,
+      synergyType: 'EVOLUTION_KEY',
+      hintText: '⚡ UNLOCKS HELLFIRE FLAK CANNON EVOLUTION!'
+    });
+  });
+
+  it('returns STANDARD when pedestal mod does not match player weapon evolution', () => {
+    const pickup = createModPedestal({
+      id: 'speed_boost',
+      name: 'Speed Boost',
+      desc: '+Speed'
+    });
+    const hint = getShopBuildSynergyHint(pickup, { weapon: 'pistol' });
+    expect(hint).toEqual({
+      hasSynergy: false,
+      synergyType: 'STANDARD',
+      hintText: 'Standard Black Market Ordnance'
+    });
+  });
+
+  it('identifies LOW_HULL_REPAIR synergy when player hull is <= 50% maxHp', () => {
+    const heartPickup: Pickup = {
+      x: 100,
+      y: 100,
+      radius: 20,
+      type: 'shop_heart',
+      name: 'Hull Repair',
+      cost: 15
+    };
+
+    // Exactly 50% boundary (3 / 6)
+    const hintHalf = getShopBuildSynergyHint(heartPickup, { hp: 3, maxHp: 6 });
+    expect(hintHalf).toEqual({
+      hasSynergy: true,
+      synergyType: 'LOW_HULL_REPAIR',
+      hintText: '⚠️ CRITICAL HULL REPAIR RECOMMENDED!'
+    });
+
+    // Critical low (1 / 6)
+    const hintLow = getShopBuildSynergyHint(heartPickup, { hp: 1, maxHp: 6 });
+    expect(hintLow.hasSynergy).toBe(true);
+    expect(hintLow.synergyType).toBe('LOW_HULL_REPAIR');
+
+    // Odd maxHp boundary (1 / 3 -> ceil(1.5) = 2, 1 <= 2)
+    const hintOdd = getShopBuildSynergyHint(heartPickup, { hp: 1, maxHp: 3 });
+    expect(hintOdd.hasSynergy).toBe(true);
+    expect(hintOdd.synergyType).toBe('LOW_HULL_REPAIR');
+
+    // Safe health (> 50%, e.g. 4 / 6) -> STANDARD
+    const hintSafe = getShopBuildSynergyHint(heartPickup, { hp: 4, maxHp: 6 });
+    expect(hintSafe).toEqual({
+      hasSynergy: false,
+      synergyType: 'STANDARD',
+      hintText: 'Standard Black Market Ordnance'
+    });
+
+    // Full health (6 / 6) -> STANDARD
+    const hintFull = getShopBuildSynergyHint(heartPickup, { hp: 6, maxHp: 6 });
+    expect(hintFull.hasSynergy).toBe(false);
+    expect(hintFull.synergyType).toBe('STANDARD');
+
+    // Default player values (hp = 6, maxHp = 6 -> 6 <= 3 is false)
+    expect(getShopBuildSynergyHint(heartPickup, {})).toEqual({
+      hasSynergy: false,
+      synergyType: 'STANDARD',
+      hintText: 'Standard Black Market Ordnance'
+    });
+  });
+
+  it('identifies WEAPON_UPGRADE synergy when run_weapon differs from equipped weapon', () => {
+    const weaponPickup: Pickup = {
+      x: 100,
+      y: 100,
+      radius: 20,
+      type: 'run_weapon',
+      name: 'Shotgun',
+      weaponId: 'shotgun',
+      cost: 35
+    };
+
+    // Different weapon equipped
+    const hint = getShopBuildSynergyHint(weaponPickup, { weapon: 'pistol' });
+    expect(hint).toEqual({
+      hasSynergy: true,
+      synergyType: 'WEAPON_UPGRADE',
+      hintText: '🔫 ADDS NEW WEAPON TO RUN DECK!'
+    });
+
+    // Same weapon already equipped -> STANDARD
+    const hintSame = getShopBuildSynergyHint(weaponPickup, { weapon: 'shotgun' });
+    expect(hintSame).toEqual({
+      hasSynergy: false,
+      synergyType: 'STANDARD',
+      hintText: 'Standard Black Market Ordnance'
+    });
+
+    // Player with no weapon property -> STANDARD
+    const hintNoWeapon = getShopBuildSynergyHint(weaponPickup, {});
+    expect(hintNoWeapon.hasSynergy).toBe(false);
+    expect(hintNoWeapon.synergyType).toBe('STANDARD');
+  });
+
+  it('returns STANDARD when pickup or player are missing or null/undefined', () => {
+    expect(getShopBuildSynergyHint(null, null)).toEqual({
+      hasSynergy: false,
+      synergyType: 'STANDARD',
+      hintText: 'Standard Black Market Ordnance'
+    });
+
+    expect(getShopBuildSynergyHint(undefined, undefined)).toEqual({
+      hasSynergy: false,
+      synergyType: 'STANDARD',
+      hintText: 'Standard Black Market Ordnance'
+    });
+
+    const unknownPickup = {
+      x: 0,
+      y: 0,
+      radius: 10,
+      type: 'unknown_pickup_kind'
+    } as any;
+    expect(getShopBuildSynergyHint(unknownPickup, { weapon: 'pistol' })).toEqual({
+      hasSynergy: false,
+      synergyType: 'STANDARD',
+      hintText: 'Standard Black Market Ordnance'
+    });
+  });
+
+  it('is accessible via ShopModalController static and instance methods', () => {
+    const pickup: Pickup = {
+      x: 100,
+      y: 100,
+      radius: 20,
+      type: 'shop_heart',
+      name: 'Hull Repair',
+      cost: 15
+    };
+    const player = { hp: 2, maxHp: 6 };
+
+    expect(ShopModalController.getShopBuildSynergyHint(pickup, player)).toEqual(
+      getShopBuildSynergyHint(pickup, player)
+    );
+
+    const controller = new ShopModalController();
+    expect(controller.getShopBuildSynergyHint(pickup, player)).toEqual(
+      getShopBuildSynergyHint(pickup, player)
+    );
   });
 });
 

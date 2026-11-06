@@ -23,7 +23,9 @@ import {
   sellItem,
   addLoot,
   SafeLocalStorage,
-  StateManager
+  StateManager,
+  CareerOutlawRank,
+  getCareerOutlawRank
 } from '../../src/core/state';
 
 import {
@@ -603,6 +605,176 @@ describe('Core State Management & Persistence', () => {
       expect(wheelDir).toBe(-1);
 
       input.detach();
+    });
+  });
+
+  describe('Career Milestone & Outlaw Rank Classifier', () => {
+    it('handles null, undefined, and empty objects safely with default tier 1', () => {
+      const fromNull: CareerOutlawRank = getCareerOutlawRank(null);
+      expect(fromNull.rankId).toBe('rookie_courier');
+      expect(fromNull.title).toBe('⚙️ ROOKIE COURIER');
+      expect(fromNull.tierNumber).toBe(1);
+      expect(fromNull.careerScore).toBe(0);
+      expect(fromNull.nextMilestoneText).toBe('Reach 40 Career Score or Floor 2 for HIGHWAY OUTLAW');
+
+      const fromUndefined = getCareerOutlawRank(undefined);
+      expect(fromUndefined.rankId).toBe('rookie_courier');
+      expect(fromUndefined.tierNumber).toBe(1);
+      expect(fromUndefined.careerScore).toBe(0);
+
+      const fromEmpty = getCareerOutlawRank({});
+      expect(fromEmpty.rankId).toBe('rookie_courier');
+      expect(fromEmpty.tierNumber).toBe(1);
+      expect(fromEmpty.careerScore).toBe(0);
+
+      const fromDefault = getCareerOutlawRank(createDefaultMetaSave());
+      expect(fromDefault.rankId).toBe('rookie_courier');
+      expect(fromDefault.tierNumber).toBe(1);
+      expect(fromDefault.careerScore).toBe(0);
+    });
+
+    it('sanitizes negative values in meta progression', () => {
+      const result = getCareerOutlawRank({
+        totalKills: -100,
+        bossesSlain: -5,
+        bestFloor: -10
+      });
+      expect(result.careerScore).toBe(0);
+      expect(result.tierNumber).toBe(1);
+      expect(result.rankId).toBe('rookie_courier');
+    });
+
+    it('calculates careerScore accurately according to formula (kills + bosses*25 + (floor-1)*40)', () => {
+      const result = getCareerOutlawRank({
+        totalKills: 15,
+        bossesSlain: 2,
+        bestFloor: 3
+      });
+      // 15 + (2 * 25) + ((3 - 1) * 40) = 15 + 50 + 80 = 145
+      expect(result.careerScore).toBe(145);
+      expect(result.tierNumber).toBe(3);
+      expect(result.rankId).toBe('syndicate_enforcer');
+    });
+
+    it('classifies Tier 1 (rookie_courier) when score < 40 and bestFloor < 2', () => {
+      const result = getCareerOutlawRank({
+        totalKills: 39,
+        bossesSlain: 0,
+        bestFloor: 1
+      });
+      expect(result.careerScore).toBe(39);
+      expect(result.tierNumber).toBe(1);
+      expect(result.rankId).toBe('rookie_courier');
+      expect(result.title).toBe('⚙️ ROOKIE COURIER');
+      expect(result.nextMilestoneText).toBe('Reach 40 Career Score or Floor 2 for HIGHWAY OUTLAW');
+    });
+
+    it('classifies Tier 2 (highway_outlaw) when score >= 40 or bestFloor >= 2', () => {
+      // By score
+      const byScore = getCareerOutlawRank({
+        totalKills: 40,
+        bossesSlain: 0,
+        bestFloor: 1
+      });
+      expect(byScore.careerScore).toBe(40);
+      expect(byScore.tierNumber).toBe(2);
+      expect(byScore.rankId).toBe('highway_outlaw');
+      expect(byScore.title).toBe('🔥 HIGHWAY OUTLAW');
+      expect(byScore.nextMilestoneText).toBe('Reach 120 Career Score or Floor 3 for SYNDICATE ENFORCER');
+
+      // By floor reached
+      const byFloor = getCareerOutlawRank({
+        totalKills: 0,
+        bossesSlain: 0,
+        bestFloor: 2
+      });
+      expect(byFloor.careerScore).toBe(40);
+      expect(byFloor.tierNumber).toBe(2);
+      expect(byFloor.rankId).toBe('highway_outlaw');
+    });
+
+    it('classifies Tier 3 (syndicate_enforcer) when score >= 120 or bestFloor >= 3', () => {
+      // By score
+      const byScore = getCareerOutlawRank({
+        totalKills: 120,
+        bossesSlain: 0,
+        bestFloor: 1
+      });
+      expect(byScore.careerScore).toBe(120);
+      expect(byScore.tierNumber).toBe(3);
+      expect(byScore.rankId).toBe('syndicate_enforcer');
+      expect(byScore.title).toBe('⚡ SYNDICATE ENFORCER');
+      expect(byScore.nextMilestoneText).toBe('Reach 250 Career Score or Floor 5 for APEX ROADLORD');
+
+      // By floor reached (score = 80 < 120)
+      const byFloor = getCareerOutlawRank({
+        totalKills: 0,
+        bossesSlain: 0,
+        bestFloor: 3
+      });
+      expect(byFloor.careerScore).toBe(80);
+      expect(byFloor.tierNumber).toBe(3);
+      expect(byFloor.rankId).toBe('syndicate_enforcer');
+    });
+
+    it('classifies Tier 4 (apex_roadlord) when score >= 250 or bestFloor >= 5', () => {
+      // By score
+      const byScore = getCareerOutlawRank({
+        totalKills: 250,
+        bossesSlain: 0,
+        bestFloor: 1
+      });
+      expect(byScore.careerScore).toBe(250);
+      expect(byScore.tierNumber).toBe(4);
+      expect(byScore.rankId).toBe('apex_roadlord');
+      expect(byScore.title).toBe('☠️ APEX ROADLORD');
+      expect(byScore.nextMilestoneText).toBe('Reach 500 Career Score or clear Floor 6 for LEGEND OF VALHALLA');
+
+      // By floor reached (score = 160 < 250)
+      const byFloor = getCareerOutlawRank({
+        totalKills: 0,
+        bossesSlain: 0,
+        bestFloor: 5
+      });
+      expect(byFloor.careerScore).toBe(160);
+      expect(byFloor.tierNumber).toBe(4);
+      expect(byFloor.rankId).toBe('apex_roadlord');
+    });
+
+    it('classifies Tier 5 (legend_of_valhalla) when score >= 500 or (bestFloor >= 6 && bosses >= 6)', () => {
+      // By score
+      const byScore = getCareerOutlawRank({
+        totalKills: 500,
+        bossesSlain: 0,
+        bestFloor: 1
+      });
+      expect(byScore.careerScore).toBe(500);
+      expect(byScore.tierNumber).toBe(5);
+      expect(byScore.rankId).toBe('legend_of_valhalla');
+      expect(byScore.title).toBe('👑 LEGEND OF VALHALLA');
+      expect(byScore.nextMilestoneText).toBe('MAX CAREER RANK ACHIEVED');
+
+      // By dual condition (bestFloor >= 6 && bosses >= 6) with careerScore < 500
+      // 0 + 6*25 + 5*40 = 150 + 200 = 350
+      const byDual = getCareerOutlawRank({
+        totalKills: 0,
+        bossesSlain: 6,
+        bestFloor: 6
+      });
+      expect(byDual.careerScore).toBe(350);
+      expect(byDual.tierNumber).toBe(5);
+      expect(byDual.rankId).toBe('legend_of_valhalla');
+
+      // Edge case: bestFloor >= 6 but bosses < 6 and score < 500 falls back to Tier 4
+      // 0 + 5*25 + 5*40 = 125 + 200 = 325
+      const edgeNotTier5 = getCareerOutlawRank({
+        totalKills: 0,
+        bossesSlain: 5,
+        bestFloor: 6
+      });
+      expect(edgeNotTier5.careerScore).toBe(325);
+      expect(edgeNotTier5.tierNumber).toBe(4);
+      expect(edgeNotTier5.rankId).toBe('apex_roadlord');
     });
   });
 });

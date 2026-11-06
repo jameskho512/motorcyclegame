@@ -31,6 +31,7 @@ import { formatWeaponMasteryHint, formatStyleRankTooltip } from './tooltip';
 import { getFloorBountyContract, getRoomHazardSummary, type RoomHazardSummary } from '@/world/dungeon';
 import { getCombatOffenseSummary } from '@/systems/combat';
 import { getRoomThreatAssessment } from '@/systems/enemyAI';
+import { getRiderMobilitySummary } from '@/systems/physics';
 
 export type DungeonGrid = Dungeon;
 export type { RoomHazardSummary };
@@ -1414,7 +1415,7 @@ export class HUDController {
       statsGrid.innerHTML = `
         <div class="stat-item" id="stat-dmg" title="Damage"><span>DMG</span><strong>${Math.round(player.dmgMult * 100)}%</strong></div>
         <div class="stat-item" title="Fire Rate"><span>RATE</span><strong>${Math.round(player.fireRateMult * 100)}%</strong></div>
-        <div class="stat-item" title="Bike Speed"><span>SPD</span><strong>${Math.round(player.speedMult * 100)}%</strong></div>
+        <div class="stat-item" id="stat-spd" title="Bike Speed"><span>SPD</span><strong>${Math.round(player.speedMult * 100)}%</strong></div>
         <div class="stat-item" title="Projectiles"><span>PROJ</span><strong>x${player.multiShot}</strong></div>
         <div class="stat-item" title="Pierce / Bounce"><span>PRC/BNC</span><strong>${player.pierce}/${player.bounce}</strong></div>
         <div class="stat-item" title="Siphon"><span>SIPHON</span><strong>${Math.round(player.vampChance * 100)}%</strong></div>
@@ -1432,6 +1433,20 @@ export class HUDController {
         el.setAttribute('data-effective-dps', String(offense.effectiveDpsMult));
         el.setAttribute('data-siphon-status', offense.siphonStatus);
         el.setAttribute('data-offense-summary', offense.summaryLine);
+      }
+    }
+
+    // Rider mobility telemetry attributes (M77)
+    const mobility = getRiderMobilitySummary(player);
+    const mobilityTargets = [
+      document.getElementById('hud-left'),
+      document.getElementById('stat-spd')
+    ];
+    for (const el of mobilityTargets) {
+      if (el) {
+        el.setAttribute('data-mobility-tier', mobility.mobilityTier);
+        el.setAttribute('data-top-speed-rating', String(mobility.topSpeedRating));
+        el.setAttribute('data-mobility-summary', mobility.summaryText);
       }
     }
 

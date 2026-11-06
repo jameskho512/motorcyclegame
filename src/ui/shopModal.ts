@@ -6,8 +6,8 @@
  * Parity reference: moto-rogue/index.html L309-L402, L1267-L1330
  */
 
-import { Pickup } from '../types/game';
-import { WEAPONS } from '../data/weapons';
+import { Pickup, PlayerState } from '../types/game';
+import { WEAPONS, WEAPON_EVOLUTIONS } from '../data/weapons';
 import { WEAPON_HI_FI_SVG, getModIconSvg } from './icons';
 import { SET08_ASSETS } from './set08Assets';
 import { formatModStatDeltas, getModEvolutionTarget } from './tooltip';
@@ -21,6 +21,68 @@ export interface ShopItemAppraisal {
   tierLabel: string;
   valueVerdict: string;
   isBargain: boolean;
+}
+
+export interface ShopBuildSynergyHint {
+  hasSynergy: boolean;
+  synergyType: 'EVOLUTION_KEY' | 'LOW_HULL_REPAIR' | 'WEAPON_UPGRADE' | 'STANDARD';
+  hintText: string;
+}
+
+export function getShopBuildSynergyHint(
+  pickup?: Pickup | null,
+  player?: Partial<PlayerState> | null
+): ShopBuildSynergyHint {
+  if (pickup?.type === 'mod_pedestal' && player?.weapon) {
+    const evo = (WEAPON_EVOLUTIONS as any)[player.weapon];
+    if (evo) {
+      const mod = (pickup as any).mod;
+      const modName = mod?.name;
+      const modId = mod?.id;
+      const matchesName =
+        Boolean(modName) &&
+        (modName === evo.requiredModName ||
+          modName === evo.signatureModName ||
+          modName === evo.signatureModDisplayName);
+      const matchesId =
+        Boolean(modId) &&
+        (modId === evo.requiredModId || modId === evo.signatureModId);
+
+      if (matchesName || matchesId) {
+        const evolvedName = String(evo.evolvedName ?? '').toUpperCase();
+        return {
+          hasSynergy: true,
+          synergyType: 'EVOLUTION_KEY',
+          hintText: `⚡ UNLOCKS ${evolvedName} EVOLUTION!`
+        };
+      }
+    }
+  } else if (
+    pickup?.type === 'shop_heart' &&
+    (player?.hp ?? 6) <= Math.ceil((player?.maxHp ?? 6) * 0.5)
+  ) {
+    return {
+      hasSynergy: true,
+      synergyType: 'LOW_HULL_REPAIR',
+      hintText: '⚠️ CRITICAL HULL REPAIR RECOMMENDED!'
+    };
+  } else if (
+    pickup?.type === 'run_weapon' &&
+    player?.weapon &&
+    (pickup as any).weaponId !== player.weapon
+  ) {
+    return {
+      hasSynergy: true,
+      synergyType: 'WEAPON_UPGRADE',
+      hintText: '🔫 ADDS NEW WEAPON TO RUN DECK!'
+    };
+  }
+
+  return {
+    hasSynergy: false,
+    synergyType: 'STANDARD',
+    hintText: 'Standard Black Market Ordnance'
+  };
 }
 
 export function getShopItemAppraisal(pickup: Pickup, playerCoins?: number): ShopItemAppraisal {
@@ -72,6 +134,8 @@ const SHOP_CRATE_HI_FI_SVG = `<svg viewBox="0 0 48 48" aria-hidden="true" focusa
 export class ShopModalController {
   public static getShopItemAppraisal = getShopItemAppraisal;
   public getShopItemAppraisal = getShopItemAppraisal;
+  public static getShopBuildSynergyHint = getShopBuildSynergyHint;
+  public getShopBuildSynergyHint = getShopBuildSynergyHint;
 
   private overlay: HTMLElement | null = null;
   private nameEl: HTMLElement | null = null;

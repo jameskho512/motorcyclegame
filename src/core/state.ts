@@ -264,6 +264,77 @@ export function writeMetaSave(
 }
 
 // ============================================================================
+// CAREER MILESTONE & OUTLAW RANK CLASSIFIER
+// ============================================================================
+
+export interface CareerOutlawRank {
+  rankId: 'rookie_courier' | 'highway_outlaw' | 'syndicate_enforcer' | 'apex_roadlord' | 'legend_of_valhalla';
+  title: string;
+  tierNumber: 1 | 2 | 3 | 4 | 5;
+  careerScore: number;
+  nextMilestoneText: string;
+}
+
+/**
+ * Computes career score and classifies player into one of 5 Outlaw Ranks based on
+ * total kills, bosses slain, and deepest floor reached.
+ */
+export function getCareerOutlawRank(metaSave?: Partial<MetaSaveState> | null): CareerOutlawRank {
+  const kills = Math.max(0, metaSave?.totalKills || 0);
+  const bosses = Math.max(0, metaSave?.bossesSlain || 0);
+  const bestFloor = Math.max(1, metaSave?.bestFloor || 1);
+  const careerScore = kills + bosses * 25 + (bestFloor - 1) * 40;
+
+  if (careerScore >= 500 || (bestFloor >= 6 && bosses >= 6)) {
+    return {
+      rankId: 'legend_of_valhalla',
+      title: '👑 LEGEND OF VALHALLA',
+      tierNumber: 5,
+      careerScore,
+      nextMilestoneText: 'MAX CAREER RANK ACHIEVED'
+    };
+  }
+
+  if (careerScore >= 250 || bestFloor >= 5) {
+    return {
+      rankId: 'apex_roadlord',
+      title: '☠️ APEX ROADLORD',
+      tierNumber: 4,
+      careerScore,
+      nextMilestoneText: 'Reach 500 Career Score or clear Floor 6 for LEGEND OF VALHALLA'
+    };
+  }
+
+  if (careerScore >= 120 || bestFloor >= 3) {
+    return {
+      rankId: 'syndicate_enforcer',
+      title: '⚡ SYNDICATE ENFORCER',
+      tierNumber: 3,
+      careerScore,
+      nextMilestoneText: 'Reach 250 Career Score or Floor 5 for APEX ROADLORD'
+    };
+  }
+
+  if (careerScore >= 40 || bestFloor >= 2) {
+    return {
+      rankId: 'highway_outlaw',
+      title: '🔥 HIGHWAY OUTLAW',
+      tierNumber: 2,
+      careerScore,
+      nextMilestoneText: 'Reach 120 Career Score or Floor 3 for SYNDICATE ENFORCER'
+    };
+  }
+
+  return {
+    rankId: 'rookie_courier',
+    title: '⚙️ ROOKIE COURIER',
+    tierNumber: 1,
+    careerScore,
+    nextMilestoneText: 'Reach 40 Career Score or Floor 2 for HIGHWAY OUTLAW'
+  };
+}
+
+// ============================================================================
 // RUN CHECKPOINT AUTOSAVE
 // ============================================================================
 

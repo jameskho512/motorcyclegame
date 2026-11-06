@@ -971,3 +971,162 @@ describe('Adversarial Challenge 8: HUD Combat Offense Telemetry Attributes (M70)
     expect(() => hud.updateSidebar(player, 1)).not.toThrow();
   });
 });
+
+describe('Adversarial Challenge 9: HUD Rider Mobility Telemetry Attributes (M77)', () => {
+  function createTestPlayer(overrides: Partial<PlayerState> = {}): PlayerState {
+    return {
+      x: ARENA_WIDTH / 2,
+      y: ARENA_HEIGHT / 2,
+      vx: 0,
+      vy: 0,
+      radius: 17,
+      bikeAngle: 0,
+      aimAngle: 0,
+      baseSpeed: 295,
+      speedMult: 1.0,
+      driftCharge: 0,
+      nos: 100,
+      nosMax: 100,
+      nosLock: false,
+      nosDelay: 0,
+      hp: 6,
+      maxHp: 6,
+      coins: 0,
+      invuln: 0,
+      weapon: 'pistol',
+      runWeapons: {},
+      fireTimer: 0,
+      dmgMult: 1.0,
+      fireRateMult: 1.0,
+      projSpeedMult: 1.0,
+      blastMult: 1.0,
+      pierce: 0,
+      bounce: 0,
+      multiShot: 1,
+      vampChance: 0.0,
+      items: [],
+      itemStacks: {},
+      killCount: 0,
+      ...overrides
+    };
+  }
+
+  it('sets STANDARD mobility telemetry attributes on #hud-left and #stat-spd elements', () => {
+    document.body.innerHTML = `
+      <div id="hud-left"></div>
+      <div id="stat-spd"></div>
+    `;
+    const hud = new HUDController();
+    const player = createTestPlayer({
+      baseSpeed: 295,
+      speedMult: 1.0,
+      driftCharge: 0,
+      nos: 100,
+      nosMax: 100
+    });
+
+    hud.updateSidebar(player, 1);
+
+    const hudLeft = document.getElementById('hud-left')!;
+    const statSpd = document.getElementById('stat-spd')!;
+
+    expect(hudLeft.getAttribute('data-mobility-tier')).toBe('STANDARD');
+    expect(hudLeft.getAttribute('data-top-speed-rating')).toBe('295');
+    expect(hudLeft.getAttribute('data-mobility-summary')).toBe('STANDARD · 295 MPH RATING · 0% DRIFT · 100% NOS');
+
+    expect(statSpd.getAttribute('data-mobility-tier')).toBe('STANDARD');
+    expect(statSpd.getAttribute('data-top-speed-rating')).toBe('295');
+    expect(statSpd.getAttribute('data-mobility-summary')).toBe('STANDARD · 295 MPH RATING · 0% DRIFT · 100% NOS');
+  });
+
+  it('sets INTERCEPTOR mobility telemetry attributes when speed or drift increases', () => {
+    document.body.innerHTML = `
+      <div id="hud-left"></div>
+      <div id="stat-spd"></div>
+    `;
+    const hud = new HUDController();
+    const player = createTestPlayer({
+      baseSpeed: 300,
+      speedMult: 1.15,
+      driftCharge: 0.4,
+      nos: 80,
+      nosMax: 100
+    });
+
+    hud.updateSidebar(player, 2);
+
+    const hudLeft = document.getElementById('hud-left')!;
+    const statSpd = document.getElementById('stat-spd')!;
+
+    expect(hudLeft.getAttribute('data-mobility-tier')).toBe('INTERCEPTOR');
+    expect(hudLeft.getAttribute('data-top-speed-rating')).toBe('345');
+    expect(hudLeft.getAttribute('data-mobility-summary')).toBe('INTERCEPTOR · 345 MPH RATING · 40% DRIFT · 80% NOS');
+
+    expect(statSpd.getAttribute('data-mobility-tier')).toBe('INTERCEPTOR');
+    expect(statSpd.getAttribute('data-top-speed-rating')).toBe('345');
+    expect(statSpd.getAttribute('data-mobility-summary')).toBe('INTERCEPTOR · 345 MPH RATING · 40% DRIFT · 80% NOS');
+  });
+
+  it('sets HYPER-DRIFTER mobility telemetry attributes under high speed and drift charge', () => {
+    document.body.innerHTML = `
+      <div id="hud-left"></div>
+      <div id="stat-spd"></div>
+    `;
+    const hud = new HUDController();
+    const player = createTestPlayer({
+      baseSpeed: 300,
+      speedMult: 1.4,
+      driftCharge: 0.6,
+      nos: 90,
+      nosMax: 100
+    });
+
+    hud.updateSidebar(player, 3);
+
+    const hudLeft = document.getElementById('hud-left')!;
+    const statSpd = document.getElementById('stat-spd')!;
+
+    expect(hudLeft.getAttribute('data-mobility-tier')).toBe('HYPER-DRIFTER');
+    expect(hudLeft.getAttribute('data-top-speed-rating')).toBe('420');
+    expect(hudLeft.getAttribute('data-mobility-summary')).toBe('HYPER-DRIFTER · 420 MPH RATING · 60% DRIFT · 90% NOS');
+
+    expect(statSpd.getAttribute('data-mobility-tier')).toBe('HYPER-DRIFTER');
+    expect(statSpd.getAttribute('data-top-speed-rating')).toBe('420');
+    expect(statSpd.getAttribute('data-mobility-summary')).toBe('HYPER-DRIFTER · 420 MPH RATING · 60% DRIFT · 90% NOS');
+  });
+
+  it('populates telemetry attributes on #stat-spd rendered by stats-grid innerHTML', () => {
+    document.body.innerHTML = '<div id="stats-grid"></div>';
+    const hud = new HUDController();
+    const player = createTestPlayer({ baseSpeed: 295, speedMult: 1.0 });
+
+    hud.updateSidebar(player, 1);
+
+    const statSpd = document.getElementById('stat-spd');
+    expect(statSpd).not.toBeNull();
+    expect(statSpd?.getAttribute('data-mobility-tier')).toBe('STANDARD');
+    expect(statSpd?.getAttribute('data-top-speed-rating')).toBe('295');
+    expect(statSpd?.getAttribute('data-mobility-summary')).toBe('STANDARD · 295 MPH RATING · 0% DRIFT · 100% NOS');
+  });
+
+  it('handles DOM permutations defensively (isolated hud-left, isolated stat-spd, neither present)', () => {
+    const hud = new HUDController();
+    const player = createTestPlayer({ baseSpeed: 295, speedMult: 1.0 });
+
+    // Case 1: only hud-left present
+    document.body.innerHTML = '<div id="hud-left"></div>';
+    expect(() => hud.updateSidebar(player, 1)).not.toThrow();
+    const hudLeft = document.getElementById('hud-left')!;
+    expect(hudLeft.getAttribute('data-mobility-tier')).toBe('STANDARD');
+
+    // Case 2: only stat-spd present
+    document.body.innerHTML = '<div id="stat-spd"></div>';
+    expect(() => hud.updateSidebar(player, 1)).not.toThrow();
+    const statSpd = document.getElementById('stat-spd')!;
+    expect(statSpd.getAttribute('data-mobility-tier')).toBe('STANDARD');
+
+    // Case 3: neither present
+    document.body.innerHTML = '<div></div>';
+    expect(() => hud.updateSidebar(player, 1)).not.toThrow();
+  });
+});

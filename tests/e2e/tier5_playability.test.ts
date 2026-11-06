@@ -72,7 +72,7 @@ import { MotoRogueApp } from '../../src/main';
 
 import { getHubNpcGreeting } from '@/world/dungeon';
 import { getModStackTierClass, HUDController } from '@/ui/hud';
-import { getPortalRiskAssessment } from '@/ui/portalModal';
+import { getPortalRiskAssessment, PORTAL_X, PORTAL_Y } from '@/ui/portalModal';
 import { getStashSalvageSummary } from '@/ui/garage';
 import { formatDummyHitTelemetry } from '@/systems/combat';
 
@@ -649,6 +649,7 @@ describe('Tier 5: Playability Verification & End-to-End Simulation', () => {
       document.body.innerHTML = `
         <div id="app-layout">
           <aside class="sidebar-col" id="left-sidebar">
+            <div id="hud-left"></div>
             <span id="hp-text">6 / 6</span>
             <canvas id="fuel-gauge" width="240" height="120"></canvas>
             <div id="nos-fill"></div>
@@ -681,6 +682,16 @@ describe('Tier 5: Playability Verification & End-to-End Simulation', () => {
                 <button type="button" id="btn-hub-station-primary">[E] ACTIVATE</button>
                 <button type="button" id="btn-hub-station-secondary">CYCLE HEAT</button>
                 <button type="button" id="btn-hub-station-close">[ESC] CLOSE</button>
+              </div>
+            </div>
+            <div id="portal-confirm-overlay" aria-hidden="true">
+              <div class="portal-card">
+                <h2 id="portal-floor-label" class="portal-headline"></h2>
+                <p id="portal-warning" class="portal-warning"></p>
+                <div class="portal-actions">
+                  <button id="btn-portal-confirm" type="button" class="portal-btn"></button>
+                  <button id="btn-portal-cancel" type="button" class="portal-btn"></button>
+                </div>
               </div>
             </div>
             <div id="shop-confirm-overlay">
@@ -1304,6 +1315,87 @@ describe('Tier 5: Playability Verification & End-to-End Simulation', () => {
       // 5. Close modal with close button
       (document.getElementById('btn-hub-station-close') as HTMLButtonElement).click();
       expect(overlayEl.classList.contains('visible')).toBe(false);
+
+      app.inputManager.destroy();
+    });
+
+    it('verifies that when metaSave.heatLevel = 2 during a live MotoRogueApp run and the player drives onto a boss room unlocked trapdoor, #portal-confirm-overlay opens with heat 2 telemetry', () => {
+      setupAppDom();
+      const app = new MotoRogueApp();
+      app.startNewRun(false);
+
+      // 1. Locate boss room in dungeon and navigate current room into it
+      const bossEntry = Object.entries(app.dungeon).find(([, rm]) => rm.type === 'boss');
+      expect(bossEntry).toBeDefined();
+      const [key, bossRoom] = bossEntry!;
+      const [bx, by] = key.split(',').map(Number);
+      app.curRoomX = bx;
+      app.curRoomY = by;
+
+      // 2. Set metaSave heatLevel to 2 and unlock room trapdoor
+      app.stateManager.metaSave.heatLevel = 2;
+      bossRoom.trapdoor = true;
+
+      // 3. Drive player onto trapdoor location
+      app.stateManager.player.x = PORTAL_X;
+      app.stateManager.player.y = PORTAL_Y;
+
+      // 4. Update game loop frame to trigger portal modal prompt
+      app.update(0.016);
+
+      // 5. Verify #portal-confirm-overlay opens with heat 2 telemetry
+      const overlay = document.getElementById('portal-confirm-overlay')!;
+      expect(overlay).toBeDefined();
+      expect(overlay.classList.contains('visible')).toBe(true);
+      expect(overlay.getAttribute('data-portal-heat')).toBe('2');
+      expect(overlay.getAttribute('data-portal-heat-label')).toBe('HEAT 2 // BLOOD PACT');
+
+      app.inputManager.destroy();
+    });
+
+    it('verifies that calling app.updateHUD() during a live MotoRogueApp combat room updates #minimap-canvas and #hud-left telemetry', () => {
+      setupAppDom();
+      const app = new MotoRogueApp();
+      app.startNewRun(false);
+
+      // 1. Find a combat room and navigate into it
+      const combatEntry = Object.entries(app.dungeon).find(([, rm]) => rm.type === 'combat');
+      expect(combatEntry).toBeDefined();
+      const [key, combatRoom] = combatEntry!;
+      const [cx, cy] = key.split(',').map(Number);
+      app.curRoomX = cx;
+      app.curRoomY = cy;
+
+      // 2. Ensure room has enemies and a barrel hazard for deterministic threat & hazard telemetry
+      combatRoom.enemies = [
+        { hp: 60, maxHp: 60, type: 'grunt', x: 200, y: 200 } as any,
+        { hp: 80, maxHp: 80, type: 'charger', x: 300, y: 300 } as any
+      ];
+      combatRoom.obstacles = [
+        { x: 100, y: 100, width: 24, height: 24, type: 'barrel' } as any
+      ];
+
+      // 3. Set player combat offense attributes
+      app.stateManager.player.dmgMult = 1.5;
+      app.stateManager.player.fireRateMult = 1.2;
+      app.stateManager.player.multiShot = 2;
+      app.stateManager.player.vampChance = 0.20;
+
+      // 4. Execute app.updateHUD()
+      app.updateHUD();
+
+      // 5. Verify #minimap-canvas threat & hazard attributes
+      const minimap = document.getElementById('minimap-canvas')!;
+      expect(minimap).toBeDefined();
+      expect(minimap.getAttribute('data-room-threat-tier')).toBe('LOW');
+      expect(minimap.getAttribute('data-room-threat-score')).toBe('24');
+      expect(minimap.getAttribute('data-room-hazards')).toBe('1');
+
+      // 6. Verify #hud-left combat offense & siphon sustain telemetry
+      const hudLeft = document.getElementById('hud-left')!;
+      expect(hudLeft).toBeDefined();
+      expect(hudLeft.getAttribute('data-effective-dps')).toBe('3.6');
+      expect(hudLeft.getAttribute('data-siphon-status')).toBe('VAMPIRIC OVERDRIVE');
 
       app.inputManager.destroy();
     });
