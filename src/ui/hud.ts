@@ -20,7 +20,7 @@ import {
   Boss
 } from '../types/game';
 
-import { WEAPONS, isWeaponEvolved } from '../data/weapons';
+import { WEAPONS, WEAPON_EVOLUTIONS, isWeaponEvolved } from '../data/weapons';
 import { DROP_ITEMS, RUN_MOD_POOL } from '../data/upgrades';
 import {
   WEAPON_HI_FI_SVG,
@@ -1034,6 +1034,108 @@ export class HUDController {
       const curRoom = dungeon[`${curRoomX},${curRoomY}`];
       const activeBoss = curRoom?.enemies?.find((e): e is Boss => e.type === 'boss' && e.hp > 0) ?? null;
       this.updateBossBar(activeBoss, floorNum);
+    }
+
+    // 8. Widescreen Left & Right Wing Panels (Style Rank D->SSS, Synergy Matrix & Sector Telemetry)
+    const speedRatio = Math.min(1, Math.hypot(player.vx || 0, player.vy || 0) / 280);
+    const driftBonus = (player.driftCharge || 0) * 35 + ((player as any).driftBoostTimer > 0 ? 35 : 0);
+    const killBonus = Math.min(45, (player.killCount || 0) * 2.5);
+    const styleScore = Math.min(100, Math.round(12 + speedRatio * 28 + driftBonus + killBonus));
+
+    const styleGrades: Array<{ min: number; grade: string; title: string; color: string }> = [
+      { min: 92, grade: 'SSS', title: 'VALHALLA OVERDRIVE!!', color: '#00f5d4' },
+      { min: 80, grade: 'SS', title: 'APEX OUTLAW!', color: '#ffd60a' },
+      { min: 66, grade: 'S', title: 'SAVAGE DRIFTER', color: '#ff5400' },
+      { min: 52, grade: 'A', title: 'HIGH OCTANE', color: '#ff4d6d' },
+      { min: 38, grade: 'B', title: 'FULL THROTTLE', color: '#c77dff' },
+      { min: 24, grade: 'C', title: 'ROLLING THUNDER', color: '#4cc9f0' },
+      { min: 0, grade: 'D', title: 'CRUISING', color: '#adb5bd' }
+    ];
+    const rankDef = styleGrades.find(g => styleScore >= g.min) || styleGrades[styleGrades.length - 1];
+
+    const gradeEl = document.getElementById('style-rank-grade');
+    if (gradeEl) {
+      gradeEl.textContent = rankDef.grade;
+      gradeEl.style.setProperty('--rank-color', rankDef.color);
+    }
+    const titleEl = document.getElementById('style-rank-title');
+    if (titleEl) {
+      titleEl.textContent = rankDef.title;
+      titleEl.style.color = rankDef.color;
+    }
+    const fillEl = document.getElementById('style-rank-fill');
+    if (fillEl) {
+      fillEl.style.width = `${styleScore}%`;
+    }
+    const subEl = document.getElementById('style-rank-sub');
+    if (subEl) {
+      subEl.textContent = (player as any).driftBoostTimer > 0
+        ? '⚡ DRIFT OVERCHARGE ACTIVE (+35% SPD/RATE)'
+        : `DRIFT CHARGE: ${Math.round((player.driftCharge || 0) * 100)}% // KILLS: ${player.killCount || 0}`;
+    }
+
+    const synListEl = document.getElementById('synergy-list');
+    if (synListEl) {
+      const activeWep = WEAPONS[player.weapon] || WEAPONS.pistol;
+      const evoDef = WEAPON_EVOLUTIONS[player.weapon];
+      const isEvo = isWeaponEvolved(player.weapon, player);
+      const totalStacks = Object.values(player.itemStacks || {}).reduce((acc, v) => acc + (v || 0), 0);
+      const rows: string[] = [];
+
+      if (isEvo) {
+        rows.push(
+          `<div class="synergy-pill" style="--syn-color:#00f5d4"><span>★ ${evoDef.evolvedName}</span><small>ACTIVE</small></div>`
+        );
+      } else {
+        rows.push(
+          `<div class="synergy-pill" style="--syn-color:#ffd60a"><span>${activeWep.name} → ${evoDef.evolvedName}</span><small>${evoDef.signatureModName} or ${totalStacks}/3 Stacks</small></div>`
+        );
+      }
+
+      if ((player as any).scannerBuff) {
+        rows.push(
+          `<div class="synergy-pill" style="--syn-color:#72efdd"><span>DOC TACTICAL SCANNER</span><small>+8% DMG / +15% SPD</small></div>`
+        );
+      }
+      if ((player.heatLevel || 0) > 0) {
+        rows.push(
+          `<div class="synergy-pill" style="--syn-color:#ff4d6d"><span>VALKYRIE BOUNTY PACT</span><small>+${(player.heatLevel || 0) * 25}% SCRAP</small></div>`
+        );
+      }
+      synListEl.innerHTML = rows.join('');
+    }
+
+    const curRoomObj = dungeon && curRoomX !== undefined && curRoomY !== undefined ? dungeon[`${curRoomX},${curRoomY}`] : undefined;
+    const biomeEl = document.getElementById('wing-biome-name');
+    if (biomeEl) {
+      if (curRoomObj?.type === 'hub') {
+        biomeEl.textContent = 'OUTLAW SANCTUARY';
+        biomeEl.style.color = '#00f5d4';
+      } else {
+        const biomeMap: Record<number, { name: string; color: string }> = {
+          1: { name: 'RUSTYARD BUNKER', color: '#ff9f1c' },
+          2: { name: 'SMELTER FOUNDRY', color: '#ff5400' },
+          3: { name: 'NEON CYBER-FREEWAY', color: '#00f5d4' },
+          4: { name: 'SUB-ZERO CRYO LAB', color: '#72efdd' },
+          5: { name: 'MAGMA CORE', color: '#ff2a4b' },
+          6: { name: 'CHROME CITADEL', color: '#ffd60a' }
+        };
+        const b = biomeMap[Math.min(6, Math.max(1, floorNum))] || biomeMap[1];
+        biomeEl.textContent = b.name;
+        biomeEl.style.color = b.color;
+      }
+    }
+
+    const heatEl = document.getElementById('wing-heat-level');
+    if (heatEl) {
+      const h = player.heatLevel || 0;
+      heatEl.textContent = h > 0 ? `HEAT ${h} (+${h * 25}% SCRAP)` : 'HEAT 0 // STANDARD';
+      heatEl.style.color = h > 0 ? '#ff4d6d' : '#ffd60a';
+    }
+
+    const killEl = document.getElementById('wing-kill-count');
+    if (killEl) {
+      killEl.textContent = `${player.killCount || 0} CONFIRMED`;
     }
   }
 }

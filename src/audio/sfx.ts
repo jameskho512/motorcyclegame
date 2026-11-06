@@ -34,7 +34,7 @@ export const SAVE_KEY_AUDIO = 'moto_rogue_audio_v1';
 export const MASTER_BASE_GAIN = 0.38;
 
 /** Bus channels that individual sounds route through (master is applied on top). */
-export const VOLUME_CHANNELS = ['engine', 'weapons', 'impacts', 'pickups', 'ui'] as const;
+export const VOLUME_CHANNELS = ['music', 'engine', 'weapons', 'impacts', 'pickups', 'ui'] as const;
 export type VolumeChannel = (typeof VOLUME_CHANNELS)[number];
 
 /** All user-adjustable volume keys, master first. */
@@ -45,6 +45,7 @@ export type VolumeSettings = Record<VolumeKey, number>;
 
 export const DEFAULT_VOLUME_SETTINGS: Readonly<VolumeSettings> = Object.freeze({
   master: 1,
+  music: 0.75,
   engine: 1,
   weapons: 1,
   impacts: 1,
@@ -163,12 +164,14 @@ export class SoundSynthesizer implements AudioService {
   private lastFlameSfx: number = 0;
   private lastHitSfx: number = 0;
 
-  // Stateful 5-gear motorcycle transmission
+  // Stateful 5-gear motorcycle transmission & synthwave BGM clock
   private gear: number = 1;
   private throttleTime: number = 0;
   private shiftCutTimer: number = 0;
   private lfoPhase: number = 0;
   private lastEngineUpdateTime: number = 0;
+  private bgmStepTimer: number = 0;
+  private bgmStepIndex: number = 0;
 
   constructor(storage: StorageDriver = defaultStorage) {
     this.storage = storage;
@@ -313,6 +316,11 @@ export class SoundSynthesizer implements AudioService {
   /** Plays a short representative cue for a mixer channel (settings "test" buttons). */
   public playTest(key: VolumeKey): void {
     switch (key) {
+      case 'music':
+        this.playTone('music', 55, 55, 0.14, 'sawtooth', 0.22, 0.0);
+        this.playTone('music', 65.41, 65.41, 0.14, 'sawtooth', 0.22, 0.14);
+        this.playTone('music', 82.41, 82.41, 0.18, 'triangle', 0.24, 0.28);
+        break;
       case 'engine':
         this.playTone('engine', 70, 135, 0.45, 'sawtooth', 0.3);
         this.playTone('engine', 140, 270, 0.45, 'triangle', 0.18);
@@ -472,6 +480,22 @@ export class SoundSynthesizer implements AudioService {
     this.engOsc2.frequency.setTargetAtTime(f2, now, tc);
     this.engFilter.frequency.setTargetAtTime(cutoff, now, 0.05);
     this.engGain.gain.setTargetAtTime(targetGain, now, tc);
+
+    // Procedural Synthwave / Outlaw Dark-Synth Bassline Groove (125 BPM eighth-note pulse)
+    this.bgmStepTimer += dt;
+    const stepInterval = 0.24; // 125 BPM 8th notes
+    if (this.bgmStepTimer >= stepInterval) {
+      this.bgmStepTimer -= stepInterval;
+      const bassSequence = [55.0, 55.0, 65.41, 55.0, 73.42, 65.41, 82.41, 73.42];
+      const noteFreq = bassSequence[this.bgmStepIndex % bassSequence.length];
+      this.bgmStepIndex = (this.bgmStepIndex + 1) % 16;
+      if (this.volumes.music > 0.01) {
+        this.playTone('music', noteFreq, noteFreq * 0.98, 0.16, 'sawtooth', 0.045);
+        if (this.bgmStepIndex % 4 === 0) {
+          this.playTone('music', noteFreq * 2, noteFreq * 2, 0.11, 'triangle', 0.028);
+        }
+      }
+    }
   }
 
   /**

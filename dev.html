@@ -130,6 +130,26 @@
       </div>
     </div>
     <div class="hud-stats" id="stats-grid" aria-label="Bike and weapon stats"></div>
+    <!-- Widescreen Left-Wing: Style Rank & Active Synergy Tracker -->
+    <div class="hud-wing-panel hud-wing-left" id="left-wing-panel" aria-label="Style Rank and Active Synergies">
+      <div class="style-rank-card" id="style-rank-card">
+        <div class="style-rank-head">
+          <span class="style-rank-kicker">OUTLAW STYLE</span>
+          <span class="style-rank-title" id="style-rank-title">CRUISING</span>
+        </div>
+        <div class="style-rank-main">
+          <span class="style-rank-grade" id="style-rank-grade">D</span>
+          <div class="style-rank-bar-wrap">
+            <div class="style-rank-bar"><div class="style-rank-fill" id="style-rank-fill" style="width: 18%"></div></div>
+            <span class="style-rank-sub" id="style-rank-sub">DRIFT [SPACE] + SPEED COMBO</span>
+          </div>
+        </div>
+      </div>
+      <div class="synergy-tracker-card" id="synergy-tracker-card">
+        <div class="synergy-head">EVOLUTION &amp; SYNERGY MATRIX</div>
+        <div class="synergy-list" id="synergy-list"></div>
+      </div>
+    </div>
     <!-- Legacy semicircular fuel gauge: kept for API/test compatibility, hidden by hud.css -->
     <canvas id="fuel-gauge" width="240" height="120" aria-hidden="true"></canvas>
   </aside>
@@ -183,6 +203,21 @@
       <button type="button" class="hud-btn" id="btn-toggle-sound" title="Toggle Game Audio [M]" aria-label="Toggle game audio [M]">🔊 [M]</button>
     </div>
     <div id="save-status">Autosave: local storage</div>
+    <!-- Widescreen Right-Wing: Sector Biome & Bounty Telemetry -->
+    <div class="hud-wing-panel hud-wing-right" id="right-wing-panel" aria-label="Biome and Bounty Telemetry">
+      <div class="wing-telemetry-row">
+        <span class="wing-telemetry-label">SECTOR BIOME</span>
+        <strong class="wing-telemetry-val" id="wing-biome-name">RUSTYARD BUNKER</strong>
+      </div>
+      <div class="wing-telemetry-row">
+        <span class="wing-telemetry-label">BOUNTY HEAT</span>
+        <strong class="wing-telemetry-val" id="wing-heat-level">HEAT 0 // STANDARD</strong>
+      </div>
+      <div class="wing-telemetry-row">
+        <span class="wing-telemetry-label">RUN KILLS</span>
+        <strong class="wing-telemetry-val" id="wing-kill-count">0 CONFIRMED</strong>
+      </div>
+    </div>
   </aside>
 
   <!-- Center Square Room Playfield Canvas (Always fits 100% of vertical height!) -->

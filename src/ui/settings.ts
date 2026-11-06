@@ -32,6 +32,7 @@ export interface SettingsControllerOptions {
 
 const CHANNEL_META: Record<VolumeKey, { label: string; hint: string }> = {
   master: { label: 'MASTER', hint: 'Everything' },
+  music: { label: 'MUSIC', hint: 'Synthwave outlaw bassline' },
   engine: { label: 'ENGINE', hint: 'Bike engine hum' },
   weapons: { label: 'WEAPONS', hint: 'Gunfire & arc chains' },
   impacts: { label: 'IMPACTS', hint: 'Hits, kills, explosions, damage' },
