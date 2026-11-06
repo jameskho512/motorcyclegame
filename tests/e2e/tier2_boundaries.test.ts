@@ -74,6 +74,13 @@ import { getPortalHeatBriefing } from '@/ui/portalModal';
 import { getShopBuildSynergyHint } from '@/ui/shopModal';
 import { getRoomHazardSummary } from '@/world/dungeon';
 
+import {
+  getScannerStationAdvisor,
+  getForgeStationAdvisor
+} from '../../src/ui/hubStationModal';
+import { getWeaponArsenalSummary } from '../../src/data/weapons';
+import { getBossEncounterBriefing } from '../../src/systems/enemyAI';
+
 describe('Tier 2: Boundary & Corner Cases', () => {
   let player: PlayerState;
   let storage: SafeLocalStorage;
@@ -961,6 +968,309 @@ describe('Tier 2: Boundary & Corner Cases', () => {
       // Zero floorNum (0) clamped to floor 1
       const zeroFloorSummary = getRoomThreatAssessment(liveRoom, 0);
       expect(zeroFloorSummary.threatScore).toBe(12);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Boundary Stress: Sanctuary Advisors, Arsenal Career & Boss Telemetry (M108)
+  // --------------------------------------------------------------------------
+  describe('Boundary Stress: Sanctuary Advisors, Arsenal Career & Boss Telemetry (M108)', () => {
+    // 1. getScannerStationAdvisor clamps extreme floor inputs (0, -500, NaN, Infinity, 1.99) and handles null/undefined player objects without throwing
+    it('clamps extreme floor inputs (0, -500, NaN, Infinity, 1.99) and handles null/undefined player objects without throwing in getScannerStationAdvisor', () => {
+      // Null player and default floor
+      const fromNull = getScannerStationAdvisor(null);
+      expect(fromNull.scannerActive).toBe(false);
+      expect(fromNull.critBonusPct).toBe(0);
+      expect(fromNull.targetFloor).toBe(1);
+      expect(fromNull.recommendedAction).toBe('ACTIVATE SCANNER UPLINK (Free +15% Crit Chance & Full Floor Radar)');
+      expect(fromNull.summaryLine).toBe('SCANNER INTEL [FLOOR 1]: STANDBY (0% CRIT) · ACTIVATE SCANNER UPLINK (Free +15% Crit Chance & Full Floor Radar)');
+
+      // Undefined player
+      const fromUndef = getScannerStationAdvisor(undefined);
+      expect(fromUndef.scannerActive).toBe(false);
+      expect(fromUndef.targetFloor).toBe(1);
+
+      // Active scanner buff
+      const fromActive = getScannerStationAdvisor({ scannerBuff: true } as any, 4);
+      expect(fromActive.scannerActive).toBe(true);
+      expect(fromActive.critBonusPct).toBe(15);
+      expect(fromActive.targetFloor).toBe(4);
+      expect(fromActive.recommendedAction).toBe('TACTICAL UPLINK ONLINE (+15% Crit Chance & Minimap Reveal Active)');
+      expect(fromActive.summaryLine).toBe('SCANNER INTEL [FLOOR 4]: ONLINE (+15% CRIT) · TACTICAL UPLINK ONLINE (+15% Crit Chance & Minimap Reveal Active)');
+
+      // Floor 0 clamps to 1
+      const floorZero = getScannerStationAdvisor(null, 0);
+      expect(floorZero.targetFloor).toBe(1);
+
+      // Floor -500 clamps to 1
+      const floorNeg = getScannerStationAdvisor(null, -500);
+      expect(floorNeg.targetFloor).toBe(1);
+
+      // NaN floor clamps to 1
+      const floorNaN = getScannerStationAdvisor(null, NaN);
+      expect(floorNaN.targetFloor).toBe(1);
+
+      // Infinity floor clamps to 1
+      const floorInf = getScannerStationAdvisor(null, Infinity);
+      expect(floorInf.targetFloor).toBe(1);
+
+      // -Infinity floor clamps to 1
+      const floorNegInf = getScannerStationAdvisor(null, -Infinity);
+      expect(floorNegInf.targetFloor).toBe(1);
+
+      // Float 1.99 floors and clamps to 1
+      const floorFloat1 = getScannerStationAdvisor(null, 1.99);
+      expect(floorFloat1.targetFloor).toBe(1);
+
+      // Float 5.95 floors to 5
+      const floorFloat5 = getScannerStationAdvisor(null, 5.95);
+      expect(floorFloat5.targetFloor).toBe(5);
+    });
+
+    // 2. getForgeStationAdvisor clamps negative/NaN scrap (-100, NaN), exact threshold (14 vs 15 scrap), and empty vs populated player.items arrays
+    it('clamps negative/NaN scrap (-100, NaN), exact threshold (14 vs 15 scrap), and empty vs populated player.items in getForgeStationAdvisor', () => {
+      // Null and undefined inputs
+      const fromNull = getForgeStationAdvisor(null, null);
+      expect(fromNull.scrapAvailable).toBe(0);
+      expect(fromNull.canReforge).toBe(false);
+      expect(fromNull.reforgeCost).toBe(15);
+      expect(fromNull.modCount).toBe(0);
+      expect(fromNull.recommendedAction).toBe('Need 15 more Scrap to Reforge at the Anvil');
+      expect(fromNull.summaryLine).toBe('FORGE ANVIL: 0 SCRAP (COST: 15) · Need 15 more Scrap to Reforge at the Anvil');
+
+      const fromUndef = getForgeStationAdvisor(undefined, undefined);
+      expect(fromUndef.scrapAvailable).toBe(0);
+      expect(fromUndef.canReforge).toBe(false);
+
+      // Negative scrap -100 clamped to 0
+      const negScrap = getForgeStationAdvisor({ scrap: -100 } as any);
+      expect(negScrap.scrapAvailable).toBe(0);
+      expect(negScrap.canReforge).toBe(false);
+      expect(negScrap.recommendedAction).toBe('Need 15 more Scrap to Reforge at the Anvil');
+
+      // NaN scrap clamped to 0
+      const nanScrap = getForgeStationAdvisor({ scrap: NaN } as any);
+      expect(nanScrap.scrapAvailable).toBe(0);
+      expect(nanScrap.canReforge).toBe(false);
+
+      // Exact threshold 14 scrap (insufficient)
+      const scrap14 = getForgeStationAdvisor({ scrap: 14 } as any);
+      expect(scrap14.scrapAvailable).toBe(14);
+      expect(scrap14.canReforge).toBe(false);
+      expect(scrap14.recommendedAction).toBe('Need 1 more Scrap to Reforge at the Anvil');
+
+      // Exact threshold 15 scrap (sufficient)
+      const scrap15 = getForgeStationAdvisor({ scrap: 15 } as any);
+      expect(scrap15.scrapAvailable).toBe(15);
+      expect(scrap15.canReforge).toBe(true);
+
+      // Empty items array with ready reforge
+      const emptyItems = getForgeStationAdvisor({ scrap: 25 } as any, { items: [] } as any);
+      expect(emptyItems.canReforge).toBe(true);
+      expect(emptyItems.modCount).toBe(0);
+      expect(emptyItems.recommendedAction).toBe('Reforge Ready (15 Scrap) — Roll your first Outlaw Mod');
+
+      // Populated items array with ready reforge
+      const popItems = getForgeStationAdvisor({ scrap: 25 } as any, { items: [{ id: 'turbo_injection' }] } as any);
+      expect(popItems.canReforge).toBe(true);
+      expect(popItems.modCount).toBe(1);
+      expect(popItems.recommendedAction).toBe('Reforge Ready (15 Scrap) — Reroll & upgrade active mod loadout');
+    });
+
+    // 3. getWeaponArsenalSummary handles null/empty metaSave, negative/NaN/Infinity kill counts, and ties in top weapon kills deterministically
+    it('handles null/empty metaSave, negative/NaN/Infinity kill counts, and ties in top weapon kills deterministically in getWeaponArsenalSummary', () => {
+      // Null metaSave
+      const fromNull = getWeaponArsenalSummary(null);
+      expect(fromNull.unlockedCount).toBe(1); // pistol default
+      expect(fromNull.totalWeapons).toBe(7);
+      expect(fromNull.totalKills).toBe(0);
+      expect(fromNull.topWeaponId).toBe('pistol');
+      expect(fromNull.topWeaponName).toBe('Pistol');
+      expect(fromNull.topWeaponKills).toBe(0);
+      expect(fromNull.summaryLine).toBe('ARSENAL: 1/7 UNLOCKED · 0 TOTAL KILLS · SIGNATURE: PISTOL (0)');
+
+      // Empty metaSave object
+      const fromEmpty = getWeaponArsenalSummary({});
+      expect(fromEmpty.unlockedCount).toBe(1);
+      expect(fromEmpty.totalKills).toBe(0);
+      expect(fromEmpty.topWeaponId).toBe('pistol');
+
+      // Negative, NaN, and Infinity kill counts sanitized to 0
+      const corruptKills = getWeaponArsenalSummary({
+        unlocked: { machine_gun: true, railgun: true },
+        weaponKills: {
+          pistol: -50,
+          machine_gun: 77,
+          railgun: NaN,
+          shotgun: Infinity,
+          flamethrower: -Infinity
+        }
+      });
+      expect(corruptKills.unlockedCount).toBe(3); // pistol + machine_gun + railgun
+      expect(corruptKills.totalKills).toBe(77);
+      expect(corruptKills.topWeaponId).toBe('machine_gun');
+      expect(corruptKills.topWeaponKills).toBe(77);
+      expect(corruptKills.summaryLine).toContain('ARSENAL: 3/7 UNLOCKED · 77 TOTAL KILLS · SIGNATURE: MACHINE GUN (77)');
+
+      // Deterministic tie-breaking across weapons with identical top kills
+      // In canonical order ['pistol', 'machine_gun', ...], pistol wins tie with machine_gun
+      const tiePistolMg = getWeaponArsenalSummary({
+        weaponKills: {
+          pistol: 150,
+          machine_gun: 150
+        }
+      });
+      expect(tiePistolMg.topWeaponId).toBe('pistol');
+      expect(tiePistolMg.topWeaponKills).toBe(150);
+
+      // Tie between flamethrower and railgun when pistol has 0 kills: flamethrower precedes railgun
+      const tieFlameRail = getWeaponArsenalSummary({
+        weaponKills: {
+          flamethrower: 200,
+          railgun: 200
+        }
+      });
+      expect(tieFlameRail.topWeaponId).toBe('flamethrower');
+      expect(tieFlameRail.topWeaponKills).toBe(200);
+    });
+
+    // 4. getBossEncounterBriefing handles exact 50% HP enrage boundary (500/1000 HP vs 501/1000 HP), 0 HP dead boss, 0 maxHp zero-division guard, and floors 0..100
+    it('handles exact 50% HP enrage boundary (500/1000 HP vs 501/1000 HP), 0 HP dead boss, 0 maxHp zero-division guard, and floors 0..100 in getBossEncounterBriefing', () => {
+      // Exact 50% HP enrage boundary: 500 / 1000 = 50% (enraged phase 2)
+      const boss500 = getBossEncounterBriefing({ type: 'boss', hp: 500, maxHp: 1000, enraged: false }, 1);
+      expect(boss500.active).toBe(true);
+      expect(boss500.hpPct).toBe(50);
+      expect(boss500.isEnraged).toBe(true);
+      expect(boss500.phase).toBe(2);
+      expect(boss500.summaryLine).toContain('[PHASE 2 ENRAGED]');
+
+      // 501 / 1000 HP rounds to 50% integer telemetry, remaining enraged at boundary
+      const boss501 = getBossEncounterBriefing({ type: 'boss', hp: 501, maxHp: 1000, enraged: false }, 1);
+      expect(boss501.active).toBe(true);
+      expect(boss501.hpPct).toBe(50);
+      expect(boss501.isEnraged).toBe(true);
+      expect(boss501.phase).toBe(2);
+
+      // > 50% rounded HP (e.g. 510 / 1000 = 51% or 51 / 100 = 51%) cleanly stays in Phase 1
+      const boss510 = getBossEncounterBriefing({ type: 'boss', hp: 510, maxHp: 1000, enraged: false }, 1);
+      expect(boss510.hpPct).toBe(51);
+      expect(boss510.isEnraged).toBe(false);
+      expect(boss510.phase).toBe(1);
+      expect(boss510.summaryLine).toContain('[PHASE 1]');
+
+      // 0 HP dead boss: inactive telemetry
+      const deadBoss0 = getBossEncounterBriefing({ type: 'boss', hp: 0, maxHp: 1000 }, 1);
+      expect(deadBoss0.active).toBe(false);
+      expect(deadBoss0.bossTitle).toBe('NO ACTIVE BOSS');
+      expect(deadBoss0.phase).toBe(1);
+      expect(deadBoss0.isEnraged).toBe(false);
+      expect(deadBoss0.hpPct).toBe(0);
+      expect(deadBoss0.summaryLine).toBe('BOSS TELEMETRY: INACTIVE');
+
+      // Negative HP dead boss: inactive telemetry
+      const deadBossNeg = getBossEncounterBriefing({ type: 'boss', hp: -75, maxHp: 1000 }, 1);
+      expect(deadBossNeg.active).toBe(false);
+
+      // Null, undefined, and non-boss targets return inactive
+      expect(getBossEncounterBriefing(null).active).toBe(false);
+      expect(getBossEncounterBriefing(undefined).active).toBe(false);
+      expect(getBossEncounterBriefing({ type: 'swarmer', hp: 100 } as any).active).toBe(false);
+
+      // 0 maxHp zero-division guard (clamps maxHp to 1, prevents NaN / Infinity)
+      const zeroMaxHp = getBossEncounterBriefing({ type: 'boss', hp: 50, maxHp: 0 }, 1);
+      expect(zeroMaxHp.active).toBe(true);
+      expect(Number.isFinite(zeroMaxHp.hpPct)).toBe(true);
+      expect(zeroMaxHp.hpPct).toBe(100);
+
+      // Floor 0 clamps cleanly to Floor 1 variant
+      const floor0 = getBossEncounterBriefing({ type: 'boss', hp: 800, maxHp: 1000 }, 0);
+      expect(floor0.bossTitle).toBe('SCRAP GOLIATH');
+
+      // Floors 0..100 boundary cycling without exception or undefined titles
+      for (let f = 0; f <= 100; f += 5) {
+        const briefing = getBossEncounterBriefing({ type: 'boss', hp: 500, maxHp: 1000 }, f);
+        expect(briefing.active).toBe(true);
+        expect(typeof briefing.bossTitle).toBe('string');
+        expect(briefing.bossTitle.length).toBeGreaterThan(0);
+        expect(briefing.summaryLine).not.toContain('NaN');
+        expect(briefing.summaryLine).not.toContain('undefined');
+      }
+    });
+
+    // 5. Verifies all 4 advisors return non-empty summaryLine strings containing zero 'NaN' or 'undefined' substrings under all boundary inputs
+    it('verifies all 4 advisors return non-empty summaryLine strings containing zero NaN or undefined substrings under boundary inputs', () => {
+      // 1. Scanner Advisor across boundary matrix
+      const scannerBoundaryFloors = [-500, 0, 1, 1.99, NaN, Infinity, -Infinity, 100];
+      const scannerPlayers = [null, undefined, {}, { scannerBuff: false }, { scannerBuff: true }];
+
+      for (const p of scannerPlayers) {
+        for (const fl of scannerBoundaryFloors) {
+          const res = getScannerStationAdvisor(p as any, fl);
+          expect(typeof res.summaryLine).toBe('string');
+          expect(res.summaryLine.length).toBeGreaterThan(0);
+          expect(res.summaryLine).not.toContain('NaN');
+          expect(res.summaryLine).not.toContain('undefined');
+          expect(res.summaryLine).not.toContain('null');
+        }
+      }
+
+      // 2. Forge Advisor across boundary matrix
+      const forgeScrapValues = [-1000, -1, 0, 14, 15, 999, NaN, Infinity];
+      const forgePlayers = [null, undefined, {}, { items: [] }, { items: [{ id: 'mod_1' }, { id: 'mod_2' }] }];
+
+      for (const scrap of forgeScrapValues) {
+        for (const p of forgePlayers) {
+          const res = getForgeStationAdvisor({ scrap } as any, p as any);
+          expect(typeof res.summaryLine).toBe('string');
+          expect(res.summaryLine.length).toBeGreaterThan(0);
+          expect(res.summaryLine).not.toContain('NaN');
+          expect(res.summaryLine).not.toContain('undefined');
+          expect(res.summaryLine).not.toContain('null');
+        }
+      }
+
+      // 3. Weapon Arsenal Summary across boundary matrix
+      const arsenalMetas = [
+        null,
+        undefined,
+        {},
+        { unlocked: null, weaponKills: null },
+        { unlocked: { shotgun: true }, weaponKills: { pistol: -50, shotgun: NaN, railgun: Infinity } },
+        { unlocked: { machine_gun: true, arc_coil: true }, weaponKills: { machine_gun: 999999 } }
+      ];
+
+      for (const meta of arsenalMetas) {
+        const res = getWeaponArsenalSummary(meta as any);
+        expect(typeof res.summaryLine).toBe('string');
+        expect(res.summaryLine.length).toBeGreaterThan(0);
+        expect(res.summaryLine).not.toContain('NaN');
+        expect(res.summaryLine).not.toContain('undefined');
+        expect(res.summaryLine).not.toContain('null');
+      }
+
+      // 4. Boss Encounter Briefing across boundary matrix
+      const bossVariants = [
+        null,
+        undefined,
+        { type: 'swarmer', hp: 50 },
+        { type: 'boss', hp: 0, maxHp: 0 },
+        { type: 'boss', hp: -100, maxHp: 500 },
+        { type: 'boss', hp: 50, maxHp: 0 },
+        { type: 'boss', hp: 500, maxHp: 1000 },
+        { type: 'boss', hp: 1000, maxHp: 1000, enraged: true }
+      ];
+      const bossFloors = [-10, 0, 1, 6, 99, 100, NaN, Infinity];
+
+      for (const b of bossVariants) {
+        for (const fl of bossFloors) {
+          const res = getBossEncounterBriefing(b as any, fl);
+          expect(typeof res.summaryLine).toBe('string');
+          expect(res.summaryLine.length).toBeGreaterThan(0);
+          expect(res.summaryLine).not.toContain('NaN');
+          expect(res.summaryLine).not.toContain('undefined');
+          expect(res.summaryLine).not.toContain('null');
+        }
+      }
     });
   });
 });

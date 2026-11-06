@@ -40,6 +40,7 @@ import {
   getBuildArchetypeSummary,
   getEquippedBikeVisualState,
   getEquipmentLoadoutSummary,
+  getWeaponArsenalSummary,
   PART_ANCHORS,
   type StashSalvageSummary
 } from '../../src/ui/garage';
@@ -1601,6 +1602,99 @@ describe('Render & UI Subsystems', () => {
       const valhallaLoadout = getEquipmentLoadoutSummary(metaSave.equipped);
       expect(overlay.getAttribute('data-next-set-goal')).toBe('3pc Valhalla Set Active (+15% Dmg, +10% Spd)');
       expect(overlay.getAttribute('data-loadout-power-score')).toBe(valhallaLoadout.totalPowerScore.toFixed(1));
+    });
+
+    it('populates data-arsenal telemetry attributes on #unlock-list and #garage-overlay for initial save via render', () => {
+      const garage = new GarageController(callbacks);
+      const initialSave: MetaSaveState = {
+        ...metaSave,
+        unlocked: {
+          machine_gun: false,
+          shotgun: false,
+          flamethrower: false,
+          railgun: false,
+          grenade_launcher: false,
+          arc_coil: false
+        },
+        weaponKills: {}
+      };
+
+      garage.render(initialSave, player);
+
+      const unlockList = document.getElementById('unlock-list')!;
+      const overlay = document.getElementById('garage-overlay')!;
+      const expectedArsenal = getWeaponArsenalSummary(initialSave);
+
+      expect(expectedArsenal.unlockedCount).toBe(1);
+      expect(expectedArsenal.totalKills).toBe(0);
+      expect(expectedArsenal.topWeaponId).toBe('pistol');
+      expect(expectedArsenal.summaryLine).toBe('ARSENAL: 1/7 UNLOCKED · 0 TOTAL KILLS · SIGNATURE: PISTOL (0)');
+
+      // Verify on #unlock-list
+      expect(unlockList.getAttribute('data-arsenal-unlocked-count')).toBe('1');
+      expect(unlockList.getAttribute('data-arsenal-total-kills')).toBe('0');
+      expect(unlockList.getAttribute('data-arsenal-signature-weapon')).toBe('pistol');
+      expect(unlockList.getAttribute('data-arsenal-summary')).toBe('ARSENAL: 1/7 UNLOCKED · 0 TOTAL KILLS · SIGNATURE: PISTOL (0)');
+
+      // Verify on #garage-overlay
+      expect(overlay.getAttribute('data-arsenal-unlocked-count')).toBe('1');
+      expect(overlay.getAttribute('data-arsenal-total-kills')).toBe('0');
+      expect(overlay.getAttribute('data-arsenal-signature-weapon')).toBe('pistol');
+      expect(overlay.getAttribute('data-arsenal-summary')).toBe('ARSENAL: 1/7 UNLOCKED · 0 TOTAL KILLS · SIGNATURE: PISTOL (0)');
+    });
+
+    it('populates data-arsenal telemetry attributes on #unlock-list and #garage-overlay for veteran save via renderWeaponUnlocks and render', () => {
+      const garage = new GarageController(callbacks);
+      const veteranSave: MetaSaveState = {
+        ...metaSave,
+        unlocked: {
+          machine_gun: true,
+          shotgun: true,
+          railgun: true,
+          flamethrower: false,
+          grenade_launcher: false,
+          arc_coil: false
+        },
+        weaponKills: {
+          pistol: 25,
+          machine_gun: 150,
+          shotgun: 480,
+          railgun: 110
+        }
+      };
+
+      // Direct renderWeaponUnlocks call
+      garage.renderWeaponUnlocks(veteranSave, player);
+
+      const unlockList = document.getElementById('unlock-list')!;
+      const overlay = document.getElementById('garage-overlay')!;
+      const expectedArsenal = getWeaponArsenalSummary(veteranSave);
+
+      expect(expectedArsenal.unlockedCount).toBe(4);
+      expect(expectedArsenal.totalKills).toBe(765);
+      expect(expectedArsenal.topWeaponId).toBe('shotgun');
+      expect(expectedArsenal.summaryLine).toBe('ARSENAL: 4/7 UNLOCKED · 765 TOTAL KILLS · SIGNATURE: SAWED-OFF SHOTGUN (480)');
+
+      expect(unlockList.getAttribute('data-arsenal-unlocked-count')).toBe('4');
+      expect(unlockList.getAttribute('data-arsenal-total-kills')).toBe('765');
+      expect(unlockList.getAttribute('data-arsenal-signature-weapon')).toBe('shotgun');
+      expect(unlockList.getAttribute('data-arsenal-summary')).toBe(expectedArsenal.summaryLine);
+
+      expect(overlay.getAttribute('data-arsenal-unlocked-count')).toBe('4');
+      expect(overlay.getAttribute('data-arsenal-total-kills')).toBe('765');
+      expect(overlay.getAttribute('data-arsenal-signature-weapon')).toBe('shotgun');
+      expect(overlay.getAttribute('data-arsenal-summary')).toBe(expectedArsenal.summaryLine);
+
+      // Also verify via full garage.render call
+      garage.render(veteranSave, player);
+      expect(unlockList.getAttribute('data-arsenal-unlocked-count')).toBe('4');
+      expect(unlockList.getAttribute('data-arsenal-total-kills')).toBe('765');
+      expect(unlockList.getAttribute('data-arsenal-signature-weapon')).toBe('shotgun');
+      expect(unlockList.getAttribute('data-arsenal-summary')).toBe(expectedArsenal.summaryLine);
+      expect(overlay.getAttribute('data-arsenal-unlocked-count')).toBe('4');
+      expect(overlay.getAttribute('data-arsenal-total-kills')).toBe('765');
+      expect(overlay.getAttribute('data-arsenal-signature-weapon')).toBe('shotgun');
+      expect(overlay.getAttribute('data-arsenal-summary')).toBe(expectedArsenal.summaryLine);
     });
   });
 

@@ -27,7 +27,7 @@ import {
   BikeLiveryId
 } from '../types/game';
 
-import { WEAPONS, UNLOCKABLE_IDS } from '../data/weapons';
+import { WEAPONS, UNLOCKABLE_IDS, getWeaponArsenalSummary } from '../data/weapons';
 import { META_UPGRADES, calcUpgradeCost, DUO_SYNERGIES, getActiveDuoSynergies } from '../data/upgrades';
 import {
   EQUIP_SLOTS,
@@ -48,7 +48,7 @@ import {
 import { SET08_ASSETS } from './set08Assets';
 import { getCareerOutlawRank } from '@/core/state';
 
-export { getEquipmentLoadoutSummary };
+export { getEquipmentLoadoutSummary, getWeaponArsenalSummary };
 
 export interface BikeLiveryDef {
   id: BikeLiveryId;
@@ -1019,14 +1019,38 @@ export class GarageController {
   /**
    * Renders the permanent weapon unlocks list.
    */
-  private renderWeaponUnlocks(metaSave: MetaSaveState, player: PlayerState): void {
+  public renderWeaponUnlocks(metaSave: MetaSaveState, player?: PlayerState | null): void {
+    const curPlayer = player || this.player || ({} as PlayerState);
+    const arsenal = getWeaponArsenalSummary(metaSave);
+
+    if (!this.unlockList && typeof document !== 'undefined') {
+      this.unlockList = document.getElementById('unlock-list');
+    }
+    if (!this.overlay && typeof document !== 'undefined') {
+      this.overlay = document.getElementById('garage-overlay');
+    }
+
+    if (this.unlockList) {
+      this.unlockList.setAttribute('data-arsenal-unlocked-count', `${arsenal.unlockedCount}`);
+      this.unlockList.setAttribute('data-arsenal-total-kills', `${arsenal.totalKills}`);
+      this.unlockList.setAttribute('data-arsenal-signature-weapon', `${arsenal.topWeaponId}`);
+      this.unlockList.setAttribute('data-arsenal-summary', `${arsenal.summaryLine}`);
+    }
+
+    if (this.overlayEl) {
+      this.overlayEl.setAttribute('data-arsenal-unlocked-count', `${arsenal.unlockedCount}`);
+      this.overlayEl.setAttribute('data-arsenal-total-kills', `${arsenal.totalKills}`);
+      this.overlayEl.setAttribute('data-arsenal-signature-weapon', `${arsenal.topWeaponId}`);
+      this.overlayEl.setAttribute('data-arsenal-summary', `${arsenal.summaryLine}`);
+    }
+
     if (!this.unlockList) return;
     this.unlockList.innerHTML = '';
 
     UNLOCKABLE_IDS.forEach(id => {
       const w = WEAPONS[id];
-      const isUnlocked = !!metaSave.unlocked[id];
-      const isEquipped = player.weapon === id;
+      const isUnlocked = !!metaSave.unlocked?.[id];
+      const isEquipped = curPlayer.weapon === id;
       const canAfford = metaSave.scrap >= w.cost;
       const rawKills = (metaSave as any).weaponKills?.[id] ?? 0;
       const mastery = getWeaponMasteryTier(rawKills);

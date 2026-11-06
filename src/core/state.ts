@@ -335,6 +335,61 @@ export function getCareerOutlawRank(metaSave?: Partial<MetaSaveState> | null): C
 }
 
 // ============================================================================
+// FLOOR BOUNTY CONTRACT PROGRESS EVALUATOR
+// ============================================================================
+
+export interface FloorBountyContractStatus {
+  targetFloor: number;
+  contractTitle: string;
+  taskText: string;
+  rewardScrap: number;
+  rewardCoins: number;
+  isStyleMilestoneMet: boolean;
+  summaryLine: string;
+}
+
+const FLOOR_BOUNTY_DEFINITIONS = [
+  { title: 'NEON DAREDEVIL', task: 'Graze 3 enemy projectiles or clear Floor 1 Boss', scrap: 8, coins: 10 },
+  { title: 'DRIFT EXECUTIONER', task: 'Trigger 2 Drift Shockwaves or clear Floor 2 Boss', scrap: 10, coins: 12 },
+  { title: 'THERMAL HUNTER', task: 'Reach Style Rank A or clear Floor 3 Boss', scrap: 12, coins: 15 },
+  { title: 'CRYO BREAKER', task: 'Detonate 2 Arena Barrels or clear Floor 4 Boss', scrap: 15, coins: 18 },
+  { title: 'APEX INTERCEPTOR', task: 'Reach Style Rank S or clear Floor 5 Boss', scrap: 18, coins: 22 },
+  { title: 'VALHALLA CONQUEROR', task: 'Defeat Omega Valhalla on Floor 6', scrap: 25, coins: 30 }
+] as const;
+
+/**
+ * Pure evaluator mapping run floors to canonical bounty contracts and checking player style milestones.
+ */
+export function getFloorBountyContractStatus(
+  floorNum: number = 1,
+  player?: Partial<PlayerState> | null
+): FloorBountyContractStatus {
+  const targetFloor = Math.max(1, Math.floor(Number.isFinite(floorNum) ? floorNum : 1));
+  const contractIdx = (targetFloor - 1) % 6;
+  const contract = FLOOR_BOUNTY_DEFINITIONS[contractIdx];
+
+  const styleScore = Number(player?.styleScore || 0);
+  const styleRank = String(player?.styleRank || '');
+  const isStyleMilestoneMet = styleScore >= 50 || ['A', 'S', 'SS', 'SSS'].includes(styleRank);
+
+  const contractTitle = contract.title;
+  const taskText = contract.task;
+  const rewardScrap = contract.scrap;
+  const rewardCoins = contract.coins;
+  const summaryLine = `BOUNTY [F${targetFloor}] ${contractTitle}: ${taskText} (+${rewardScrap} SCRAP, +${rewardCoins} COINS)`;
+
+  return {
+    targetFloor,
+    contractTitle,
+    taskText,
+    rewardScrap,
+    rewardCoins,
+    isStyleMilestoneMet,
+    summaryLine
+  };
+}
+
+// ============================================================================
 // RUN CHECKPOINT AUTOSAVE
 // ============================================================================
 

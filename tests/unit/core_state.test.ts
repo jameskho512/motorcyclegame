@@ -25,7 +25,9 @@ import {
   SafeLocalStorage,
   StateManager,
   CareerOutlawRank,
-  getCareerOutlawRank
+  getCareerOutlawRank,
+  FloorBountyContractStatus,
+  getFloorBountyContractStatus
 } from '../../src/core/state';
 
 import {
@@ -775,6 +777,135 @@ describe('Core State Management & Persistence', () => {
       expect(edgeNotTier5.careerScore).toBe(325);
       expect(edgeNotTier5.tierNumber).toBe(4);
       expect(edgeNotTier5.rankId).toBe('apex_roadlord');
+    });
+  });
+
+  describe('Floor Bounty Contract Progress Evaluator', () => {
+    it('maps canonical floor bounties for Floors 1 through 6', () => {
+      const canonicalExpected = [
+        {
+          floor: 1,
+          title: 'NEON DAREDEVIL',
+          task: 'Graze 3 enemy projectiles or clear Floor 1 Boss',
+          scrap: 8,
+          coins: 10
+        },
+        {
+          floor: 2,
+          title: 'DRIFT EXECUTIONER',
+          task: 'Trigger 2 Drift Shockwaves or clear Floor 2 Boss',
+          scrap: 10,
+          coins: 12
+        },
+        {
+          floor: 3,
+          title: 'THERMAL HUNTER',
+          task: 'Reach Style Rank A or clear Floor 3 Boss',
+          scrap: 12,
+          coins: 15
+        },
+        {
+          floor: 4,
+          title: 'CRYO BREAKER',
+          task: 'Detonate 2 Arena Barrels or clear Floor 4 Boss',
+          scrap: 15,
+          coins: 18
+        },
+        {
+          floor: 5,
+          title: 'APEX INTERCEPTOR',
+          task: 'Reach Style Rank S or clear Floor 5 Boss',
+          scrap: 18,
+          coins: 22
+        },
+        {
+          floor: 6,
+          title: 'VALHALLA CONQUEROR',
+          task: 'Defeat Omega Valhalla on Floor 6',
+          scrap: 25,
+          coins: 30
+        }
+      ];
+
+      for (const expected of canonicalExpected) {
+        const bounty: FloorBountyContractStatus = getFloorBountyContractStatus(expected.floor);
+        expect(bounty.targetFloor).toBe(expected.floor);
+        expect(bounty.contractTitle).toBe(expected.title);
+        expect(bounty.taskText).toBe(expected.task);
+        expect(bounty.rewardScrap).toBe(expected.scrap);
+        expect(bounty.rewardCoins).toBe(expected.coins);
+        expect(bounty.summaryLine).toBe(
+          `BOUNTY [F${expected.floor}] ${expected.title}: ${expected.task} (+${expected.scrap} SCRAP, +${expected.coins} COINS)`
+        );
+        expect(bounty.isStyleMilestoneMet).toBe(false);
+      }
+    });
+
+    it('wraps cyclically on higher floors (Floor 7 -> Neon Daredevil, Floor 12 -> Valhalla Conqueror)', () => {
+      const bountyF7 = getFloorBountyContractStatus(7);
+      expect(bountyF7.targetFloor).toBe(7);
+      expect(bountyF7.contractTitle).toBe('NEON DAREDEVIL');
+      expect(bountyF7.rewardScrap).toBe(8);
+      expect(bountyF7.rewardCoins).toBe(10);
+      expect(bountyF7.summaryLine).toBe(
+        'BOUNTY [F7] NEON DAREDEVIL: Graze 3 enemy projectiles or clear Floor 1 Boss (+8 SCRAP, +10 COINS)'
+      );
+
+      const bountyF12 = getFloorBountyContractStatus(12);
+      expect(bountyF12.targetFloor).toBe(12);
+      expect(bountyF12.contractTitle).toBe('VALHALLA CONQUEROR');
+      expect(bountyF12.rewardScrap).toBe(25);
+      expect(bountyF12.rewardCoins).toBe(30);
+
+      const bountyF13 = getFloorBountyContractStatus(13);
+      expect(bountyF13.targetFloor).toBe(13);
+      expect(bountyF13.contractTitle).toBe('NEON DAREDEVIL');
+    });
+
+    it('clamps negative, zero, float, and NaN floor inputs safely to floor >= 1', () => {
+      const defaultBounty = getFloorBountyContractStatus();
+      expect(defaultBounty.targetFloor).toBe(1);
+      expect(defaultBounty.contractTitle).toBe('NEON DAREDEVIL');
+
+      const negativeBounty = getFloorBountyContractStatus(-5);
+      expect(negativeBounty.targetFloor).toBe(1);
+      expect(negativeBounty.contractTitle).toBe('NEON DAREDEVIL');
+
+      const zeroBounty = getFloorBountyContractStatus(0);
+      expect(zeroBounty.targetFloor).toBe(1);
+
+      const nanBounty = getFloorBountyContractStatus(NaN);
+      expect(nanBounty.targetFloor).toBe(1);
+
+      const infinityBounty = getFloorBountyContractStatus(Infinity);
+      expect(infinityBounty.targetFloor).toBe(1);
+
+      const floatBounty = getFloorBountyContractStatus(3.9);
+      expect(floatBounty.targetFloor).toBe(3);
+      expect(floatBounty.contractTitle).toBe('THERMAL HUNTER');
+    });
+
+    it('evaluates isStyleMilestoneMet correctly across cruising (D) vs high-style (A/S/SS/SSS) states', () => {
+      // Missing or null player
+      expect(getFloorBountyContractStatus(1, null).isStyleMilestoneMet).toBe(false);
+      expect(getFloorBountyContractStatus(1, undefined).isStyleMilestoneMet).toBe(false);
+
+      // Low style rank and low score
+      expect(getFloorBountyContractStatus(1, { styleScore: 0, styleRank: 'D' }).isStyleMilestoneMet).toBe(false);
+      expect(getFloorBountyContractStatus(1, { styleScore: 49, styleRank: 'B' }).isStyleMilestoneMet).toBe(false);
+
+      // Met via styleScore >= 50 with low rank
+      expect(getFloorBountyContractStatus(1, { styleScore: 50, styleRank: 'D' }).isStyleMilestoneMet).toBe(true);
+      expect(getFloorBountyContractStatus(1, { styleScore: 85, styleRank: 'C' }).isStyleMilestoneMet).toBe(true);
+
+      // Met via high rank (A, S, SS, SSS) even with score < 50
+      expect(getFloorBountyContractStatus(1, { styleScore: 0, styleRank: 'A' }).isStyleMilestoneMet).toBe(true);
+      expect(getFloorBountyContractStatus(1, { styleScore: 10, styleRank: 'S' }).isStyleMilestoneMet).toBe(true);
+      expect(getFloorBountyContractStatus(1, { styleScore: 25, styleRank: 'SS' }).isStyleMilestoneMet).toBe(true);
+      expect(getFloorBountyContractStatus(1, { styleScore: 0, styleRank: 'SSS' }).isStyleMilestoneMet).toBe(true);
+
+      // Both met
+      expect(getFloorBountyContractStatus(1, { styleScore: 120, styleRank: 'SSS' }).isStyleMilestoneMet).toBe(true);
     });
   });
 });
