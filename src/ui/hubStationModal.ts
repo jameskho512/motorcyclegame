@@ -17,7 +17,39 @@ import { getCareerOutlawRank } from '@/core/state';
 import { WEAPONS, WeaponId, getWeaponTacticalProfile } from '@/data/weapons';
 import type { MetaSaveState, PlayerState } from '@/types/game';
 
-export type HubStationId = 'garage' | 'blacksmith' | 'codex' | 'bounty' | 'launch' | 'armory' | 'forge';
+export type HubStationId = 'garage' | 'blacksmith' | 'codex' | 'bounty' | 'launch' | 'armory' | 'forge' | 'scanner';
+
+export interface ScannerStationAdvisor {
+  scannerActive: boolean;
+  critBonusPct: number;
+  targetFloor: number;
+  recommendedAction: string;
+  summaryLine: string;
+}
+
+/**
+ * Computes sanctuary tactical scanner uplink and crit bonus telemetry advisor intelligence.
+ */
+export function getScannerStationAdvisor(
+  player?: Partial<PlayerState> | null,
+  floorNum: number = 1
+): ScannerStationAdvisor {
+  const scannerActive = Boolean(player?.scannerBuff);
+  const critBonusPct = scannerActive ? 15 : 0;
+  const targetFloor = Math.max(1, Math.floor(Number.isFinite(floorNum) ? floorNum : 1));
+  const recommendedAction = scannerActive
+    ? 'TACTICAL UPLINK ONLINE (+15% Crit Chance & Minimap Reveal Active)'
+    : 'ACTIVATE SCANNER UPLINK (Free +15% Crit Chance & Full Floor Radar)';
+  const summaryLine = `SCANNER INTEL [FLOOR ${targetFloor}]: ${scannerActive ? 'ONLINE (+15% CRIT)' : 'STANDBY (0% CRIT)'} · ${recommendedAction}`;
+
+  return {
+    scannerActive,
+    critBonusPct,
+    targetFloor,
+    recommendedAction,
+    summaryLine
+  };
+}
 
 export interface ForgeStationAdvisor {
   canReforge: boolean;
@@ -116,6 +148,7 @@ export function getHubStationPromptInfo(
         accentColor: '#2ee6ff'
       };
 
+    case 'scanner':
     case 'codex':
       return {
         title: '📡 TACTICAL INTEL & SCANNER LAB',
@@ -190,6 +223,8 @@ export class HubStationModalController {
 
   public static getForgeStationAdvisor = getForgeStationAdvisor;
   public getForgeStationAdvisor = getForgeStationAdvisor;
+  public static getScannerStationAdvisor = getScannerStationAdvisor;
+  public getScannerStationAdvisor = getScannerStationAdvisor;
 
   constructor() {
     if (typeof document !== 'undefined') {
@@ -348,6 +383,12 @@ export class HubStationModalController {
         this.overlay.setAttribute('data-forge-can-reforge', advisor.canReforge ? 'true' : 'false');
         this.overlay.setAttribute('data-forge-advisor', advisor.summaryLine);
       }
+
+      if (options.npcId === 'scanner' || options.npcId === 'codex') {
+        const scanAdv = getScannerStationAdvisor(options.player, 1);
+        this.overlay.setAttribute('data-scanner-active', scanAdv.scannerActive ? 'true' : 'false');
+        this.overlay.setAttribute('data-scanner-advisor', scanAdv.summaryLine);
+      }
     }
 
     this.renderHeaderAndPurpose(options.npcId);
@@ -374,6 +415,12 @@ export class HubStationModalController {
         this.overlay.setAttribute('data-forge-can-reforge', advisor.canReforge ? 'true' : 'false');
         this.overlay.setAttribute('data-forge-advisor', advisor.summaryLine);
       }
+
+      if (this.currentOptions.npcId === 'scanner' || this.currentOptions.npcId === 'codex') {
+        const scanAdv = getScannerStationAdvisor(this.currentOptions.player, 1);
+        this.overlay.setAttribute('data-scanner-active', scanAdv.scannerActive ? 'true' : 'false');
+        this.overlay.setAttribute('data-scanner-advisor', scanAdv.summaryLine);
+      }
     }
     this.renderHeaderAndPurpose(this.currentOptions.npcId);
     this.renderBody();
@@ -395,8 +442,22 @@ export class HubStationModalController {
   public renderCodex(options?: HubStationOpenOptions): void {
     const opts = options || this.currentOptions;
     if (opts) {
+      if (options?.player && this.currentOptions) {
+        this.currentOptions.player = options.player;
+      }
       this.renderCodexBody(opts.metaSave, opts.scannerClaimed);
     }
+  }
+
+  /**
+   * Renders the tactical scanner station view.
+   */
+  public renderScanner(options?: HubStationOpenOptions): void {
+    this.renderCodex(options);
+  }
+
+  public renderScannerBody(metaSave: any, scannerClaimed: boolean): void {
+    this.renderCodexBody(metaSave, scannerClaimed);
   }
 
   /**
@@ -452,6 +513,7 @@ export class HubStationModalController {
         }
         break;
 
+      case 'scanner':
       case 'codex':
         if (this.kickerEl) this.kickerEl.textContent = 'SANCTUARY HIDEOUT // INTEL ARCHIVE';
         if (this.titleEl) this.titleEl.textContent = '📡 TACTICAL INTEL & SCANNER LAB';
@@ -534,6 +596,7 @@ export class HubStationModalController {
       case 'forge':
         this.renderForgeBody(metaSave, player);
         break;
+      case 'scanner':
       case 'codex':
         this.renderCodexBody(metaSave, scannerClaimed);
         break;
@@ -642,6 +705,12 @@ export class HubStationModalController {
 
   private renderCodexBody(metaSave: any, scannerClaimed: boolean): void {
     if (!this.bodyEl || !this.currentOptions) return;
+    const effectivePlayer = this.currentOptions?.player;
+    const scanAdv = getScannerStationAdvisor(effectivePlayer, 1);
+    if (this.overlay) {
+      this.overlay.setAttribute('data-scanner-active', scanAdv.scannerActive ? 'true' : 'false');
+      this.overlay.setAttribute('data-scanner-advisor', scanAdv.summaryLine);
+    }
     const bestFloor = metaSave?.bestFloor || 1;
     const totalKills = metaSave?.totalKills || 0;
     const bossesSlain = metaSave?.bossesSlain || 0;
@@ -704,6 +773,11 @@ export class HubStationModalController {
           if (!this.currentOptions) return;
           const res = this.currentOptions.onClaimScanner();
           this.currentOptions.scannerClaimed = true;
+          if (this.currentOptions.player) {
+            this.currentOptions.player.scannerBuff = true;
+          } else {
+            this.currentOptions.player = { scannerBuff: true };
+          }
           this.showFeedback(res.message, res.ok);
           this.renderBody();
         };

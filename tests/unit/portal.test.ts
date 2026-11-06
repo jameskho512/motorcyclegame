@@ -38,7 +38,9 @@ import {
   getHubStationPromptInfo,
   HubStationOpenOptions,
   getForgeStationAdvisor,
-  ForgeStationAdvisor
+  ForgeStationAdvisor,
+  getScannerStationAdvisor,
+  ScannerStationAdvisor
 } from '../../src/ui/hubStationModal';
 import { WEAPONS, WeaponId, getWeaponTacticalProfile } from '../../src/data/weapons';
 import { getCareerOutlawRank } from '../../src/core/state';
@@ -1772,6 +1774,63 @@ describe('HubStationModalController & getHubStationPromptInfo (Wave 14-15)', () 
         'FORGE ANVIL: 8 SCRAP (COST: 15) · Need 7 more Scrap to Reforge at the Anvil'
       );
     });
+
+    it('renders scanner station and sets data-scanner-active="false" and standby advisor when scannerBuff is not active', () => {
+      const options = createHubOptions({
+        npcId: 'scanner',
+        player: { scannerBuff: false }
+      });
+      modal.open(options);
+
+      const overlayEl = document.getElementById('hub-station-overlay')!;
+      expect(overlayEl.getAttribute('data-scanner-active')).toBe('false');
+      expect(overlayEl.getAttribute('data-scanner-advisor')).toBe(
+        'SCANNER INTEL [FLOOR 1]: STANDBY (0% CRIT) · ACTIVATE SCANNER UPLINK (Free +15% Crit Chance & Full Floor Radar)'
+      );
+    });
+
+    it('renders scanner station and sets data-scanner-active="true" and online advisor when scannerBuff is active', () => {
+      const options = createHubOptions({
+        npcId: 'scanner',
+        player: { scannerBuff: true }
+      });
+      modal.open(options);
+
+      const overlayEl = document.getElementById('hub-station-overlay')!;
+      expect(overlayEl.getAttribute('data-scanner-active')).toBe('true');
+      expect(overlayEl.getAttribute('data-scanner-advisor')).toBe(
+        'SCANNER INTEL [FLOOR 1]: ONLINE (+15% CRIT) · TACTICAL UPLINK ONLINE (+15% Crit Chance & Minimap Reveal Active)'
+      );
+    });
+
+    it('sets scanner advisor attributes when opened with codex alias and updates via renderScanner', () => {
+      const options = createHubOptions({
+        npcId: 'codex',
+        player: { scannerBuff: false }
+      });
+      modal.open(options);
+
+      const overlayEl = document.getElementById('hub-station-overlay')!;
+      expect(overlayEl.getAttribute('data-scanner-active')).toBe('false');
+      expect(overlayEl.getAttribute('data-scanner-advisor')).toContain('STANDBY (0% CRIT)');
+
+      // Re-render scanner with active buff
+      modal.renderScanner({
+        ...options,
+        player: { scannerBuff: true }
+      });
+      expect(overlayEl.getAttribute('data-scanner-active')).toBe('true');
+      expect(overlayEl.getAttribute('data-scanner-advisor')).toContain('ONLINE (+15% CRIT)');
+    });
+
+    it('supports modal.open shorthand with string npcId scanner', () => {
+      modal.open('scanner', {}, { scannerBuff: true });
+      const overlayEl = document.getElementById('hub-station-overlay')!;
+      expect(overlayEl.getAttribute('data-scanner-active')).toBe('true');
+      expect(overlayEl.getAttribute('data-scanner-advisor')).toBe(
+        'SCANNER INTEL [FLOOR 1]: ONLINE (+15% CRIT) · TACTICAL UPLINK ONLINE (+15% Crit Chance & Minimap Reveal Active)'
+      );
+    });
   });
 
   describe('getForgeStationAdvisor pure helper (M101)', () => {
@@ -1883,6 +1942,91 @@ describe('HubStationModalController & getHubStationPromptInfo (Wave 14-15)', () 
       const controller = new HubStationModalController();
       expect(controller.getForgeStationAdvisor(meta, player)).toEqual(
         getForgeStationAdvisor(meta, player)
+      );
+    });
+  });
+
+  describe('getScannerStationAdvisor pure helper (M103)', () => {
+    it('returns standby advice when player has no scannerBuff (false / missing / null)', () => {
+      // Missing player
+      const advNull: ScannerStationAdvisor = getScannerStationAdvisor(null);
+      expect(advNull).toEqual({
+        scannerActive: false,
+        critBonusPct: 0,
+        targetFloor: 1,
+        recommendedAction: 'ACTIVATE SCANNER UPLINK (Free +15% Crit Chance & Full Floor Radar)',
+        summaryLine: 'SCANNER INTEL [FLOOR 1]: STANDBY (0% CRIT) · ACTIVATE SCANNER UPLINK (Free +15% Crit Chance & Full Floor Radar)'
+      });
+
+      // scannerBuff false
+      const advFalse = getScannerStationAdvisor({ scannerBuff: false });
+      expect(advFalse.scannerActive).toBe(false);
+      expect(advFalse.critBonusPct).toBe(0);
+      expect(advFalse.targetFloor).toBe(1);
+      expect(advFalse.recommendedAction).toBe('ACTIVATE SCANNER UPLINK (Free +15% Crit Chance & Full Floor Radar)');
+      expect(advFalse.summaryLine).toBe('SCANNER INTEL [FLOOR 1]: STANDBY (0% CRIT) · ACTIVATE SCANNER UPLINK (Free +15% Crit Chance & Full Floor Radar)');
+
+      // Undefined player
+      const advUndef = getScannerStationAdvisor(undefined);
+      expect(advUndef.scannerActive).toBe(false);
+      expect(advUndef.critBonusPct).toBe(0);
+    });
+
+    it('returns online tactical uplink advice when scannerBuff is true', () => {
+      const advTrue: ScannerStationAdvisor = getScannerStationAdvisor({ scannerBuff: true });
+      expect(advTrue).toEqual({
+        scannerActive: true,
+        critBonusPct: 15,
+        targetFloor: 1,
+        recommendedAction: 'TACTICAL UPLINK ONLINE (+15% Crit Chance & Minimap Reveal Active)',
+        summaryLine: 'SCANNER INTEL [FLOOR 1]: ONLINE (+15% CRIT) · TACTICAL UPLINK ONLINE (+15% Crit Chance & Minimap Reveal Active)'
+      });
+    });
+
+    it('clamps floorNum to at least 1 and handles non-finite or floating inputs', () => {
+      // Floor 0 clamps to 1
+      const adv0 = getScannerStationAdvisor({ scannerBuff: false }, 0);
+      expect(adv0.targetFloor).toBe(1);
+      expect(adv0.summaryLine).toContain('[FLOOR 1]');
+
+      // Negative floor clamps to 1
+      const advNeg = getScannerStationAdvisor({ scannerBuff: true }, -5);
+      expect(advNeg.targetFloor).toBe(1);
+      expect(advNeg.summaryLine).toContain('[FLOOR 1]');
+
+      // NaN clamps to 1
+      const advNaN = getScannerStationAdvisor(null, NaN);
+      expect(advNaN.targetFloor).toBe(1);
+      expect(advNaN.summaryLine).toContain('[FLOOR 1]');
+
+      // Infinity clamps to 1
+      const advInf = getScannerStationAdvisor(null, Infinity);
+      expect(advInf.targetFloor).toBe(1);
+      expect(advInf.summaryLine).toContain('[FLOOR 1]');
+
+      // Floats are floored
+      const advFloat = getScannerStationAdvisor({ scannerBuff: true }, 3.8);
+      expect(advFloat.targetFloor).toBe(3);
+      expect(advFloat.summaryLine).toContain('[FLOOR 3]');
+
+      // Higher floors are formatted into summaryLine
+      const adv4 = getScannerStationAdvisor({ scannerBuff: true }, 4);
+      expect(adv4.targetFloor).toBe(4);
+      expect(adv4.summaryLine).toBe(
+        'SCANNER INTEL [FLOOR 4]: ONLINE (+15% CRIT) · TACTICAL UPLINK ONLINE (+15% Crit Chance & Minimap Reveal Active)'
+      );
+    });
+
+    it('is accessible via HubStationModalController static and instance methods', () => {
+      const player = { scannerBuff: true };
+
+      expect(HubStationModalController.getScannerStationAdvisor(player, 2)).toEqual(
+        getScannerStationAdvisor(player, 2)
+      );
+
+      const controller = new HubStationModalController();
+      expect(controller.getScannerStationAdvisor(player, 2)).toEqual(
+        getScannerStationAdvisor(player, 2)
       );
     });
   });

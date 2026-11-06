@@ -20,7 +20,8 @@ import {
   Room,
   EquipmentItem,
   EquipSlot,
-  Pickup
+  Pickup,
+  Enemy
 } from '@/types/game';
 
 import {
@@ -66,6 +67,11 @@ import { getShopBuildSynergyHint } from '@/ui/shopModal';
 import { getPortalHeatBriefing } from '@/ui/portalModal';
 import { getHubStationPromptInfo } from '@/ui/hubStationModal';
 import { getHubNpcGreeting } from '@/world/dungeon';
+
+import { getBossEncounterBriefing } from '../../src/systems/enemyAI';
+import { getForgeStationAdvisor } from '../../src/ui/hubStationModal';
+import { getEquipmentLoadoutSummary, applyItemStats } from '../../src/data/equipment';
+import { getEquippedBikeVisualState, getDowngradeStashItems } from '../../src/ui/garage';
 
 describe('Tier 3: Cross-Feature Combinations & Synergies', () => {
   let player: PlayerState;
@@ -1203,6 +1209,312 @@ describe('Tier 3: Cross-Feature Combinations & Synergies', () => {
       expect(scaledOffense.siphonPct).toBe(20);
       expect(scaledOffense.siphonStatus).toBe('VAMPIRIC OVERDRIVE');
       expect(scaledOffense.summaryLine).toBe('DPS x5.40 · VAMPIRIC OVERDRIVE (20% Siphon) · OVERCLOCKED');
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Combination 7: Boss Tactical Briefing × Forge Advisor × 24-Model Equipment Loadout (M105)
+  // --------------------------------------------------------------------------
+  describe('Combination 7: Boss Tactical Briefing × Forge Advisor × 24-Model Equipment Loadout (M105)', () => {
+    // 1. Combines a Phase 2 enraged boss encounter (getBossEncounterBriefing) with a 3pc Legendary Valhalla equipment loadout (getEquipmentLoadoutSummary & getEquippedBikeVisualState), verifying that both the boss overdrive warning and the OMEGA model visual state remain consistent.
+    it('combines a Phase 2 enraged boss encounter with a 3pc Legendary Valhalla equipment loadout and OMEGA visual state', () => {
+      // 1. Phase 2 enraged boss encounter briefing
+      const bossEnemy: Partial<Enemy> = {
+        type: 'boss',
+        hp: 200,
+        maxHp: 500, // 40% HP <= 50% threshold
+        enraged: true
+      };
+      const bossBriefing = getBossEncounterBriefing(bossEnemy, 1);
+      expect(bossBriefing.active).toBe(true);
+      expect(bossBriefing.phase).toBe(2);
+      expect(bossBriefing.isEnraged).toBe(true);
+      expect(bossBriefing.hpPct).toBe(40);
+      expect(bossBriefing.counterplayTip).toBe(
+        'PHASE 2 OVERDRIVE: Boss bullet cadence doubled — use Drift [SPACE] i-frames and Graze for NOS!'
+      );
+      expect(bossBriefing.summaryLine).toContain('[PHASE 2 ENRAGED]');
+
+      // 2. 3-piece Legendary Valhalla equipment loadout
+      const meta = createDefaultMetaSave();
+      meta.equipped = {
+        tires: {
+          slot: 'tires',
+          rarity: 3,
+          name: 'Hellfire Ripper Tires',
+          stats: { speed: 0.20 }
+        },
+        engine: {
+          slot: 'engine',
+          rarity: 3,
+          name: 'Valhalla Core V8',
+          stats: { dmg: 0.25 }
+        },
+        frame: {
+          slot: 'frame',
+          rarity: 3,
+          name: 'Juggernaut Prow Frame',
+          stats: { hp: 3 }
+        }
+      };
+
+      const loadout = getEquipmentLoadoutSummary(meta.equipped);
+      expect(loadout.installedCount).toBe(3);
+      expect(loadout.highestRarity).toBe(3);
+      expect(loadout.rarityCounts[3]).toBe(3);
+      expect(loadout.nextSetGoalText).toBe('3pc Valhalla Set Active (+15% Dmg, +10% Spd)');
+      expect(loadout.summaryLine).toContain('LOADOUT: 3/6 INSTALLED');
+      expect(loadout.summaryLine).toContain('3pc Valhalla Set Active');
+
+      // 3. 24-model equipment visual state verification
+      const visualState = getEquippedBikeVisualState(meta);
+      expect(visualState.equippedCount).toBe(3);
+      expect(visualState.equippedSlots).toEqual(['tires', 'engine', 'frame']);
+      expect(visualState.modelCodes).toEqual([
+        'TR-04 HELLFIRE RIPPER',
+        'EN-04 VALHALLA CORE',
+        'FR-04 JUGGERNAUT'
+      ]);
+
+      // All 3 equipped legendary parts must have the OMEGA tier badge
+      expect(visualState.parts.tires?.tierBadge).toBe('OMEGA');
+      expect(visualState.parts.engine?.tierBadge).toBe('OMEGA');
+      expect(visualState.parts.frame?.tierBadge).toBe('OMEGA');
+      expect(visualState.summaryLine).toContain('MOUNTED MODELS (3/6)');
+
+      // Cross-system consistency: boss overdrive warning coexists with active player OMEGA loadout
+      expect(bossBriefing.counterplayTip).toContain('use Drift [SPACE] i-frames');
+      expect(visualState.parts.engine?.modelCode).toBe('EN-04 VALHALLA CORE');
+    });
+
+    // 2. Combines getForgeStationAdvisor scrap transitions (0 -> 15 -> 45 scrap) with salvaging downgrade stash items and equipping upgraded parts in the Garage.
+    it('combines getForgeStationAdvisor scrap transitions (0 -> 15 -> 45 scrap) with salvaging downgrade stash items and equipping upgraded parts', () => {
+      const meta = createDefaultMetaSave();
+      const p = createDefaultPlayerState();
+      p.items = ['Thermobaric Mix'];
+
+      meta.equipped = {
+        engine: {
+          slot: 'engine',
+          rarity: 2,
+          name: 'Hyper-Billet Engine',
+          stats: { dmg: 0.15 }
+        },
+        tires: {
+          slot: 'tires',
+          rarity: 2,
+          name: 'Apex Turbine Tires',
+          stats: { speed: 0.12 }
+        }
+      };
+
+      const commonEngine: EquipmentItem = {
+        slot: 'engine',
+        rarity: 0,
+        name: 'Standard Iron V2 Engine',
+        stats: { dmg: 0.05 }
+      };
+      const uncommonTires: EquipmentItem = {
+        slot: 'tires',
+        rarity: 1,
+        name: 'Cryo-Slick Tires',
+        stats: { speed: 0.06 }
+      };
+      const commonTires: EquipmentItem = {
+        slot: 'tires',
+        rarity: 0,
+        name: 'Standard Street Tires',
+        stats: { speed: 0.03 }
+      };
+      const upgradedExhaust: EquipmentItem = {
+        slot: 'exhaust',
+        rarity: 3,
+        name: 'Dragon Jet Afterburner',
+        stats: { blast: 0.25 }
+      };
+
+      meta.stash = [commonEngine, uncommonTires, commonTires, upgradedExhaust];
+
+      // State A: 0 Scrap available
+      meta.scrap = 0;
+      const advisor0 = getForgeStationAdvisor(meta, p);
+      expect(advisor0.canReforge).toBe(false);
+      expect(advisor0.scrapAvailable).toBe(0);
+      expect(advisor0.reforgeCost).toBe(15);
+      expect(advisor0.recommendedAction).toBe('Need 15 more Scrap to Reforge at the Anvil');
+      expect(advisor0.summaryLine).toContain('0 SCRAP (COST: 15)');
+
+      // Identify downgrade stash items
+      const downgrades = getDowngradeStashItems(meta.stash, meta.equipped);
+      expect(downgrades).toHaveLength(3);
+      expect(downgrades).toContain(commonEngine);
+      expect(downgrades).toContain(uncommonTires);
+      expect(downgrades).toContain(commonTires);
+      expect(downgrades).not.toContain(upgradedExhaust);
+
+      // Salvage step 1: Scrap increases to 15 (reforge cost met)
+      meta.scrap = 15;
+      const advisor15 = getForgeStationAdvisor(meta, p);
+      expect(advisor15.canReforge).toBe(true);
+      expect(advisor15.scrapAvailable).toBe(15);
+      expect(advisor15.reforgeCost).toBe(15);
+      expect(advisor15.recommendedAction).toBe('Reforge Ready (15 Scrap) — Reroll & upgrade active mod loadout');
+      expect(advisor15.summaryLine).toContain('15 SCRAP (COST: 15)');
+
+      // Salvage step 2: Further salvaging brings scrap to 45 (multiple reforges possible)
+      meta.scrap = 45;
+      meta.equipped.exhaust = upgradedExhaust;
+      meta.stash = meta.stash.filter(it => it !== upgradedExhaust);
+
+      const advisor45 = getForgeStationAdvisor(meta, p);
+      expect(advisor45.canReforge).toBe(true);
+      expect(advisor45.scrapAvailable).toBe(45);
+      expect(advisor45.summaryLine).toContain('45 SCRAP (COST: 15)');
+
+      const garageLoadout = getEquipmentLoadoutSummary(meta.equipped);
+      expect(garageLoadout.installedCount).toBe(3);
+      expect(garageLoadout.highestRarity).toBe(3);
+
+      const garageVisual = getEquippedBikeVisualState(meta);
+      expect(garageVisual.equippedSlots).toContain('exhaust');
+      expect(garageVisual.parts.exhaust?.tierBadge).toBe('OMEGA');
+      expect(garageVisual.parts.exhaust?.modelCode).toBe('EX-04 DRAGON JET');
+    });
+
+    // 3. Verifies cross-tier equipment model progression (MK-I -> MK-II -> MK-III -> OMEGA) alongside player combat stat scaling (applyItemStats) and getEquipmentLoadoutSummary power score increases.
+    it('verifies cross-tier equipment model progression (MK-I -> MK-II -> MK-III -> OMEGA) alongside player combat stat scaling and loadout power score increases', () => {
+      const p = createDefaultPlayerState();
+      const initialDmg = p.dmgMult;
+
+      const progressionItems: EquipmentItem[] = [
+        {
+          slot: 'engine',
+          rarity: 0,
+          name: 'Cast-Iron V2 Engine',
+          stats: { dmg: 0.05 }
+        },
+        {
+          slot: 'engine',
+          rarity: 1,
+          name: 'Twin-Scroll Turbo Engine',
+          stats: { dmg: 0.12, fireRate: 0.05 }
+        },
+        {
+          slot: 'engine',
+          rarity: 2,
+          name: 'Hyper-Billet Dry Clutch Engine',
+          stats: { dmg: 0.20, fireRate: 0.10 }
+        },
+        {
+          slot: 'engine',
+          rarity: 3,
+          name: 'Valhalla Core Fusion Engine',
+          stats: { dmg: 0.30, fireRate: 0.18, blast: 0.15 }
+        }
+      ];
+
+      const expectedBadges: Array<'MK-I' | 'MK-II' | 'MK-III' | 'OMEGA'> = ['MK-I', 'MK-II', 'MK-III', 'OMEGA'];
+      const expectedModelCodes = [
+        'EN-01 IRON V2',
+        'EN-02 TWIN-SCROLL',
+        'EN-03 HYPER-BILLET',
+        'EN-04 VALHALLA CORE'
+      ];
+
+      let previousScore = -1;
+      let currentItem: EquipmentItem | null = null;
+
+      for (let i = 0; i < progressionItems.length; i++) {
+        const item = progressionItems[i];
+
+        if (currentItem) {
+          applyItemStats(currentItem, -1, p);
+        }
+        applyItemStats(item, 1, p);
+        currentItem = item;
+
+        const visual = getEquippedBikeVisualState({ equipped: { engine: item } } as any);
+        expect(visual.parts.engine?.tierBadge).toBe(expectedBadges[i]);
+        expect(visual.parts.engine?.modelCode).toBe(expectedModelCodes[i]);
+
+        const loadout = getEquipmentLoadoutSummary({ engine: item });
+        expect(loadout.highestRarity).toBe(i);
+        expect(loadout.totalPowerScore).toBeGreaterThan(previousScore);
+        previousScore = loadout.totalPowerScore;
+
+        expect(p.dmgMult).toBeCloseTo(initialDmg + (item.stats.dmg || 0), 2);
+      }
+
+      expect(p.dmgMult).toBeCloseTo(1.30, 2);
+      expect(p.fireRateMult).toBeCloseTo(1.18, 2);
+      expect(p.blastMult).toBeCloseTo(1.15, 2);
+    });
+
+    // 4. Verifies all 6 floor boss variants (Floors 1..6) transition cleanly from Phase 1 (>50% HP) to Phase 2 Enraged (<=50% HP) in getBossEncounterBriefing.
+    it('verifies all 6 floor boss variants (Floors 1..6) transition cleanly from Phase 1 (>50% HP) to Phase 2 Enraged (<=50% HP) in getBossEncounterBriefing', () => {
+      const expectedBosses: Array<{ floor: number; expectedTitle: string }> = [
+        { floor: 1, expectedTitle: 'SCRAP GOLIATH' },
+        { floor: 2, expectedTitle: 'SIEGE BEHEMOTH' },
+        { floor: 3, expectedTitle: 'OVERLORD HELION' },
+        { floor: 4, expectedTitle: 'CRYO VALKYRIE' },
+        { floor: 5, expectedTitle: 'INFERNO COLOSSUS' },
+        { floor: 6, expectedTitle: 'OMEGA VALHALLA' }
+      ];
+
+      for (const { floor, expectedTitle } of expectedBosses) {
+        // Phase 1: > 50% HP (e.g. 750 / 1000 = 75% HP)
+        const bossP1: Partial<Enemy> = {
+          type: 'boss',
+          hp: 750,
+          maxHp: 1000,
+          enraged: false
+        };
+        const briefingP1 = getBossEncounterBriefing(bossP1, floor);
+        expect(briefingP1.active).toBe(true);
+        expect(briefingP1.phase).toBe(1);
+        expect(briefingP1.isEnraged).toBe(false);
+        expect(briefingP1.hpPct).toBe(75);
+        expect(briefingP1.bossTitle).toBe(expectedTitle);
+        expect(briefingP1.counterplayTip).toBe(
+          'PHASE 1: Maintain mid-range orbit and destroy elemental barrels before 50% HP enrage.'
+        );
+        expect(briefingP1.summaryLine).toBe(
+          `${expectedTitle} [PHASE 1] · 75% HP · PHASE 1: Maintain mid-range orbit and destroy elemental barrels before 50% HP enrage.`
+        );
+
+        // Phase 2 Enraged: <= 50% HP boundary test (e.g. exactly 500 / 1000 = 50% HP)
+        const bossP2Boundary: Partial<Enemy> = {
+          type: 'boss',
+          hp: 500,
+          maxHp: 1000,
+          enraged: false
+        };
+        const briefingP2Boundary = getBossEncounterBriefing(bossP2Boundary, floor);
+        expect(briefingP2Boundary.active).toBe(true);
+        expect(briefingP2Boundary.phase).toBe(2);
+        expect(briefingP2Boundary.isEnraged).toBe(true);
+        expect(briefingP2Boundary.hpPct).toBe(50);
+        expect(briefingP2Boundary.bossTitle).toBe(expectedTitle);
+        expect(briefingP2Boundary.counterplayTip).toBe(
+          'PHASE 2 OVERDRIVE: Boss bullet cadence doubled — use Drift [SPACE] i-frames and Graze for NOS!'
+        );
+        expect(briefingP2Boundary.summaryLine).toBe(
+          `${expectedTitle} [PHASE 2 ENRAGED] · 50% HP · PHASE 2 OVERDRIVE: Boss bullet cadence doubled — use Drift [SPACE] i-frames and Graze for NOS!`
+        );
+
+        // Phase 2 Deep Enraged: 200 / 1000 = 20% HP
+        const bossP2Deep: Partial<Enemy> = {
+          type: 'boss',
+          hp: 200,
+          maxHp: 1000,
+          enraged: true
+        };
+        const briefingP2Deep = getBossEncounterBriefing(bossP2Deep, floor);
+        expect(briefingP2Deep.phase).toBe(2);
+        expect(briefingP2Deep.isEnraged).toBe(true);
+        expect(briefingP2Deep.hpPct).toBe(20);
+        expect(briefingP2Deep.bossTitle).toBe(expectedTitle);
+      }
     });
   });
 });

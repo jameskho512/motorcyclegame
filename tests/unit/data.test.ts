@@ -21,7 +21,9 @@ import {
   getWeaponEvolutionProgress,
   WeaponEvolutionProgress,
   WeaponTacticalProfile,
-  getWeaponTacticalProfile
+  getWeaponTacticalProfile,
+  WeaponArsenalSummary,
+  getWeaponArsenalSummary
 } from '@/data/weapons';
 import {
   META_UPGRADES,
@@ -1040,6 +1042,133 @@ describe('Tooltip: formatHubNpcTooltip', () => {
         const expectedDps = Math.round((w.dmg * (w.count || 1)) / Math.max(0.05, w.fireRate));
         expect(profile.baseDps).toBe(expectedDps);
       }
+    });
+  });
+
+  describe('Weapon Arsenal Career & Mastery Summary (M104: getWeaponArsenalSummary)', () => {
+    it('handles null, undefined, and empty metaSave with default starting pistol (1/7 UNLOCKED)', () => {
+      const expectedEmpty: WeaponArsenalSummary = {
+        unlockedCount: 1,
+        totalWeapons: 7,
+        totalKills: 0,
+        topWeaponId: 'pistol',
+        topWeaponName: 'Pistol',
+        topWeaponKills: 0,
+        summaryLine: 'ARSENAL: 1/7 UNLOCKED · 0 TOTAL KILLS · SIGNATURE: PISTOL (0)'
+      };
+
+      expect(getWeaponArsenalSummary()).toEqual(expectedEmpty);
+      expect(getWeaponArsenalSummary(null)).toEqual(expectedEmpty);
+      expect(getWeaponArsenalSummary({})).toEqual(expectedEmpty);
+      expect(getWeaponArsenalSummary({ unlocked: null, weaponKills: null })).toEqual(expectedEmpty);
+      expect(getWeaponArsenalSummary({ unlocked: {}, weaponKills: {} })).toEqual(expectedEmpty);
+      expect(getWeaponArsenalSummary({ unlocked: { pistol: false } })).toEqual(expectedEmpty);
+    });
+
+    it('handles partial unlocks with weapon kills and identifies top signature weapon', () => {
+      const summary = getWeaponArsenalSummary({
+        unlocked: {
+          shotgun: true,
+          machine_gun: true
+        },
+        weaponKills: {
+          pistol: 15,
+          machine_gun: 120,
+          shotgun: 45
+        }
+      });
+
+      expect(summary.unlockedCount).toBe(3); // pistol (always) + shotgun + machine_gun
+      expect(summary.totalWeapons).toBe(7);
+      expect(summary.totalKills).toBe(180);
+      expect(summary.topWeaponId).toBe('machine_gun');
+      expect(summary.topWeaponName).toBe('Machine Gun');
+      expect(summary.topWeaponKills).toBe(120);
+      expect(summary.summaryLine).toBe(
+        'ARSENAL: 3/7 UNLOCKED · 180 TOTAL KILLS · SIGNATURE: MACHINE GUN (120)'
+      );
+    });
+
+    it('handles full 7/7 unlocked arsenal and correctly identifies signature weapon', () => {
+      const allUnlocked: Record<string, boolean> = {
+        machine_gun: true,
+        shotgun: true,
+        flamethrower: true,
+        railgun: true,
+        grenade_launcher: true,
+        arc_coil: true
+      };
+
+      const summary = getWeaponArsenalSummary({
+        unlocked: allUnlocked,
+        weaponKills: {
+          pistol: 50,
+          machine_gun: 30,
+          shotgun: 80,
+          flamethrower: 15,
+          railgun: 250,
+          grenade_launcher: 40,
+          arc_coil: 90
+        }
+      });
+
+      expect(summary.unlockedCount).toBe(7);
+      expect(summary.totalWeapons).toBe(7);
+      expect(summary.totalKills).toBe(555);
+      expect(summary.topWeaponId).toBe('railgun');
+      expect(summary.topWeaponName).toBe('Plasma Railgun');
+      expect(summary.topWeaponKills).toBe(250);
+      expect(summary.summaryLine).toBe(
+        'ARSENAL: 7/7 UNLOCKED · 555 TOTAL KILLS · SIGNATURE: PLASMA RAILGUN (250)'
+      );
+    });
+
+    it('sanitizes malformed, negative, NaN, and non-finite kill numbers', () => {
+      const summary = getWeaponArsenalSummary({
+        unlocked: {
+          arc_coil: true
+        },
+        weaponKills: {
+          pistol: -25,
+          machine_gun: NaN,
+          shotgun: Infinity,
+          flamethrower: -Infinity,
+          grenade_launcher: 0,
+          railgun: '500' as unknown as number,
+          arc_coil: 42
+        }
+      });
+
+      expect(summary.unlockedCount).toBe(2); // pistol + arc_coil
+      expect(summary.totalWeapons).toBe(7);
+      expect(summary.totalKills).toBe(42);
+      expect(summary.topWeaponId).toBe('arc_coil');
+      expect(summary.topWeaponName).toBe('Arc Tesla Coil');
+      expect(summary.topWeaponKills).toBe(42);
+      expect(summary.summaryLine).toBe(
+        'ARSENAL: 2/7 UNLOCKED · 42 TOTAL KILLS · SIGNATURE: ARC TESLA COIL (42)'
+      );
+    });
+
+    it('defaults top weapon to pistol when all weapon kills are zero or negative', () => {
+      const summary = getWeaponArsenalSummary({
+        unlocked: {
+          railgun: true
+        },
+        weaponKills: {
+          pistol: 0,
+          railgun: -10
+        }
+      });
+
+      expect(summary.unlockedCount).toBe(2);
+      expect(summary.totalKills).toBe(0);
+      expect(summary.topWeaponId).toBe('pistol');
+      expect(summary.topWeaponName).toBe('Pistol');
+      expect(summary.topWeaponKills).toBe(0);
+      expect(summary.summaryLine).toBe(
+        'ARSENAL: 2/7 UNLOCKED · 0 TOTAL KILLS · SIGNATURE: PISTOL (0)'
+      );
     });
   });
 });

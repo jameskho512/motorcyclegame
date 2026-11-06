@@ -498,5 +498,68 @@ export function getWeaponTacticalProfile(weaponId: WeaponId): WeaponTacticalProf
   };
 }
 
+// ============================================================================
+// WEAPON ARSENAL CAREER & MASTERY SUMMARY (M104)
+// ============================================================================
+
+export interface WeaponArsenalSummary {
+  unlockedCount: number;
+  totalWeapons: number;
+  totalKills: number;
+  topWeaponId: WeaponId;
+  topWeaponName: string;
+  topWeaponKills: number;
+  summaryLine: string;
+}
+
+/**
+ * Pure function returning overall player weapon collection progress,
+ * total career kills across all arsenal weapons, top signature weapon,
+ * and single-line summary badge string for UI menus and profile summaries.
+ */
+export function getWeaponArsenalSummary(
+  metaSave?: {
+    unlocked?: Partial<Record<string, boolean>> | null;
+    weaponKills?: Partial<Record<string, number>> | null;
+  } | null
+): WeaponArsenalSummary {
+  let unlockedCount = 1; // Pistol is always unlocked
+  for (const id of UNLOCKABLE_IDS) {
+    if (metaSave?.unlocked?.[id]) {
+      unlockedCount++;
+    }
+  }
+
+  const allWeaponIds: WeaponId[] = ['pistol', ...UNLOCKABLE_IDS];
+  const totalWeapons = allWeaponIds.length;
+
+  let totalKills = 0;
+  let topWeaponId: WeaponId = 'pistol';
+  let topWeaponKills = 0;
+
+  for (const id of allWeaponIds) {
+    const raw = metaSave?.weaponKills?.[id];
+    const kills = typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? raw : 0;
+    totalKills += kills;
+    if (kills > topWeaponKills) {
+      topWeaponKills = kills;
+      topWeaponId = id;
+    }
+  }
+
+  const topWeaponName = WEAPONS[topWeaponId].name;
+  const summaryLine = `ARSENAL: ${unlockedCount}/${totalWeapons} UNLOCKED · ${totalKills} TOTAL KILLS · SIGNATURE: ${topWeaponName.toUpperCase()} (${topWeaponKills})`;
+
+  return {
+    unlockedCount,
+    totalWeapons,
+    totalKills,
+    topWeaponId,
+    topWeaponName,
+    topWeaponKills,
+    summaryLine
+  };
+}
+
 
 
