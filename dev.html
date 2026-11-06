@@ -5,142 +5,270 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MOTO-ROGUE // Modular Roguelite</title>
   <link rel="stylesheet" href="/src/styles/main.css" />
+  <link rel="stylesheet" href="/src/styles/tokens.css" />
+  <link rel="stylesheet" href="/src/styles/hud.css" />
+  <link rel="stylesheet" href="/src/styles/modals.css" />
+  <link rel="stylesheet" href="/src/styles/garage.css" />
+  <link rel="stylesheet" href="/src/styles/settings.css" />
+  <link rel="stylesheet" href="/src/styles/portal.css" />
 </head>
 <body>
 
-<div id="app-layout">
-  <!-- Left Sidebar: Hull Integrity, Fuel Gauge, NOS, Currency & Floor Map -->
-  <aside class="sidebar-col" id="left-sidebar">
-    <div class="panel-section">
-      <div class="section-title">
-        <span>Hull Integrity</span>
-        <span id="hp-text" style="color:#ff4d6d;">6 / 6</span>
-      </div>
-      <canvas id="fuel-gauge" width="240" height="120" style="display:block;margin:0 auto 4px;max-width:100%;height:auto;"></canvas>
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;" data-tip="<b style='color:#4cc9f0'>NOS</b><br/>Hold SHIFT while moving for +70% speed. Drains NOS; recharges when not boosting. Empty tank locks until 25%.">
-        <span style="font-size:11px;font-weight:700;color:#4cc9f0;letter-spacing:1px;">NOS</span>
-        <div style="flex:1;height:10px;background:#0e0f14;border:1px solid #3b6e86;border-radius:5px;overflow:hidden;">
-          <div id="nos-fill" style="height:100%;width:100%;background:linear-gradient(90deg,#4895ef,#4cc9f0);"></div>
+<div id="app-layout" class="hud-stage">
+  <!-- Anime HUD — Top-left: rider portrait, segmented HULL / NOS meters, bike stats strip -->
+  <aside class="hud-cluster hud-tl" id="left-sidebar" aria-label="Rider status">
+    <div class="hud-rider">
+      <svg class="hud-splash" viewBox="0 0 200 120" aria-hidden="true" focusable="false">
+        <path fill="#ffffff" d="M18 52 L2 40 L24 42 L14 18 L36 34 L40 6 L52 30 L70 4 L72 30 L96 14 L88 38 L122 30 L100 50 L130 58 L100 66 L118 86 L88 78 L90 108 L70 84 L58 116 L50 86 L26 104 L32 80 L4 86 L22 68 L0 60 Z"/>
+        <circle fill="#ffffff" cx="140" cy="22" r="5"/>
+        <circle fill="#ffffff" cx="152" cy="40" r="3"/>
+        <circle fill="#ffffff" cx="128" cy="96" r="4"/>
+        <circle fill="#ffffff" cx="8" cy="112" r="3"/>
+        <path fill="#ffffff" d="M120 10 l26 -8 -22 14z M110 104 l30 12 -26 -4z"/>
+      </svg>
+      <div class="hud-portrait" aria-hidden="true">
+        <div class="hud-portrait-inner">
+          <svg viewBox="0 0 64 64" focusable="false">
+            <path d="M6 64 C8 50 19 45 32 45 C45 45 56 50 58 64 Z" fill="#c2410c" stroke="#0a0b10" stroke-width="2.5"/>
+            <path d="M24 45 L32 56 L40 45" fill="none" stroke="#0a0b10" stroke-width="2.5"/>
+            <path d="M14 31 C14 16 22 8 33 8 C45 8 52 17 52 30 L52 40 C52 46 46 50 40 50 L24 50 C18 50 14 45 14 38 Z" fill="#ff6b2b" stroke="#0a0b10" stroke-width="3" stroke-linejoin="round"/>
+            <path d="M20 26 C23 20 30 18 40 19 C47 20 51 24 51 29 L51 34 C44 37 30 37 20 33 Z" fill="#16141c" stroke="#0a0b10" stroke-width="2"/>
+            <path d="M25 23 C30 21 36 21 43 22" fill="none" stroke="#ffffff" stroke-opacity="0.65" stroke-width="2" stroke-linecap="round"/>
+            <path d="M17 19 L31 11" stroke="#ffd60a" stroke-width="3" stroke-linecap="round"/>
+            <path d="M22 44 L42 44" stroke="#0a0b10" stroke-width="2"/>
+          </svg>
         </div>
       </div>
-      <div class="currency-row">
-        <span>Run Coins: <strong id="coin-count" style="color:#ffd166;">0 🪙</strong></span>
-        <span>Scrap: <strong id="scrap-count" style="color:#7bdff2;">0 ⚙️</strong></span>
+      <div class="hud-meters">
+        <div class="hud-meter hud-hull" id="hull-meter" role="meter" aria-label="Hull" aria-valuemin="0" aria-valuenow="6" aria-valuemax="6" data-tip="<b style='color:#ff4d6d'>HULL</b><br/>Bike integrity. One segment per max HP. Pulses red at 34% or lower.">
+          <div class="hud-meter-head">
+            <span class="hud-label">HULL</span>
+            <span id="hp-text" class="hud-readout">6 / 6</span>
+          </div>
+          <div class="hud-segbar" id="hull-bar"></div>
+        </div>
+        <div class="hud-meter hud-nos" id="nos-meter" data-tip="<b style='color:#ffd60a'>NOS</b><br/>Hold SHIFT while moving for +70% speed. Drains NOS; recharges when not boosting. Empty tank locks until 25%.">
+          <div class="hud-meter-head">
+            <span class="hud-label">NOS</span>
+            <span id="nos-text" class="hud-readout">100%</span>
+          </div>
+          <div class="hud-nos-track"><div id="nos-fill"></div></div>
+        </div>
       </div>
     </div>
+    <div class="hud-stats" id="stats-grid" aria-label="Bike and weapon stats"></div>
+    <!-- Legacy semicircular fuel gauge: kept for API/test compatibility, hidden by hud.css -->
+    <canvas id="fuel-gauge" width="240" height="120" aria-hidden="true"></canvas>
+  </aside>
 
-    <div class="panel-section" style="flex:1; justify-content:space-between;">
-      <div class="section-title">
-        <span>Floor Map</span>
-        <span style="color:#7bdff2;">FLOOR <strong id="floor-num">1</strong></span>
-      </div>
-      <canvas id="minimap-canvas" width="240" height="260"></canvas>
-      <div style="font-size:10.5px; color:#888; text-align:center; margin-top:4px;">
-        <span style="color:#ffd166;">★ Mod</span> &nbsp;&bull;&nbsp;
-        <span style="color:#06d6a0;">$ Shop</span> &nbsp;&bull;&nbsp;
-        <span style="color:#ff4d6d;">☠ Boss</span>
+  <!-- Anime HUD — Top-right: neon minimap, currency badges, utility buttons -->
+  <aside class="hud-cluster hud-tr" id="hud-top-right" aria-label="Map and currency">
+    <div class="hud-map">
+      <div class="hud-map-inner">
+        <canvas id="minimap-canvas" width="240" height="150" aria-label="Floor minimap"></canvas>
+        <div class="hud-map-floor">FLOOR <strong id="floor-num">1</strong></div>
+        <div class="hud-map-legend" aria-label="Map legend">
+          <span class="lg-mod">★ Mod</span><span class="lg-shop">$ Shop</span><span class="lg-boss">☠ Boss</span>
+        </div>
       </div>
     </div>
-
-    <div id="save-status" style="font-size:10px;color:#6b7089;text-align:center;">Autosave: local storage</div>
-    <div style="display:flex; gap:6px;">
-      <button class="sidebar-btn" id="btn-open-garage" style="flex:1;">[G] Garage &amp; Tuning</button>
-      <button class="sidebar-btn" id="btn-toggle-sound" style="padding:8px 10px;" title="Toggle Game Audio [M]">🔊 [M]</button>
+    <div class="hud-counter hud-coins">
+      <span class="hud-counter-label">COINS:</span>
+      <strong id="coin-count">0</strong>
+      <svg class="hud-counter-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10" fill="#ffb627" stroke="#0a0b10" stroke-width="2"/><circle cx="12" cy="12" r="6" fill="none" stroke="#a86a00" stroke-width="2"/><path d="M9 7 L11 7" stroke="#fff3c4" stroke-width="2" stroke-linecap="round"/></svg>
     </div>
+    <div class="hud-counter hud-scrap">
+      <span class="hud-counter-label">SCRAP:</span>
+      <strong id="scrap-count">0</strong>
+      <svg class="hud-counter-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="#2ee6ff" stroke="#0a0b10" stroke-width="1.5" d="M10 1h4l.6 3.2 2.3 1 2.7-1.9 2.8 2.8-1.9 2.7 1 2.3L23 10v4l-3.2.6-1 2.3 1.9 2.7-2.8 2.8-2.7-1.9-2.3 1L14 23h-4l-.6-3.2-2.3-1-2.7 1.9-2.8-2.8 1.9-2.7-1-2.3L1 14v-4l3.2-.6 1-2.3-1.9-2.7 2.8-2.8 2.7 1.9 2.3-1z"/><circle cx="12" cy="12" r="3.5" fill="#0a0b10"/></svg>
+    </div>
+    <div class="hud-buttons">
+      <button type="button" class="hud-btn" id="btn-open-garage" title="Open Garage &amp; Tuning [G]">[G] Garage</button>
+      <button type="button" class="hud-btn" id="btn-open-settings" title="Audio Settings &amp; Mixer [O]" aria-label="Audio Settings &amp; Mixer [O]">⚙️ [O]</button>
+      <button type="button" class="hud-btn" id="btn-toggle-sound" title="Toggle Game Audio [M]" aria-label="Toggle game audio [M]">🔊 [M]</button>
+    </div>
+    <div id="save-status">Autosave: local storage</div>
   </aside>
 
   <!-- Center Square Room Playfield Canvas (Always fits 100% of vertical height!) -->
   <div id="game-wrapper">
     <canvas id="canvas" width="720" height="720"></canvas>
 
+    <!-- Settings (Audio Mixer) Overlay -->
+    <div id="settings-overlay" aria-hidden="true"></div>
+
+    <!-- Next-Floor Portal Confirmation Overlay -->
+    <div id="portal-confirm-overlay" aria-hidden="true">
+      <div class="portal-vortex" aria-hidden="true"></div>
+      <div class="portal-card" role="dialog" aria-modal="true" aria-labelledby="portal-floor-label" aria-describedby="portal-warning">
+        <div class="portal-banner"><span>DIMENSIONAL RIFT</span></div>
+        <h2 id="portal-floor-label" class="portal-headline">DESCEND TO FLOOR 2?</h2>
+        <p id="portal-warning" class="portal-warning">Unexplored rooms and unbought items on this floor will be lost.</p>
+        <div class="portal-actions">
+          <button id="btn-portal-confirm" type="button" class="portal-btn portal-btn--primary"><kbd>E</kbd> DESCEND</button>
+          <button id="btn-portal-cancel" type="button" class="portal-btn portal-btn--secondary"><kbd>ESC</kbd> STAY</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Shop Purchase Confirmation Overlay -->
-    <div id="shop-confirm-overlay">
-      <div class="shop-confirm-card">
-        <div class="shop-confirm-title">★ ARMORY &amp; SUPPLY PURCHASE ★</div>
-        <div class="shop-item-name" id="shop-modal-name">Item Name</div>
-        <div class="shop-item-desc" id="shop-modal-desc">Item Description</div>
-        <div class="shop-item-cost" id="shop-modal-cost">Cost: 15 Coins</div>
+    <div id="shop-confirm-overlay" aria-hidden="true">
+      <div class="shop-speedlines" aria-hidden="true"></div>
+      <div class="shop-confirm-card" role="dialog" aria-modal="true" aria-labelledby="shop-modal-name" aria-describedby="shop-modal-desc">
+        <svg class="shop-ink-splash" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+          <path d="M11 0 L0 100 L6 100 C4.5 96 7.5 93 5.5 89 C4 85 8 82 6.2 77 C5 73 9.5 70 7.5 64 C6.5 60 10 57 9 52 C8.2 47 11.5 44 10.5 39 C9.8 35 13 31 12.2 26 C11.6 21 14.5 18 13.6 13 C13 9 15.5 5 14.5 0 Z" />
+          <path d="M8.6 70 L16 72.5 L8.4 73.6 Z M10.5 44 L19 45.2 L10.3 46.4 Z M13 16 L18.5 16.8 L12.8 18 Z M6.8 90 L13 91 L6.6 92 Z" />
+          <path d="M16.5 30 C17.5 29.4 18.3 30.4 17.4 31.1 C16.6 31.6 15.9 30.6 16.5 30 Z M19.8 58 C20.8 57.4 21.6 58.6 20.6 59.2 C19.8 59.6 19.2 58.6 19.8 58 Z M15.5 83 C16.4 82.5 17.1 83.5 16.2 84 C15.5 84.4 14.9 83.5 15.5 83 Z" />
+        </svg>
+        <div class="shop-confirm-title"><span>ARMORY &amp; SUPPLY</span></div>
+        <div class="shop-keeper" aria-hidden="true">
+          <div class="shop-bubble" id="shop-modal-quote">GOOD CHOICE, RIDER!</div>
+          <div class="shop-portrait">
+            <svg viewBox="0 0 120 100" focusable="false">
+              <defs>
+                <radialGradient id="shopGoggleGlow" cx="50%" cy="50%" r="50%">
+                  <stop offset="0" stop-color="#f4ff6b" />
+                  <stop offset="0.45" stop-color="#b6f018" />
+                  <stop offset="1" stop-color="#559900" />
+                </radialGradient>
+              </defs>
+              <rect width="120" height="100" fill="#2ee6ff" />
+              <g stroke="#0a0b10" stroke-width="0.8" opacity="0.18">
+                <path d="M0 10 L120 4 M0 30 L120 24 M0 50 L120 44 M0 70 L120 64 M0 90 L120 84" />
+              </g>
+              <!-- jacket / collar -->
+              <path d="M14 100 L28 72 L52 64 L60 82 L68 64 L92 72 L106 100 Z" fill="#e8b80c" stroke="#0a0b10" stroke-width="3" stroke-linejoin="round" />
+              <path d="M36 100 L44 76 L60 86 L76 76 L84 100 Z" fill="#202228" stroke="#0a0b10" stroke-width="2.5" />
+              <!-- neck with comic hatching -->
+              <path d="M48 66 L48 56 L72 56 L72 66 L60 80 Z" fill="#c98f6b" stroke="#0a0b10" stroke-width="2.5" />
+              <path d="M52 62 L58 72 M56 60 L62 70 M60 58 L66 68" stroke="#0a0b10" stroke-width="1.2" />
+              <!-- head -->
+              <path d="M40 34 C40 14 80 14 80 34 L80 52 C80 64 70 70 60 70 C50 70 40 64 40 52 Z" fill="#d7a07c" stroke="#0a0b10" stroke-width="3" />
+              <!-- mohawk / spiked undercut -->
+              <path d="M48 24 L44 4 L54 12 L56 0 L64 10 L70 2 L70 14 L78 8 L74 24 Z" fill="#4a2e1b" stroke="#0a0b10" stroke-width="2.5" stroke-linejoin="round" />
+              <!-- shaved side lines -->
+              <path d="M72 26 L80 28 M73 30 L80 32 M74 34 L79 35" stroke="#0a0b10" stroke-width="1.5" stroke-linecap="round" />
+              <!-- ear tech / cyber headset -->
+              <path d="M78 32 L85 34 L85 46 L78 48" fill="#88929e" stroke="#0a0b10" stroke-width="2.5" />
+              <circle cx="85" cy="40" r="3.5" fill="#e5203a" stroke="#0a0b10" stroke-width="1.5" />
+              <circle cx="85" cy="40" r="1.5" fill="#ffffff" />
+              <!-- goggle strap -->
+              <path d="M40 34 L80 34 L80 40 L40 40 Z" fill="#202228" stroke="#0a0b10" stroke-width="2" />
+              <!-- goggles with vivid chartreuse/neon-green glow -->
+              <circle cx="50" cy="38" r="8.5" fill="url(#shopGoggleGlow)" stroke="#0a0b10" stroke-width="3.5" />
+              <circle cx="70" cy="38" r="8.5" fill="url(#shopGoggleGlow)" stroke="#0a0b10" stroke-width="3.5" />
+              <circle cx="47" cy="35" r="2.2" fill="#ffffff" /><circle cx="67" cy="35" r="2.2" fill="#ffffff" />
+              <!-- respirator / gas mask with vents -->
+              <path d="M43 49 C46 45 74 45 77 49 L75 60 C71 68 49 68 45 60 Z" fill="#323c34" stroke="#0a0b10" stroke-width="3" stroke-linejoin="round" />
+              <!-- side canisters -->
+              <circle cx="48" cy="60" r="6.5" fill="#445046" stroke="#0a0b10" stroke-width="2.5" />
+              <circle cx="72" cy="60" r="6.5" fill="#445046" stroke="#0a0b10" stroke-width="2.5" />
+              <circle cx="48" cy="60" r="2.5" fill="#1e241f" stroke="#0a0b10" stroke-width="1" />
+              <circle cx="72" cy="60" r="2.5" fill="#1e241f" stroke="#0a0b10" stroke-width="1" />
+              <path d="M48 55 L48 65 M43 60 L53 60 M72 55 L72 65 M67 60 L77 60" stroke="#0a0b10" stroke-width="1.2" />
+              <!-- center vent intake -->
+              <rect x="56" y="53" width="8" height="11" rx="2" fill="#1b201c" stroke="#0a0b10" stroke-width="2" />
+              <line x1="58" y1="56" x2="62" y2="56" stroke="#445046" stroke-width="1.2" />
+              <line x1="58" y1="58.5" x2="62" y2="58.5" stroke="#445046" stroke-width="1.2" />
+              <line x1="58" y1="61" x2="62" y2="61" stroke="#445046" stroke-width="1.2" />
+            </svg>
+          </div>
+        </div>
+        <div class="shop-main-panel shop-name-panel">
+          <span class="shop-type-tag" id="shop-modal-type">MOD</span>
+          <div class="shop-item-name" id="shop-modal-name">Item Name</div>
+          <div class="shop-info-row">
+            <div class="shop-item-desc" id="shop-modal-desc">Item Description</div>
+            <div class="shop-price-badge">
+              <span class="shop-coin-ring" aria-hidden="true"></span>
+              <span class="shop-item-cost" id="shop-modal-cost">15</span>
+              <span class="shop-price-unit">COINS</span>
+            </div>
+          </div>
+        </div>
+        <div class="shop-funds-warning" id="shop-modal-funds" role="status">NOT ENOUGH COINS</div>
         <div class="shop-btn-row">
-          <button class="btn-buy" id="btn-confirm-buy">[E] Confirm Purchase</button>
-          <button class="btn-cancel" id="btn-cancel-buy">[ESC] Cancel</button>
+          <button type="button" class="btn-buy" id="btn-confirm-buy"><kbd>E</kbd> BUY</button>
+          <button type="button" class="btn-cancel" id="btn-cancel-buy"><kbd>ESC</kbd> CANCEL</button>
         </div>
       </div>
     </div>
 
     <!-- Garage / Meta-Progression / Run Over Modal (Widescreen Layout) -->
-    <div id="garage-overlay">
+    <div id="garage-overlay" role="dialog" aria-labelledby="modal-title">
       <div class="overlay-card garage-card">
-        <div class="garage-door"><span>GARAGE BAY 01</span></div>
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:4px;">
-          <div style="text-align:left;">
-            <h1 id="modal-title" style="margin:0;">MOTO-GARAGE &amp; WORKSHOP</h1>
-            <p class="sub" id="modal-subtitle" style="margin:0;">
-              Earn <strong>Scrap (⚙️)</strong> from enemies &amp; bosses to permanently unlock weapons and chassis upgrades. Collect <strong>Coins (🪙)</strong> for <strong>Shop Rooms ($)</strong>!
-            </p>
+        <header class="gx-header">
+          <div class="gx-banner">
+            <h1 id="modal-title">GARAGE BAY</h1>
+            <span class="gx-banner-stripes" aria-hidden="true"></span>
           </div>
-          <div style="font-size:15px; color:#ffd166; font-weight:700; background:rgba(0,0,0,0.45); padding:6px 14px; border-radius:6px; border:1px solid #ffd16655;">
-            Banked Scrap: <span id="modal-scrap">0</span> ⚙️
+          <div class="gx-ko" id="garage-ko" hidden>
+            <span class="gx-ko-main">K.O.</span>
+            <span class="gx-ko-sub" id="garage-ko-floor">RUN OVER</span>
           </div>
-        </div>
+          <div class="gx-scrap" title="Banked Scrap">
+            <svg class="gx-scrap-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.3 2h3.4l.5 2.6 1.9.8 2.2-1.5 2.4 2.4-1.5 2.2.8 1.9 2.6.5v3.4l-2.6.5-.8 1.9 1.5 2.2-2.4 2.4-2.2-1.5-1.9.8-.5 2.6h-3.4l-.5-2.6-1.9-.8-2.2 1.5-2.4-2.4 1.5-2.2-.8-1.9L2 13.7v-3.4l2.6-.5.8-1.9-1.5-2.2 2.4-2.4 2.2 1.5 1.9-.8zM12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+            <span class="gx-scrap-label">SCRAP</span>
+            <span class="gx-scrap-val" id="modal-scrap">0</span>
+          </div>
+        </header>
+        <p class="sub gx-sub" id="modal-subtitle">
+          Earn <strong>Scrap</strong> from enemies &amp; bosses for permanent unlocks. Collect <strong>Coins</strong> for Shop Rooms.
+        </p>
+        <div class="garage-main-grid gx-grid">
+          <!-- Left Panel: Permanent Bike Tuning (meta upgrades) -->
+          <section class="gx-panel gx-tuning" aria-labelledby="gx-tuning-title">
+            <h2 class="gx-panel-title" id="gx-tuning-title">TUNING</h2>
+            <div class="unlock-list gx-scroll" id="meta-upgrade-list"></div>
+          </section>
 
-        <div class="garage-main-grid">
-          <!-- Left Workshop Column: Bike Lift, 6 Equipment Slots & Stash -->
-          <div>
-            <div class="garage-col-title">Bike Equipment (boss loot) - click a slot to remove a part</div>
-            <div class="bay">
+          <!-- Center Bay: Bike Lift Canvas & 6 Equipment Slots -->
+          <section class="gx-bay-wrap" aria-label="Bike equipment: click an installed part to remove it">
+            <div class="bay gx-bay">
               <div class="slot-col" id="slots-left"></div>
-              <canvas id="bike-canvas" width="300" height="190"></canvas>
+              <canvas id="bike-canvas" width="300" height="190" aria-hidden="true"></canvas>
               <div class="slot-col" id="slots-right"></div>
             </div>
-            <div id="eq-totals" style="font-size:11.5px;color:#7bdff2;margin-bottom:6px;"></div>
-            <div class="garage-col-title">Parts Stash - click to install, right-click to sell for scrap</div>
-            <div class="stash" id="stash-list"></div>
-          </div>
+            <div id="eq-totals" class="gx-totals"></div>
+          </section>
 
-          <!-- Right Workshop Column: Permanent Arsenal Unlocks (6 Weapons) & Bike Tuning -->
-          <div class="garage-columns">
-            <div>
-              <div class="garage-col-title">Permanent Arsenal Unlocks</div>
-              <div class="unlock-list" id="unlock-list"></div>
-            </div>
-            <div>
-              <div class="garage-col-title">Permanent Bike Tuning</div>
-              <div class="unlock-list" id="meta-upgrade-list"></div>
-            </div>
-          </div>
+          <!-- Right Panel: Permanent Arsenal Unlocks (6 Weapons) -->
+          <section class="gx-panel gx-armory" aria-labelledby="gx-armory-title">
+            <h2 class="gx-panel-title" id="gx-armory-title">ARMORY</h2>
+            <div class="unlock-list gx-scroll" id="unlock-list"></div>
+          </section>
         </div>
 
-        <div class="action-row">
-          <button class="btn" id="btn-resume">Resume Run</button>
-          <button class="btn btn-secondary" id="btn-new-run">Start Fresh Run (Floor 1)</button>
-          <button class="btn btn-secondary" id="btn-reset-save" title="Reset all permanent unlocks & scrap">Full Save Reset</button>
-        </div>
+        <footer class="gx-footer">
+          <!-- Bottom Row: Parts Stash -->
+          <section class="gx-stash-panel" aria-labelledby="gx-stash-title">
+            <h2 class="gx-stash-title" id="gx-stash-title">STASH</h2>
+            <div class="gx-stash-body">
+              <div class="stash" id="stash-list"></div>
+              <p class="gx-hint">Click a part to install &middot; Right-click or Del to sell for scrap &middot; Click an installed slot to remove</p>
+            </div>
+          </section>
+
+          <div class="action-row gx-actions">
+            <button class="btn gx-btn-primary" id="btn-resume" type="button"><span class="gx-btn-key">[ENTER]</span> <span class="gx-btn-text">RIDE OUT</span></button>
+            <button class="btn btn-secondary gx-btn-secondary" id="btn-back" type="button"><span class="gx-btn-key">[ESC]</span> <span class="gx-btn-text">BACK</span></button>
+            <div class="gx-actions-sub">
+              <button class="btn btn-secondary" id="btn-new-run" type="button">Start Fresh Run (Floor 1)</button>
+              <button class="btn btn-secondary gx-btn-danger" id="btn-reset-save" type="button" title="Reset all permanent unlocks &amp; scrap">Full Save Reset</button>
+            </div>
+          </div>
+        </footer>
       </div>
     </div>
   </div>
 
-  <!-- Right Sidebar: 7-Weapon Arsenal, Bike Stats & Installed Run Mods -->
-  <aside class="sidebar-col" id="right-sidebar">
-    <div class="panel-section">
-      <div class="section-title">
-        <span>Arsenal</span>
-        <span style="font-size:10px; color:#777;">[1-7] or Scroll</span>
-      </div>
-      <div class="weapon-list" id="weapon-bar"></div>
+  <!-- Anime HUD — Bottom: 7 weapon cards (center) + installed mod stickers (right) -->
+  <section class="hud-cluster hud-bottom" id="right-sidebar" aria-label="Arsenal and installed mods">
+    <div class="hud-weapons" id="weapon-bar" role="toolbar" aria-label="Weapons — keys 1-7 or mouse wheel"></div>
+    <div class="hud-items" id="items-list" aria-label="Installed run mods">
+      <span class="items-empty">No mods yet — visit ★ or $ rooms!</span>
     </div>
-
-    <div class="panel-section">
-      <div class="section-title">Bike &amp; Weapon Stats</div>
-      <div class="stats-grid" id="stats-grid"></div>
-    </div>
-
-    <div class="panel-section" style="flex:1; display:flex; flex-direction:column; min-height:0;">
-      <div class="section-title">Installed Run Mods</div>
-      <div id="items-list">
-        <span style="color:#666; font-size:11px;">None yet — visit ★ or $ rooms!</span>
-      </div>
-    </div>
-  </aside>
+  </section>
 </div>
 
 <div id="tooltip"></div>

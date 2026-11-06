@@ -8,6 +8,7 @@
  *    - Weapons: '1' through '7'
  *    - Garage bay toggle: 'g' / 'escape'
  *    - Audio mute toggle: 'm'
+ *    - Settings / audio mixer toggle: 'o' / 'p' (Escape closes settings first, before garage)
  *    - Modals (Shop / Dialogs): 'enter', 'e', ' ' (confirm); 'escape' (cancel)
  * 2. Mouse tracking:
  *    - Viewport client-to-canvas coordinate scaling (720x720 logical coordinates)
@@ -44,6 +45,8 @@ export interface InputCallbacks {
   onShopCancel?: () => void;
   onWheelWeaponChange?: (direction: 1 | -1) => void;
   onUserGesture?: () => void;
+  onToggleSettings?: () => void;
+  onCloseSettings?: () => void;
 }
 
 export class InputManager {
@@ -54,6 +57,7 @@ export class InputManager {
   private attached: boolean = false;
   private isShopModalActive: boolean = false;
   private isGarageModalActive: boolean = false;
+  private isSettingsActive: boolean = false;
   private callbacks: InputCallbacks = {};
 
   // Bound event listeners for clean removal
@@ -122,6 +126,17 @@ export class InputManager {
 
   public isShopOpen(): boolean {
     return this.isShopModalActive;
+  }
+
+  /**
+   * Updates settings overlay awareness (settings takes keyboard priority over shop/garage).
+   */
+  public setSettingsOpen(open: boolean): void {
+    this.isSettingsActive = open;
+  }
+
+  public isSettingsOpen(): boolean {
+    return this.isSettingsActive;
   }
 
   /**
@@ -232,6 +247,34 @@ export class InputManager {
     }
     if (e.shiftKey || e.code === 'ShiftLeft' || e.code === 'ShiftRight' || k === 'shift') {
       this.rawKeys['shift'] = true;
+    }
+
+    // Settings overlay has top keyboard priority: Escape closes it (and must not reach the garage),
+    // 'o'/'p' toggle it, 'm' still mutes; all other gameplay hotkeys are swallowed while open.
+    const isSettingsOpen =
+      this.isSettingsActive ||
+      (typeof document !== 'undefined' &&
+        !!document.getElementById('settings-overlay')?.classList.contains('visible'));
+
+    if (isSettingsOpen) {
+      if (k === 'escape') {
+        e.preventDefault();
+        this.callbacks.onCloseSettings?.();
+        return;
+      }
+      if (k === 'o' || k === 'p') {
+        this.callbacks.onToggleSettings?.();
+        return;
+      }
+      if (k === 'm') {
+        this.callbacks.onToggleMute?.();
+      }
+      return;
+    }
+
+    if (k === 'o' || k === 'p') {
+      this.callbacks.onToggleSettings?.();
+      return;
     }
 
     // Check if shop modal overlay is currently visible in DOM or state

@@ -1,0 +1,1005 @@
+/* ==========================================================================
+   MOTO-ROGUE: Anime Fighting-Game Garage & Tuning Workshop
+   Concept Reference: concept_garage_1793946628516.jpg
+   High-contrast cel-shaded styling (Guilty Gear / Persona 5 / DBFZ aesthetic)
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Full-Viewport Overlay Backdrop
+   -------------------------------------------------------------------------- */
+#garage-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal, 100);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(229, 32, 58, 0.14) 0%, transparent 65%),
+    rgba(6, 7, 10, 0.94);
+  backdrop-filter: blur(6px);
+  overflow: hidden;
+  font-family: var(--font-body, 'Segoe UI', -apple-system, sans-serif);
+  color: #eeeeee;
+}
+
+#garage-overlay.visible {
+  display: flex;
+}
+
+/* --------------------------------------------------------------------------
+   Garage Main Frame (Strictly fits 1280x720 without window / modal scroll)
+   -------------------------------------------------------------------------- */
+#garage-overlay .garage-card {
+  position: relative;
+  box-sizing: border-box;
+  width: min(1280px, 98vw);
+  height: min(720px, 98vh);
+  max-width: 1280px;
+  max-height: 720px;
+  margin: 0;
+  padding: 10px 16px 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background:
+    var(--halftone, radial-gradient(circle, rgba(0, 0, 0, 0.42) 1.2px, transparent 1.6px) 0 0 / 7px 7px),
+    radial-gradient(110% 70% at 50% 10%, #1e2028 0%, #0e0f14 100%);
+  border: 4px solid var(--ink, #0a0b10) !important;
+  border-radius: 4px;
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.15),
+    0 16px 50px rgba(0, 0, 0, 0.95),
+    0 0 40px rgba(229, 32, 58, 0.25);
+  overflow: hidden;
+}
+
+/* Red speed-stripe corner accent on top border */
+#garage-overlay .garage-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: repeating-linear-gradient(90deg,
+    var(--red, #e5203a) 0 30px,
+    var(--ink, #0a0b10) 30px 36px,
+    var(--yellow, #ffd60a) 36px 50px,
+    var(--ink, #0a0b10) 50px 56px,
+    var(--red, #e5203a) 56px 120px,
+    transparent 120px 100%
+  );
+  pointer-events: none;
+  z-index: 6;
+}
+
+/* --------------------------------------------------------------------------
+   Top Header Bar: "GARAGE BAY" Banner, Defeat Header & SCRAP Badge
+   -------------------------------------------------------------------------- */
+.gx-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 14px;
+  margin: -10px -16px 6px;
+  background:
+    var(--halftone, radial-gradient(circle, rgba(0, 0, 0, 0.35) 1.2px, transparent 1.6px) 0 0 / 7px 7px),
+    linear-gradient(90deg, #d61830 0%, #aa1022 55%, #7a0b18 100%);
+  border-bottom: 3.5px solid var(--ink, #0a0b10);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
+  flex-shrink: 0;
+  z-index: 5;
+}
+
+/* Left Title Banner: Angled white comic box with red speed stripes */
+.gx-banner {
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+  background: #ffffff;
+  padding: 4px 34px 4px 18px;
+  border: 3.5px solid var(--ink, #0a0b10);
+  box-shadow: 5px 5px 0 var(--ink, #0a0b10);
+  transform: skewX(-12deg);
+  transform-origin: 0 50%;
+}
+
+.gx-banner #modal-title {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  font-style: italic;
+  font-weight: 900;
+  font-size: clamp(20px, 2.7vh, 28px);
+  line-height: 1;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--ink, #0a0b10);
+}
+
+.gx-banner-stripes {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 4px;
+  height: 65%;
+}
+
+.gx-banner-stripes::before,
+.gx-banner-stripes::after {
+  content: '';
+  display: block;
+  width: 5px;
+  height: 100%;
+  background: var(--red, #e5203a);
+  transform: skewX(-6deg);
+}
+
+/* SCRAP Counter Badge at Top-Right: Metallic gear + scrap count */
+.gx-scrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #ffffff;
+  padding: 3px 12px 3px 8px;
+  border: 3px solid var(--ink, #0a0b10);
+  box-shadow: 4px 4px 0 var(--ink, #0a0b10);
+  transform: skewX(-12deg);
+}
+
+.gx-scrap-icon {
+  width: 22px;
+  height: 22px;
+  fill: var(--ink, #0a0b10);
+  flex-shrink: 0;
+}
+
+.gx-scrap-label {
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  font-style: italic;
+  font-weight: 900;
+  font-size: 15px;
+  letter-spacing: 1.5px;
+  color: var(--ink, #0a0b10);
+  line-height: 1;
+}
+
+.gx-scrap-val {
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--ink, #0a0b10);
+  background: var(--yellow, #ffd60a);
+  padding: 1px 8px;
+  border: 2px solid var(--ink, #0a0b10);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Dramatic Fighting-Game Defeat Header ("K.O." / "RUN OVER") */
+.gx-ko {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 10;
+  animation: koBurstIn 0.28s var(--ease-snap, ease-out) both;
+}
+
+.gx-ko[hidden] {
+  display: none !important;
+}
+
+.gx-ko-main {
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  font-style: italic;
+  font-size: clamp(30px, 4.4vh, 44px);
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 4px;
+  color: var(--yellow, #ffd60a);
+  text-shadow:
+    -3px -3px 0 var(--ink, #0a0b10),
+    3px -3px 0 var(--ink, #0a0b10),
+    -3px 3px 0 var(--ink, #0a0b10),
+    3px 3px 0 var(--ink, #0a0b10),
+    0 5px 0 var(--red, #e5203a),
+    0 8px 16px rgba(0, 0, 0, 0.85);
+  transform: skewX(-12deg) rotate(-4deg);
+}
+
+.gx-ko-sub {
+  background: var(--ink, #0a0b10);
+  border: 2.5px solid var(--red, #e5203a);
+  color: var(--yellow, #ffd60a);
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  font-style: italic;
+  font-size: 14px;
+  letter-spacing: 2px;
+  padding: 3px 12px;
+  transform: skewX(-12deg);
+  box-shadow: 3px 3px 0 var(--ink, #0a0b10);
+  white-space: nowrap;
+}
+
+@keyframes koBurstIn {
+  0% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+}
+
+/* Hide redundant subtitle text so primary UI gets 100% vertical budget */
+.gx-sub {
+  display: none !important;
+}
+
+/* --------------------------------------------------------------------------
+   3-Column Main Workshop Grid (TUNING | BIKE BAY | ARMORY)
+   -------------------------------------------------------------------------- */
+.garage-main-grid.gx-grid {
+  display: grid;
+  grid-template-columns: 280px 1fr 280px;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  align-items: stretch;
+}
+
+/* --------------------------------------------------------------------------
+   Panel Frames (Thick white borders, halftone background & ink splatters)
+   -------------------------------------------------------------------------- */
+.gx-panel {
+  position: relative;
+  background:
+    var(--halftone, radial-gradient(circle, rgba(0, 0, 0, 0.45) 1.2px, transparent 1.6px) 0 0 / 7px 7px),
+    #13141b;
+  border: 3.5px solid #ffffff;
+  box-shadow: 5px 5px 0 var(--ink, #0a0b10);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* Stylized comic ink splatter in panel corner */
+.gx-panel::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 28px;
+  height: 28px;
+  background:
+    radial-gradient(circle at 75% 25%, #ffffff 0%, #ffffff 26%, transparent 27%),
+    radial-gradient(circle at 60% 48%, #ffffff 0%, #ffffff 18%, transparent 19%),
+    radial-gradient(circle at 86% 68%, #ffffff 0%, #ffffff 14%, transparent 15%);
+  pointer-events: none;
+  opacity: 0.9;
+}
+
+.gx-panel-title {
+  margin: 0 0 6px;
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  font-style: italic;
+  font-size: 22px;
+  line-height: 1;
+  letter-spacing: 2px;
+  color: #ffffff;
+  text-transform: uppercase;
+  text-shadow: 2px 2px 0 var(--ink, #0a0b10);
+  flex-shrink: 0;
+}
+
+.unlock-list.gx-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 2px;
+  min-height: 0;
+}
+
+/* --------------------------------------------------------------------------
+   LEFT PANEL: TUNING Upgrades with Rank Pips & Slanted UPGRADE Buttons
+   -------------------------------------------------------------------------- */
+.unlock-item.gx-upgrade {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  background: rgba(10, 11, 16, 0.72);
+  border: 1.5px solid #2a2d3a;
+  border-radius: 2px;
+  transition: border-color 0.12s, background 0.12s;
+}
+
+.unlock-item.gx-upgrade:hover {
+  background: rgba(18, 20, 28, 0.85);
+  border-color: #4a5068;
+}
+
+.unlock-item.gx-upgrade .info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.unlock-item.gx-upgrade .info strong {
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  font-style: italic;
+  font-size: 14px;
+  letter-spacing: 1px;
+  color: #ffffff;
+  text-transform: uppercase;
+  line-height: 1.1;
+}
+
+.unlock-item.gx-upgrade .gx-rank {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 1px 0;
+}
+
+/* Slanted rectangular rank pips (active: glowing yellow/orange) */
+.gx-pips {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.gx-pip {
+  display: inline-block;
+  width: 14px;
+  height: 8px;
+  transform: skewX(-15deg);
+  background: #242632;
+  border: 1px solid var(--ink, #0a0b10);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+.gx-pip.on {
+  background: linear-gradient(180deg, #ffd60a 0%, #ff8a00 100%);
+  border-color: var(--ink, #0a0b10);
+  box-shadow: 0 0 6px rgba(255, 214, 10, 0.7);
+}
+
+.gx-rank-txt {
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  color: #9da3b2;
+  text-transform: uppercase;
+}
+
+.unlock-item.gx-upgrade .info span:last-child {
+  font-size: 9.5px;
+  color: #838896;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Slanted Trapezoid UPGRADE Button */
+.btn.gx-upgrade-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  background: #ffffff;
+  color: var(--ink, #0a0b10);
+  border: 2px solid var(--ink, #0a0b10);
+  border-radius: 0;
+  transform: skewX(-12deg);
+  box-shadow: 3px 3px 0 var(--ink, #0a0b10);
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  font-style: italic;
+  font-weight: 900;
+  font-size: 13px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: transform 0.1s var(--ease-snap, ease-out), background 0.1s, box-shadow 0.1s;
+}
+
+.btn.gx-upgrade-btn:hover:not(:disabled) {
+  background: var(--yellow, #ffd60a);
+  transform: skewX(-12deg) translateY(-2px);
+  box-shadow: 4px 4px 0 var(--ink, #0a0b10);
+}
+
+.btn.gx-upgrade-btn:active:not(:disabled) {
+  transform: skewX(-12deg) translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--ink, #0a0b10);
+}
+
+.btn.gx-upgrade-btn:disabled {
+  background: #252733;
+  color: #5d6170;
+  border-color: #1a1b24;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.btn.gx-upgrade-btn .gx-cost {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+}
+
+.btn.gx-upgrade-btn .gx-gear,
+.unlock-item .gx-gear {
+  width: 12px;
+  height: 12px;
+  fill: currentColor;
+}
+
+/* --------------------------------------------------------------------------
+   RIGHT PANEL: ARMORY Weapon Cards with Lock Icons & Scrap Prices
+   -------------------------------------------------------------------------- */
+.unlock-item.gx-weapon {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 5px 8px;
+  background: #14151e;
+  border: 2px solid #36394a;
+  border-radius: 2px;
+  gap: 4px;
+  min-height: 64px;
+  justify-content: space-between;
+  transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s;
+}
+
+.unlock-item.gx-weapon.is-equipped {
+  border: 2.5px solid var(--yellow, #ffd60a);
+  box-shadow: 0 0 10px rgba(255, 214, 10, 0.4), inset 0 0 8px rgba(255, 214, 10, 0.12);
+}
+
+.unlock-item.gx-weapon.is-locked {
+  border-color: #4a1f28;
+  background: #12131a;
+}
+
+.unlock-item.gx-weapon:hover {
+  border-color: #ffd60a;
+  transform: translateY(-1px);
+}
+
+.unlock-item.gx-weapon .info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.unlock-item.gx-weapon .info strong {
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  font-style: italic;
+  font-size: 13.5px;
+  letter-spacing: 1px;
+  color: #ffffff;
+  text-transform: uppercase;
+  line-height: 1.1;
+}
+
+.unlock-item.gx-weapon.is-equipped .info strong {
+  color: var(--yellow, #ffd60a);
+}
+
+.unlock-item.gx-weapon .gx-key {
+  display: inline-block;
+  margin-right: 4px;
+  padding: 0 4px;
+  background: var(--ink, #0a0b10);
+  border: 1px solid #444;
+  color: var(--yellow, #ffd60a);
+  font-size: 10px;
+}
+
+.unlock-item.gx-weapon .info span {
+  font-size: 9.5px;
+  color: #888d9c;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Center Lock / Check Icon */
+.unlock-item.gx-weapon.is-locked .gx-weapon-art {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.gx-weapon-art .gx-lock {
+  width: 26px;
+  height: 26px;
+  fill: #ffffff;
+  stroke: var(--ink, #0a0b10);
+  stroke-width: 2px;
+  filter: drop-shadow(2px 2px 0 var(--ink, #0a0b10));
+}
+
+.unlock-item.gx-weapon.is-unlocked .gx-weapon-art,
+.unlock-item.gx-weapon.is-equipped .gx-weapon-art {
+  display: none;
+}
+
+/* Weapon Equip / Unlock Buttons */
+.unlock-item.gx-weapon .btn {
+  align-self: flex-end;
+  padding: 3px 10px;
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  font-style: italic;
+  font-weight: 900;
+  font-size: 11.5px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  transform: skewX(-12deg);
+  border: 2px solid var(--ink, #0a0b10);
+  box-shadow: 2px 2px 0 var(--ink, #0a0b10);
+  cursor: pointer;
+}
+
+.unlock-item.gx-weapon.is-equipped .btn {
+  background: var(--yellow, #ffd60a);
+  color: var(--ink, #0a0b10);
+  cursor: default;
+}
+
+.unlock-item.gx-weapon.is-unlocked .btn {
+  background: #ffffff;
+  color: var(--ink, #0a0b10);
+}
+
+.unlock-item.gx-weapon.is-unlocked .btn:hover {
+  background: var(--yellow, #ffd60a);
+}
+
+.unlock-item.gx-weapon .btn.gx-price {
+  background: #252632;
+  color: #ffd60a;
+  border-color: #ffd60a;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.unlock-item.gx-weapon .btn.gx-price:hover:not(:disabled) {
+  background: var(--yellow, #ffd60a);
+  color: var(--ink, #0a0b10);
+}
+
+.unlock-item.gx-weapon .btn.gx-price:disabled {
+  background: #20212a;
+  color: #555866;
+  border-color: #333644;
+  cursor: not-allowed;
+}
+
+.unlock-item.gx-weapon .btn.gx-price .gx-price-val {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+
+/* --------------------------------------------------------------------------
+   CENTER BAY: Motorcycle Preview on Hydraulic Lift & 6 Equipment Slots
+   -------------------------------------------------------------------------- */
+.gx-bay-wrap {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  min-height: 0;
+  justify-content: center;
+}
+
+.bay.gx-bay {
+  display: grid;
+  grid-template-columns: 96px 1fr 96px;
+  gap: 8px;
+  align-items: center;
+  position: relative;
+  flex: 1;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.slot-col {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  gap: 8px;
+  height: 100%;
+}
+
+/* 6 Equipment Slots: Large cards with THICK rarity borders */
+.eq-slot {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 94px;
+  height: 76px;
+  padding: 4px;
+  background:
+    var(--halftone, radial-gradient(circle, rgba(0, 0, 0, 0.45) 1.2px, transparent 1.6px) 0 0 / 7px 7px),
+    #13141c;
+  border: 3.5px solid var(--rar, #4f5362);
+  border-radius: 4px;
+  box-shadow: 4px 4px 0 var(--ink, #0a0b10), 0 0 10px rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  transition: transform 0.12s var(--ease-snap, ease-out), box-shadow 0.12s;
+}
+
+.eq-slot:hover {
+  transform: translateY(-2px) scale(1.04);
+  box-shadow: 5px 6px 0 var(--ink, #0a0b10), 0 0 16px var(--rar, #ffd166);
+}
+
+.eq-slot.is-filled {
+  box-shadow: 4px 4px 0 var(--ink, #0a0b10), 0 0 14px var(--rar, #ffd166);
+}
+
+.eq-slot.is-empty {
+  border-style: dashed;
+  opacity: 0.85;
+}
+
+.eq-slot .gx-slot-icon {
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.eq-slot .gx-slot-icon svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: var(--rar, #ffd60a);
+  stroke-width: 2.2px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(1px 1px 0 var(--ink, #0a0b10));
+}
+
+.eq-slot.is-empty .gx-slot-icon svg {
+  stroke: #63687a;
+}
+
+/* Keep internal text hidden from card body to maintain clean square layout */
+.eq-slot .sl-name,
+.eq-slot .sl-stats {
+  display: none;
+}
+
+/* Black rectangular pill badge under slot showing the slot name */
+.eq-slot .sl-label {
+  position: absolute;
+  bottom: -9px;
+  background: var(--ink, #0a0b10);
+  border: 2px solid var(--rar, #555b6a);
+  color: #ffffff;
+  padding: 1px 6px;
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  font-style: italic;
+  font-size: 10.5px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  box-shadow: 2px 2px 0 var(--ink, #0a0b10);
+  z-index: 3;
+}
+
+#bike-canvas {
+  width: 100%;
+  height: 100%;
+  max-height: 275px;
+  display: block;
+  object-fit: contain;
+}
+
+.gx-totals {
+  text-align: center;
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  font-size: 11.5px;
+  letter-spacing: 1px;
+  color: var(--yellow, #ffd60a);
+  text-shadow: 1px 1px 0 var(--ink, #0a0b10);
+  margin-top: 3px;
+}
+
+/* --------------------------------------------------------------------------
+   BOTTOM FOOTER: STASH Inventory Row & Slanted Action Buttons
+   -------------------------------------------------------------------------- */
+.gx-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 3.5px solid var(--ink, #0a0b10);
+  flex-shrink: 0;
+}
+
+.gx-stash-panel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.gx-stash-title {
+  margin: 0;
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  font-style: italic;
+  font-size: clamp(22px, 3vh, 30px);
+  line-height: 1;
+  letter-spacing: 2px;
+  color: #ffffff;
+  text-transform: uppercase;
+  text-shadow: 3px 3px 0 var(--ink, #0a0b10);
+}
+
+.gx-stash-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* 2-Row STASH Inventory Grid */
+.stash#stash-list {
+  display: grid;
+  grid-template-columns: repeat(8, 48px);
+  grid-template-rows: repeat(2, 40px);
+  gap: 5px;
+  overflow: visible;
+  max-height: none;
+  margin: 0;
+}
+
+.stash-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 40px;
+  padding: 2px;
+  background:
+    var(--halftone, radial-gradient(circle, rgba(0, 0, 0, 0.4) 1.2px, transparent 1.6px) 0 0 / 7px 7px),
+    #171922;
+  border: 2px solid var(--rar, #444855);
+  border-radius: 2px;
+  box-shadow: 2px 2px 0 var(--ink, #0a0b10);
+  cursor: pointer;
+  transition: transform 0.1s var(--ease-snap, ease-out), box-shadow 0.1s;
+}
+
+.stash-item:hover {
+  transform: translateY(-2px) scale(1.05);
+  box-shadow: 3px 4px 0 var(--ink, #0a0b10), 0 0 10px var(--rar, #ffd166);
+}
+
+.stash-item b {
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  font-size: 8.5px;
+  color: #ffffff;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.gx-stash-meta,
+.gx-stash-stats {
+  display: none;
+}
+
+.gx-stash-sell {
+  position: absolute;
+  bottom: 1px;
+  right: 2px;
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  font-size: 8px;
+  color: var(--yellow, #ffd60a);
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.gx-stash-sell .gx-gear {
+  width: 7px;
+  height: 7px;
+  fill: var(--yellow, #ffd60a);
+}
+
+/* Ghost slots preserving the 2-row grid look from concept art */
+.gx-stash-ghost {
+  width: 48px;
+  height: 40px;
+  background:
+    var(--halftone, radial-gradient(circle, rgba(0, 0, 0, 0.4) 1.2px, transparent 1.6px) 0 0 / 7px 7px),
+    rgba(18, 20, 28, 0.6);
+  border: 2px solid #282a36;
+  border-radius: 2px;
+}
+
+.gx-stash-empty {
+  font-size: 11px;
+  color: #7d8294;
+  grid-column: 1 / -1;
+  align-self: center;
+}
+
+.gx-hint {
+  font-size: 9px;
+  color: #7d8294;
+  margin: 1px 0 0;
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------------------------
+   ACTION BUTTONS: "[ENTER] RIDE OUT" (Slanted Red/Yellow) & "[ESC] BACK"
+   -------------------------------------------------------------------------- */
+.action-row.gx-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+/* Primary Action Button: [ENTER] RIDE OUT */
+.btn.gx-btn-primary {
+  padding: 8px 22px;
+  background: linear-gradient(180deg, #ff4a6b 0%, #e5203a 50%, #b30f27 100%);
+  border: 4px solid var(--yellow, #ffd60a);
+  box-shadow:
+    0 0 16px rgba(255, 214, 10, 0.65),
+    0 0 30px rgba(255, 107, 43, 0.35),
+    5px 5px 0 var(--ink, #0a0b10);
+  transform: skewX(-12deg);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  transition: transform 0.12s var(--ease-snap, ease-out), box-shadow 0.12s, background 0.12s;
+}
+
+.btn.gx-btn-primary:hover {
+  background: linear-gradient(180deg, #ff6a85 0%, #f22a45 50%, #c31530 100%);
+  transform: skewX(-12deg) translateY(-2px);
+  box-shadow:
+    0 0 24px rgba(255, 214, 10, 0.9),
+    0 0 44px rgba(255, 107, 43, 0.6),
+    6px 7px 0 var(--ink, #0a0b10);
+}
+
+.btn.gx-btn-primary:active {
+  transform: skewX(-12deg) translate(2px, 2px);
+  box-shadow: 2px 2px 0 var(--ink, #0a0b10);
+}
+
+.btn.gx-btn-primary .gx-btn-key,
+.btn.gx-btn-primary kbd {
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  font-style: italic;
+  font-size: 15px;
+  color: var(--yellow, #ffd60a);
+  text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000;
+  border: none;
+  background: none;
+}
+
+.btn.gx-btn-primary .gx-btn-text,
+.btn.gx-btn-primary span {
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  font-style: italic;
+  font-weight: 900;
+  font-size: 20px;
+  letter-spacing: 1.5px;
+  color: var(--yellow, #ffd60a);
+  text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000;
+}
+
+/* Secondary Action Button: [ESC] BACK */
+.btn.gx-btn-secondary {
+  padding: 8px 16px;
+  background: var(--ink, #0a0b10);
+  border: 3px solid var(--red, #e5203a);
+  box-shadow: 4px 4px 0 var(--ink, #0a0b10);
+  transform: skewX(-12deg);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #ffffff;
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  font-style: italic;
+  font-size: 15px;
+  letter-spacing: 1px;
+  white-space: nowrap;
+  transition: transform 0.12s, background 0.12s, border-color 0.12s;
+}
+
+.btn.gx-btn-secondary:hover {
+  background: #1e1924;
+  border-color: #ff556d;
+  transform: skewX(-12deg) translateY(-2px);
+}
+
+.btn.gx-btn-secondary:active {
+  transform: skewX(-12deg) translate(2px, 2px);
+  box-shadow: 2px 2px 0 var(--ink, #0a0b10);
+}
+
+/* Sub-actions (New Run / Full Reset) in compact secondary row */
+.gx-actions-sub {
+  display: flex;
+  gap: 6px;
+}
+
+.gx-actions-sub .btn {
+  padding: 4px 8px;
+  font-size: 10px;
+  transform: skewX(-12deg);
+  border: 1.5px solid #444858;
+}
+
+.gx-actions-sub .gx-btn-danger:hover {
+  background: #7a1220;
+  border-color: var(--red, #e5203a);
+}
+
+/* --------------------------------------------------------------------------
+   Accessibility & Reduced Motion
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .gx-ko {
+    animation: none;
+  }
+  .btn.gx-btn-primary,
+  .btn.gx-btn-secondary,
+  .btn.gx-upgrade-btn,
+  .eq-slot,
+  .stash-item {
+    transition: none;
+  }
+}

@@ -44,6 +44,8 @@ import { StageManager } from './render/stage';
 import { HUDController } from './ui/hud';
 import { GarageController } from './ui/garage';
 import { ShopModalController } from './ui/shopModal';
+import { PortalModalController, shouldPromptPortal, isClearOfPortal } from './ui/portalModal';
+import { SettingsController } from './ui/settings';
 import { TooltipManager } from './ui/tooltip';
 import { WEAPONS } from './data/weapons';
 
@@ -55,6 +57,9 @@ export class MotoRogueApp {
   public hud: HUDController;
   public garage: GarageController;
   public shopModal: ShopModalController;
+  public portalModal: PortalModalController;
+  public portalDismissed: boolean = false;
+  public settings: SettingsController;
   public tooltip: TooltipManager;
   public dismissedPickup: Pickup | null = null;
 
@@ -79,6 +84,23 @@ export class MotoRogueApp {
     });
 
     this.shopModal = new ShopModalController();
+    this.portalModal = new PortalModalController();
+
+    this.settings = new SettingsController({
+      audio: this.audio,
+      onOpenChange: (open: boolean) => {
+        this.inputManager.setSettingsOpen(open);
+        if (open) {
+          this.inputManager.reset();
+        }
+      },
+      onMuteChange: (muted: boolean) => {
+        const soundBtn = document.getElementById('btn-toggle-sound');
+        if (soundBtn) {
+          soundBtn.textContent = muted ? '🔇 [M]' : '🔊 [M]';
+        }
+      }
+    });
 
     this.garage = new GarageController({
       onEquipItem: (item: EquipmentItem) => {
@@ -180,11 +202,19 @@ export class MotoRogueApp {
     this.inputManager = new InputManager({
       onWeaponSelect: (id: WeaponId) => this.selectWeapon(id),
       onToggleGarage: () => {
+        if (this.portalModal.isOpen() || this.settings.isOpen()) return;
         const player = this.stateManager.player;
         const meta = this.stateManager.metaSave;
         this.garage.toggle(this.stateManager.gameOver, this.stateManager.floorNum, meta, player);
       },
       onToggleMute: () => this.toggleAudioMute(),
+      onToggleSettings: () => {
+        if (this.portalModal.isOpen()) return;
+        this.settings.toggle();
+      },
+      onCloseSettings: () => {
+        this.settings.close();
+      },
       onShopConfirm: () => {
         if (this.shopModal.isOpen()) {
           this.shopModal.confirm();
@@ -211,6 +241,9 @@ export class MotoRogueApp {
 
     this.inputManager.attach(canvas, window);
 
+    // Mount Settings (Audio Mixer) overlay and bind controls
+    this.settings.mount();
+
     // Audio toggle button
     const soundBtn = document.getElementById('btn-toggle-sound');
     soundBtn?.addEventListener('click', () => this.toggleAudioMute());
@@ -218,6 +251,7 @@ export class MotoRogueApp {
     // Garage toggle button
     const garageBtn = document.getElementById('btn-open-garage');
     garageBtn?.addEventListener('click', () => {
+      if (this.portalModal.isOpen() || this.settings.isOpen()) return;
       const player = this.stateManager.player;
       const meta = this.stateManager.metaSave;
       this.garage.open(this.stateManager.gameOver, this.stateManager.floorNum, meta, player);
@@ -233,7 +267,7 @@ export class MotoRogueApp {
         const logicalY = (clientY - rect.top) * (ARENA_HEIGHT / rect.height);
         return room.pickups.find(p => Math.hypot(p.x - logicalX, p.y - logicalY) < 34) || null;
       },
-      () => this.garage.isOpen() || this.shopModal.isOpen()
+      () => this.garage.isOpen() || this.shopModal.isOpen() || this.portalModal.isOpen() || this.settings.isOpen()
     );
 
     // Responsive scaling
@@ -255,6 +289,8 @@ export class MotoRogueApp {
    */
   public startNewRun(restored: boolean): void {
     this.dismissedPickup = null;
+    this.portalDismissed = false;
+    this.portalModal.close();
     if (!restored) {
       this.stateManager.resetRun();
     }
@@ -320,6 +356,7 @@ export class MotoRogueApp {
     if (soundBtn) {
       soundBtn.textContent = isMuted ? '🔇 [M]' : '🔊 [M]';
     }
+    this.settings.sync();
   }
 
   /**
@@ -402,7 +439,12 @@ export class MotoRogueApp {
    * Executes game state and systems update for dt seconds.
    */
   public update(dt: number): void {
-    const isPaused = this.garage.isOpen() || this.shopModal.isOpen() || this.stateManager.gameOver;
+    const isPaused =
+      this.garage.isOpen() ||
+      this.shopModal.isOpen() ||
+      this.portalModal.isOpen() ||
+      this.settings.isOpen() ||
+      this.stateManager.gameOver;
     const player = this.stateManager.player;
     const room = this.getCurrentRoom();
 
@@ -471,6 +513,8 @@ export class MotoRogueApp {
       }
       this.audio.doorTransition();
       this.dismissedPickup = null;
+      this.portalDismissed = false;
+      this.portalModal.close();
       this.stateManager.saveRun();
       this.updateHUD();
       return;
@@ -478,10 +522,22 @@ export class MotoRogueApp {
 
     // 4. Trapdoor interaction (Next floor)
     if (room.trapdoor) {
-      const tx = ARENA_WIDTH / 2;
-      const ty = ARENA_HEIGHT / 2 - 45;
-      if (Math.hypot(player.x - tx, player.y - ty) < 36) {
-        this.nextFloor();
+      if (this.portalDismissed && isClearOfPortal(player.x, player.y)) {
+        this.portalDismissed = false;
+      }
+      if (shouldPromptPortal({
+        trapdoor: !!room.trapdoor,
+        playerX: player.x,
+        playerY: player.y,
+        dismissed: this.portalDismissed,
+        modalOpen: this.portalModal.isOpen()
+      })) {
+        this.inputManager.reset();
+        this.portalModal.open(
+          { floorNum: this.stateManager.floorNum },
+          () => this.nextFloor(),
+          () => { this.portalDismissed = true; }
+        );
         return;
       }
     }
@@ -668,6 +724,8 @@ export class MotoRogueApp {
   }
 
   public nextFloor(): void {
+    this.portalDismissed = false;
+    this.portalModal.close();
     this.stateManager.floorNum += 1;
     this.audio.nextFloor();
     this.startNewRun(true);

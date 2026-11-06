@@ -10,6 +10,19 @@ import { WEAPONS } from '../data/weapons';
 import { DROP_ITEMS } from '../data/upgrades';
 import { RARITY, fmtStat } from '../data/equipment';
 
+/**
+ * Comic speech-box title: ink heading text with the item's accent color shown
+ * as a marker swatch + kicker label (keeps text contrast on the white box).
+ */
+function tipTitle(name: string, accent: string, kicker: string): string {
+  return `<span class="tip-kicker" style="--tip-accent:${accent}">${kicker}</span><b class="tip-title" style="--tip-accent:${accent}">${name}</b>`;
+}
+
+/** Gold price chip used for shop cost lines. */
+function tipCost(text: string): string {
+  return `<span class="tip-cost">${text}</span>`;
+}
+
 export class TooltipManager {
   private tipEl: HTMLElement | null = null;
   private isVisible: boolean = false;
@@ -40,13 +53,21 @@ export class TooltipManager {
 
     let x = clientX + 16;
     let y = clientY + 16;
+    let flipX = false;
+    let flipY = false;
 
     if (x + rect.width > winWidth - 6) {
       x = clientX - rect.width - 12;
+      flipX = true;
     }
     if (y + rect.height > winHeight - 6) {
       y = clientY - rect.height - 12;
+      flipY = true;
     }
+
+    // Speech-box tail points back toward the cursor corner.
+    this.tipEl.classList.toggle('tip-flip-x', flipX);
+    this.tipEl.classList.toggle('tip-flip-y', flipY);
 
     this.tipEl.style.left = `${Math.max(4, x)}px`;
     this.tipEl.style.top = `${Math.max(4, y)}px`;
@@ -74,9 +95,9 @@ export class TooltipManager {
   public formatPickupTooltip(p: Pickup): string | null {
     if (p.type === 'mod_pedestal') {
       const costHtml = p.cost > 0
-        ? `Cost: ${p.cost} coins`
-        : '<span style="color:#06d6a0">Free</span>';
-      return `<b style="color:#ffd166">${p.mod.name}</b><br/>${p.mod.desc}<br/>${costHtml}`;
+        ? tipCost(`Cost: ${p.cost} coins`)
+        : '<span class="tip-free">Free</span>';
+      return `${tipTitle(p.mod.name, '#ffd166', 'Mod')}<br/>${p.mod.desc}<br/>${costHtml}`;
     }
 
     if (p.type === 'loot') {
@@ -84,27 +105,27 @@ export class TooltipManager {
       const statsList = Object.keys(p.item.stats)
         .map(k => fmtStat(k as any, (p.item.stats as any)[k]))
         .join('<br/>');
-      return `<b style="color:${R.color}">${R.name} ${p.item.name}</b><br/>${statsList}`;
+      return `${tipTitle(`${R.name} ${p.item.name}`, R.color, 'Gear')}<br/>${statsList}`;
     }
 
     if (p.type === 'item_drop') {
       const it = DROP_ITEMS[p.itemId];
       if (!it) return null;
-      return `<b style="color:${it.color}">${it.name}</b><br/>${it.desc}`;
+      return `${tipTitle(it.name, it.color, 'Item')}<br/>${it.desc}`;
     }
 
     if (p.type === 'run_weapon') {
       const w = WEAPONS[p.weaponId];
       if (!w) return null;
-      return `<b style="color:${w.color}">${w.name} (this run)</b><br/>${w.desc}<br/>Cost: ${p.cost} coins`;
+      return `${tipTitle(`${w.name} (this run)`, w.color, 'Weapon')}<br/>${w.desc}<br/>${tipCost(`Cost: ${p.cost} coins`)}`;
     }
 
     if (p.type === 'shop_heart') {
-      return `<b>Hull Repair</b><br/>Restores 2 fuel<br/>Cost: ${p.cost} coins`;
+      return `${tipTitle('Hull Repair', '#e5203a', 'Repair')}<br/>Restores 2 fuel<br/>${tipCost(`Cost: ${p.cost} coins`)}`;
     }
 
     if (p.type === 'heart') {
-      return '<b>Gas Can</b><br/>Restores 1 fuel';
+      return `${tipTitle('Gas Can', '#e5203a', 'Pickup')}<br/>Restores 1 fuel`;
     }
 
     return null;

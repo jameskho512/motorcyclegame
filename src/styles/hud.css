@@ -1,0 +1,892 @@
+/* ==========================================================================
+   MOTO-ROGUE: Anime Fighting-Game Overlay HUD Stylesheet
+   Guilty Gear Strive / DBFZ / Persona 5 aesthetic:
+   - Slanted, cel-shaded geometry with heavy black contours
+   - Top-left: Rider helmet portrait + ink splash + segmented HULL + NOS bar
+   - Top-right: Tilted parallelogram minimap with neon colors + COINS/SCRAP badges
+   - Bottom-center: 7 slanted weapon cards (1-7), active weapon enlarged with flame border
+   - Bottom-right: Die-cut sticker badges for collected mods
+   - Widescreen background: Dark red/black halftone and radial speedline action streaks
+   - Pointer-events: none on overlay containers, auto on interactive cards/buttons
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. Stage & Viewport Setup (Widescreen Halftone & Speedline Framing)
+   -------------------------------------------------------------------------- */
+#app-layout,
+.hud-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100vw;
+  height: 100vh;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+  pointer-events: none; /* Crucial: clicks pass through container to canvas */
+  background-color: #070308;
+  background-image:
+    /* Comic halftone dot matrix */
+    radial-gradient(circle, rgba(229, 32, 58, 0.15) 1.2px, transparent 1.6px),
+    /* Deep crimson glow on widescreen left and right wings */
+    radial-gradient(ellipse 45% 85% at 0% 50%, rgba(122, 15, 30, 0.6) 0%, transparent 70%),
+    radial-gradient(ellipse 45% 85% at 100% 50%, rgba(122, 15, 30, 0.6) 0%, transparent 70%),
+    /* Action speedline hatchings */
+    repeating-linear-gradient(115deg, rgba(229, 32, 58, 0.05) 0px, rgba(229, 32, 58, 0.05) 2px, transparent 2px, transparent 22px),
+    repeating-linear-gradient(65deg, rgba(0, 0, 0, 0.35) 0px, rgba(0, 0, 0, 0.35) 3px, transparent 3px, transparent 18px),
+    /* Dark radial vignette */
+    radial-gradient(circle at center, transparent 35%, rgba(4, 2, 6, 0.95) 90%);
+  background-size:
+    8px 8px,
+    100% 100%,
+    100% 100%,
+    100% 100%,
+    100% 100%,
+    100% 100%;
+}
+
+/* Comic speedlines radial flares on left and right wings */
+#app-layout::before,
+#app-layout::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: calc((100vw - min(100vh, 100vw)) / 2 + 30px);
+  min-width: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.9;
+}
+
+#app-layout::before {
+  left: 0;
+  background:
+    radial-gradient(ellipse at 0% 50%, rgba(229, 32, 58, 0.28) 0%, transparent 75%),
+    repeating-conic-gradient(from -25deg at 0% 50%, rgba(229, 32, 58, 0.14) 0deg 3.5deg, transparent 3.5deg 12deg);
+  mask-image: linear-gradient(to right, rgba(0, 0, 0, 1) 40%, rgba(0, 0, 0, 0) 100%);
+  -webkit-mask-image: linear-gradient(to right, rgba(0, 0, 0, 1) 40%, rgba(0, 0, 0, 0) 100%);
+}
+
+#app-layout::after {
+  right: 0;
+  background:
+    radial-gradient(ellipse at 100% 50%, rgba(229, 32, 58, 0.28) 0%, transparent 75%),
+    repeating-conic-gradient(from 155deg at 100% 50%, rgba(229, 32, 58, 0.14) 0deg 3.5deg, transparent 3.5deg 12deg);
+  mask-image: linear-gradient(to left, rgba(0, 0, 0, 1) 40%, rgba(0, 0, 0, 0) 100%);
+  -webkit-mask-image: linear-gradient(to left, rgba(0, 0, 0, 1) 40%, rgba(0, 0, 0, 0) 100%);
+}
+
+/* Center Square Room Playfield Wrapper */
+#game-wrapper {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #14141f;
+  overflow: hidden;
+  pointer-events: auto; /* Playfield receives all mouse aim & clicks */
+  width: min(100vh, 100vw);
+  height: min(100vh, 100vw);
+  aspect-ratio: 1 / 1;
+  max-height: 100vh;
+  max-width: 100vw;
+  margin: 0 auto;
+  box-shadow:
+    0 0 0 4px #0a0b10,
+    0 0 0 7px #e5203a,
+    0 0 35px rgba(229, 32, 58, 0.35),
+    0 0 80px rgba(0, 0, 0, 0.95);
+}
+
+canvas#canvas {
+  display: block;
+  cursor: crosshair;
+  width: 100%;
+  height: 100%;
+  pointer-events: auto;
+}
+
+/* --------------------------------------------------------------------------
+   2. Base HUD Clusters & Pointer Events Contract
+   -------------------------------------------------------------------------- */
+.hud-cluster {
+  position: absolute;
+  pointer-events: none; /* Container itself never intercepts mouse */
+  z-index: var(--z-hud, 10);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Interactive elements inside HUD re-enable pointer-events */
+.hud-cluster button,
+.hud-cluster [role="button"],
+.hud-cluster a,
+.hud-cluster .wcard,
+.hud-cluster .hud-btn,
+.hud-cluster .item-badge,
+.hud-cluster .sticker,
+.hud-cluster [data-tip] {
+  pointer-events: auto;
+}
+
+/* --------------------------------------------------------------------------
+   3. Top-Left Cluster: Helmet Badge + Slanted HULL / NOS Meters + Stats
+   -------------------------------------------------------------------------- */
+.hud-tl {
+  top: 14px;
+  left: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.hud-rider {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+/* Comic ink splash radiating behind helmet portrait */
+.hud-splash {
+  position: absolute;
+  top: -16px;
+  left: -16px;
+  width: 195px;
+  height: 120px;
+  z-index: 1;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.85));
+}
+
+/* Rider Helmet Portrait Badge */
+.hud-portrait {
+  position: relative;
+  z-index: 2;
+  width: 82px;
+  height: 82px;
+  margin-right: 14px;
+  flex-shrink: 0;
+  filter: drop-shadow(3.5px 3.5px 0 #0a0b10);
+  transform: rotate(-3deg);
+  transition: transform 0.2s var(--ease-snap);
+}
+
+.hud-portrait:hover {
+  transform: rotate(0deg) scale(1.05);
+}
+
+.hud-portrait-inner {
+  width: 100%;
+  height: 100%;
+  clip-path: polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%);
+  background: linear-gradient(135deg, #e5203a 0%, #800d1e 100%);
+  border: 3.5px solid #0a0b10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.6);
+}
+
+.hud-portrait-inner svg {
+  width: 72px;
+  height: 72px;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.7));
+}
+
+/* Slanted Meters Column */
+.hud-meters {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transform: skewX(-14deg);
+  transform-origin: left center;
+}
+
+.hud-meter-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 2px;
+}
+
+.hud-label {
+  font-family: var(--font-display, 'Impact', sans-serif);
+  font-size: 16px;
+  font-style: italic;
+  letter-spacing: 1.5px;
+  text-shadow: var(--stroke-text);
+}
+
+.hud-readout {
+  font-family: var(--font-display, 'Impact', sans-serif);
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-shadow: var(--stroke-text);
+}
+
+/* HULL Meter */
+.hud-hull {
+  width: 290px;
+}
+
+.hud-hull .hud-label,
+.hud-hull .hud-readout {
+  color: #ffffff;
+}
+
+.hud-segbar {
+  display: flex;
+  gap: 3px;
+  height: 24px;
+  background: #140407;
+  border: 3px solid #0a0b10;
+  box-shadow:
+    2.5px 2.5px 0 #0a0b10,
+    0 0 12px rgba(229, 32, 58, 0.4);
+  padding: 2px;
+  border-radius: 1px;
+}
+
+.hud-seg {
+  flex: 1;
+  height: 100%;
+  background: #2b0811;
+  transition: background 0.15s ease-out, transform 0.15s ease-out;
+  border-radius: 1px;
+}
+
+.hud-seg.is-filled {
+  background: linear-gradient(180deg, #ff4d6d 0%, #e5203a 45%, #b70928 100%);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.5),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.35);
+}
+
+/* Low Hull Warning Pulse */
+.hud-hull.is-low {
+  animation: hullAlertPulse 0.55s infinite alternate ease-in-out;
+}
+
+@keyframes hullAlertPulse {
+  0% {
+    filter: drop-shadow(0 0 4px #e5203a);
+  }
+  100% {
+    filter: drop-shadow(0 0 18px #ff0033) drop-shadow(0 0 26px rgba(255, 0, 51, 0.6));
+  }
+}
+
+/* NOS Meter */
+.hud-nos {
+  width: 245px;
+}
+
+.hud-nos .hud-label,
+.hud-nos .hud-readout {
+  color: #ffd60a;
+}
+
+.hud-nos-track {
+  height: 15px;
+  background: #16141c;
+  border: 2.5px solid #0a0b10;
+  box-shadow: 2px 2px 0 #0a0b10;
+  padding: 1.5px;
+  overflow: hidden;
+  border-radius: 1px;
+}
+
+#nos-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #ffd60a 0%, #ff9f1c 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  transition: width 0.05s linear;
+  border-radius: 1px;
+}
+
+/* NOS Active Boosting */
+.hud-nos.is-boosting #nos-fill {
+  background: linear-gradient(90deg, #2ee6ff 0%, #ffffff 50%, #2ee6ff 100%);
+  box-shadow: 0 0 12px #2ee6ff, inset 0 0 6px #ffffff;
+}
+
+/* NOS Locked */
+.hud-nos.is-locked #nos-fill {
+  background: repeating-linear-gradient(45deg, #e5203a, #e5203a 8px, #7a0f1e 8px, #7a0f1e 16px);
+}
+
+.hud-nos.is-locked .hud-readout {
+  color: #e5203a;
+}
+
+/* Live Stats Strip */
+.hud-stats {
+  transform: skewX(-12deg);
+  transform-origin: left top;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 10px;
+  max-width: 380px;
+  z-index: 2;
+}
+
+.hud-stats .stat-item {
+  background: rgba(10, 11, 16, 0.9);
+  border: 1.5px solid #363248;
+  border-radius: 3px;
+  padding: 2px 7px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #a49fb5;
+  letter-spacing: 0.5px;
+  display: inline-flex;
+  gap: 5px;
+  align-items: baseline;
+  box-shadow: 1.5px 1.5px 0 #0a0b10;
+}
+
+.hud-stats .stat-item strong {
+  color: #2ee6ff;
+  font-family: var(--font-display, 'Impact', sans-serif);
+  font-size: 11.5px;
+  font-style: italic;
+}
+
+/* Legacy Fuel Gauge: hidden in modern anime HUD, preserved in DOM for test assertions */
+canvas#fuel-gauge {
+  display: none !important;
+}
+
+/* --------------------------------------------------------------------------
+   4. Top-Right Cluster: Minimap + Currency Badges + Utility Buttons
+   -------------------------------------------------------------------------- */
+.hud-tr {
+  top: 14px;
+  right: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+/* Tilted Parallelogram Minimap Frame */
+.hud-map {
+  transform: skewX(-12deg);
+  transform-origin: right top;
+  background: #0a0b10;
+  border: 3.5px solid #ffffff;
+  box-shadow:
+    4px 4px 0 #0a0b10,
+    0 8px 26px rgba(0, 0, 0, 0.9);
+  padding: 3px;
+  position: relative;
+  border-radius: 2px;
+}
+
+.hud-map-inner {
+  position: relative;
+  overflow: hidden;
+  background: #0c0b14;
+  border-radius: 1px;
+}
+
+#minimap-canvas {
+  display: block;
+  width: 220px;
+  height: 135px;
+  background: #0c0b14;
+}
+
+.hud-map-floor {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-family: var(--font-display, 'Impact', sans-serif);
+  font-size: 13px;
+  font-style: italic;
+  color: #ffffff;
+  text-shadow: var(--stroke-text);
+  z-index: 2;
+  pointer-events: none;
+  letter-spacing: 1px;
+}
+
+.hud-map-floor strong {
+  color: #2ee6ff;
+}
+
+.hud-map-legend {
+  display: flex;
+  justify-content: space-around;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 2px 4px;
+  background: rgba(10, 11, 16, 0.94);
+  border-top: 1.5px solid #2a2538;
+  letter-spacing: 0.5px;
+}
+
+.hud-map-legend .lg-mod {
+  color: #ffd60a;
+}
+
+.hud-map-legend .lg-shop {
+  color: #2ee6ff;
+}
+
+.hud-map-legend .lg-boss {
+  color: #ff2e93;
+}
+
+/* Slanted Currency Counters */
+.hud-counter {
+  transform: skewX(-12deg);
+  transform-origin: right center;
+  height: 33px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 10px 2px 14px;
+  border: 2.5px solid #0a0b10;
+  box-shadow: 2.5px 2.5px 0 #0a0b10;
+  font-family: var(--font-display, 'Impact', sans-serif);
+  font-size: 15px;
+  font-style: italic;
+  min-width: 140px;
+  border-radius: 2px;
+}
+
+.hud-coins {
+  background: linear-gradient(135deg, #1f0b0e 0%, #0a0b10 100%);
+  border-right: 4px solid #ffb627;
+}
+
+.hud-coins .hud-counter-label {
+  color: #ffb627;
+  margin-right: 6px;
+  font-size: 13px;
+  letter-spacing: 1px;
+}
+
+.hud-coins strong#coin-count {
+  color: #ffffff;
+  text-shadow: var(--stroke-text);
+  font-size: 16px;
+  margin-right: 8px;
+}
+
+.hud-scrap {
+  background: linear-gradient(135deg, #071920 0%, #0a0b10 100%);
+  border-right: 4px solid #2ee6ff;
+}
+
+.hud-scrap .hud-counter-label {
+  color: #2ee6ff;
+  margin-right: 6px;
+  font-size: 13px;
+  letter-spacing: 1px;
+}
+
+.hud-scrap strong#scrap-count {
+  color: #ffffff;
+  text-shadow: var(--stroke-text);
+  font-size: 16px;
+  margin-right: 8px;
+}
+
+.hud-counter-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  filter: drop-shadow(1px 1px 0 rgba(0, 0, 0, 0.8));
+}
+
+/* Utility Buttons */
+.hud-buttons {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.hud-btn {
+  transform: skewX(-12deg);
+  background: #16141c;
+  border: 2px solid #55516a;
+  color: #eeeeee;
+  font-family: var(--font-display, 'Impact', sans-serif);
+  font-size: 11px;
+  font-style: italic;
+  letter-spacing: 0.5px;
+  padding: 4px 10px;
+  cursor: pointer;
+  box-shadow: 2px 2px 0 #0a0b10;
+  transition: all 0.12s var(--ease-snap);
+  border-radius: 2px;
+}
+
+.hud-btn:hover {
+  background: #2ee6ff;
+  color: #0a0b10;
+  border-color: #2ee6ff;
+  transform: skewX(-12deg) translateY(-2px);
+  box-shadow: 2px 4px 0 #0a0b10;
+}
+
+.hud-btn:active {
+  transform: skewX(-12deg) translateY(1px);
+  box-shadow: 1px 1px 0 #0a0b10;
+}
+
+#save-status {
+  font-size: 9px;
+  color: #726d82;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  text-align: right;
+  margin-top: 1px;
+}
+
+/* --------------------------------------------------------------------------
+   5. Bottom Cluster: 7 Slanted Weapon Cards + Installed Mod Stickers
+   -------------------------------------------------------------------------- */
+.hud-bottom {
+  bottom: 12px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  padding: 0 24px;
+}
+
+/* 7 Slanted Weapon Cards Centered */
+.hud-weapons {
+  display: flex;
+  align-items: flex-end;
+  gap: 7px;
+  margin: 0 auto;
+  z-index: 15;
+}
+
+.wcard,
+.weapon-slot {
+  transform: skewX(-12deg);
+  transform-origin: center bottom;
+  width: 82px;
+  height: 116px;
+  border: 3px solid #0a0b10;
+  box-shadow:
+    3px 3px 0 #0a0b10,
+    0 4px 14px rgba(0, 0, 0, 0.65);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 4px;
+  background: var(--wc, #2a2538);
+  cursor: pointer;
+  transition:
+    transform 0.18s var(--ease-snap),
+    box-shadow 0.18s ease-out;
+  overflow: visible;
+  border-radius: 3px;
+}
+
+.wcard:hover:not(.locked) {
+  transform: skewX(-12deg) translateY(-6px);
+  box-shadow:
+    3px 8px 0 #0a0b10,
+    0 8px 20px rgba(0, 0, 0, 0.75);
+}
+
+.wcard-key {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  background: #0a0b10;
+  color: #ffffff;
+  font-family: var(--font-display, 'Impact', sans-serif);
+  font-size: 13px;
+  font-weight: 800;
+  width: 18px;
+  height: 18px;
+  line-height: 18px;
+  text-align: center;
+  border-radius: 2px;
+  z-index: 3;
+}
+
+.wcard-run {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  background: #ffd60a;
+  color: #0a0b10;
+  font-family: var(--font-display, 'Impact', sans-serif);
+  font-size: 9px;
+  font-weight: 900;
+  padding: 1px 4px;
+  border-radius: 2px;
+  z-index: 3;
+  letter-spacing: 0.5px;
+}
+
+.wcard-icon {
+  margin: auto 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+
+.wcard-icon svg {
+  width: 64px;
+  height: 38px;
+  filter: drop-shadow(1px 2px 0 rgba(0, 0, 0, 0.9));
+}
+
+.wcard-name {
+  background: #0a0b10;
+  color: #ffffff;
+  font-family: var(--font-display, 'Impact', sans-serif);
+  font-size: 9px;
+  font-style: italic;
+  text-align: center;
+  padding: 2.5px 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: 0.5px;
+  z-index: 3;
+  border-radius: 1px;
+}
+
+.wcard-lock {
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 11, 16, 0.82);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #cccccc;
+  font-family: var(--font-display, 'Impact', sans-serif);
+  font-size: 11px;
+  font-weight: 700;
+  z-index: 4;
+  border-radius: 2px;
+  gap: 2px;
+}
+
+.wcard-lock svg {
+  width: 16px;
+  height: 16px;
+  fill: #ffd60a;
+}
+
+.wcard.locked,
+.wcard.is-locked {
+  opacity: 0.62;
+  cursor: not-allowed;
+  filter: grayscale(40%);
+}
+
+/* Active Weapon Card: Enlarged with Glowing Flame Border (Mockup Parity) */
+.wcard.active,
+.wcard.is-active {
+  transform: skewX(-12deg) scale(1.18) translateY(-14px);
+  z-index: 25;
+  box-shadow:
+    0 0 0 3.5px #ffd60a,
+    0 0 14px 4px #ff6b2b,
+    0 0 28px 8px #e5203a,
+    3.5px 7px 0 #0a0b10;
+  animation: flamePulse 0.45s infinite alternate ease-in-out;
+}
+
+.wcard-flame {
+  display: none;
+}
+
+.wcard.active .wcard-flame,
+.wcard.is-active .wcard-flame {
+  display: block;
+  position: absolute;
+  inset: -8px -6px -4px -6px;
+  pointer-events: none;
+  z-index: 1;
+  border-radius: 6px;
+  background: radial-gradient(ellipse at 50% 0%, rgba(255, 214, 10, 0.65) 0%, rgba(255, 107, 43, 0.45) 45%, transparent 75%);
+  filter: blur(2px);
+  animation: flameTongues 0.45s infinite alternate;
+}
+
+@keyframes flamePulse {
+  0% {
+    box-shadow:
+      0 0 0 3px #ffd60a,
+      0 0 12px 3px #ff6b2b,
+      0 0 24px 6px #e5203a,
+      3px 6px 0 #0a0b10;
+  }
+  100% {
+    box-shadow:
+      0 0 0 4px #fff176,
+      0 0 18px 6px #ff8800,
+      0 0 36px 12px #ff1744,
+      4px 8px 0 #0a0b10;
+  }
+}
+
+@keyframes flameTongues {
+  0% {
+    transform: scale(0.98);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.04);
+    opacity: 1;
+  }
+}
+
+/* Installed Mod Stickers (Bottom-Right) */
+.hud-items {
+  position: absolute;
+  right: 20px;
+  bottom: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 280px;
+  justify-content: flex-end;
+  z-index: 15;
+}
+
+.items-empty {
+  color: #726d82;
+  font-size: 10px;
+  font-weight: 600;
+  font-style: italic;
+  background: rgba(10, 11, 16, 0.7);
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.item-badge.sticker {
+  position: relative;
+  background: #181622;
+  border: 3px solid #ffffff;
+  outline: 2px solid #0a0b10;
+  box-shadow:
+    0 4px 10px rgba(0, 0, 0, 0.7),
+    inset 0 0 6px rgba(0, 0, 0, 0.5);
+  padding: 4px 8px;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-display, 'Impact', sans-serif);
+  font-size: 11px;
+  font-style: italic;
+  color: #ffffff;
+  cursor: help;
+  transition: transform 0.15s var(--ease-snap), z-index 0.05s;
+  overflow: hidden;
+}
+
+.item-badge.sticker:hover {
+  transform: scale(1.22) rotate(0deg) !important;
+  z-index: 40;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.9);
+}
+
+.sticker-glyph {
+  font-weight: 900;
+  color: var(--ic, #ffd60a);
+  font-size: 13px;
+}
+
+.sticker-count {
+  color: #ffd60a;
+  font-size: 10.5px;
+  margin-left: 2px;
+}
+
+/* Folded Corner Peel Effect */
+.sticker-peel {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 0 7px 7px;
+  border-color: transparent transparent #e0e0e8 transparent;
+  filter: drop-shadow(-1px -1px 1px rgba(0, 0, 0, 0.4));
+}
+
+/* Organic Sticker Rotation Angles */
+.sticker.rot-1 { transform: rotate(-6deg); }
+.sticker.rot-2 { transform: rotate(5deg); }
+.sticker.rot-3 { transform: rotate(-3deg); }
+.sticker.rot-4 { transform: rotate(7deg); }
+.sticker.rot-5 { transform: rotate(-8deg); }
+.sticker.rot-6 { transform: rotate(4deg); }
+
+/* --------------------------------------------------------------------------
+   6. Tooltip Styling
+   -------------------------------------------------------------------------- */
+#tooltip {
+  position: fixed;
+  display: none;
+  pointer-events: none;
+  z-index: var(--z-tooltip, 1000);
+  background: #10101a;
+  color: #e6e8f0;
+  border: 2.5px solid #ffd166;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.4;
+  max-width: 290px;
+  box-shadow:
+    3px 3px 0 #0a0b10,
+    0 8px 24px rgba(0, 0, 0, 0.9);
+}
+
+/* --------------------------------------------------------------------------
+   7. Responsive Scale Adaptations
+   -------------------------------------------------------------------------- */
+@media (max-width: 1200px) {
+  .hud-tl {
+    top: 8px;
+    left: 10px;
+  }
+  .hud-hull {
+    width: 240px;
+  }
+  .hud-nos {
+    width: 200px;
+  }
+  .hud-tr {
+    top: 8px;
+    right: 10px;
+  }
+  #minimap-canvas {
+    width: 180px;
+    height: 110px;
+  }
+  .wcard,
+  .weapon-slot {
+    width: 70px;
+    height: 102px;
+  }
+}

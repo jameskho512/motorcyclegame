@@ -8,6 +8,10 @@
  * 4. Permanent arsenal weapon unlocks and bike tuning upgrade rows.
  * 5. Run resume, fresh run launch, and full save reset actions.
  *
+ * Visual layer: anime fighting-game "GARAGE BAY" menu (see src/styles/garage.css).
+ * The bike lift canvas is a cel-shaded sport bike on a scissor lift with a
+ * speed-line burst; connector lines join each of the 6 slot frames to its part.
+ *
  * Parity reference: moto-rogue/index.html L236-L300, L3363-L3456, L3867-L4011
  */
 
@@ -18,12 +22,13 @@ import {
   EquipmentItem,
   WeaponId,
   MetaUpgradeId,
-  UnlockableWeaponId
+  UnlockableWeaponId,
+  StatKey
 } from '../types/game';
 
 import { WEAPONS, UNLOCKABLE_IDS } from '../data/weapons';
 import { META_UPGRADES, calcUpgradeCost } from '../data/upgrades';
-import { EQUIP_SLOTS, RARITY, fmtStat } from '../data/equipment';
+import { EQUIP_SLOTS, RARITY, MAX_STASH, fmtStat } from '../data/equipment';
 
 export interface GarageCallbacks {
   onEquipItem: (item: EquipmentItem) => void;
@@ -39,10 +44,81 @@ export interface GarageCallbacks {
   onPlayShopBuy?: () => void;
 }
 
+/** Slot layout around the bike (matches the GARAGE BAY concept art). */
+const LEFT_SLOTS: readonly EquipSlot[] = ['tires', 'engine', 'exhaust'];
+const RIGHT_SLOTS: readonly EquipSlot[] = ['handlebars', 'frame', 'tank'];
+
+/** Logical drawing space of the bike lift illustration. */
+const BIKE_W = 400;
+const BIKE_H = 300;
+
+/** Where each slot's connector line lands on the bike (logical coords). */
+const PART_ANCHORS: Record<EquipSlot, readonly [number, number]> = {
+  tires: [104, 172],
+  engine: [206, 190],
+  exhaust: [118, 178],
+  handlebars: [306, 94],
+  frame: [168, 186],
+  tank: [236, 114]
+};
+
+/** Neutral paint for empty (uninstalled) parts, chosen to keep the bike readable. */
+const EMPTY_PART_COLOR: Record<EquipSlot, string> = {
+  tires: '#ff6b2b',
+  engine: '#7d8390',
+  exhaust: '#b8bec9',
+  handlebars: '#3b3f4a',
+  frame: '#4a4f5a',
+  tank: '#ff8a3d'
+};
+
+const INK = '#0a0b10';
+
+/** Inline SVG glyphs for the slot frames (stroke uses currentColor). */
+const SLOT_ICONS: Record<EquipSlot, string> = {
+  tires: '<circle cx="12" cy="12" r="9" stroke-width="2.5"/><circle cx="12" cy="12" r="5" stroke-width="2"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" stroke-width="2"/>',
+  engine: '<path d="M5 8h14l2 5v7H3v-7z" stroke-width="2.2"/><path d="M8 5l2-2h4l2 2M7 11h10M7 14h10M7 17h10" stroke-width="2"/><circle cx="12" cy="14" r="2.5" fill="currentColor"/>',
+  exhaust: '<path d="M3 17c3 0 5-2 6-5l2-5h9v7l-8 2c-3 1-5 4-9 1z" stroke-width="2.2"/><line x1="16" y1="7" x2="20" y2="14" stroke-width="2"/>',
+  handlebars: '<path d="M2 9l5 1 2 4h6l2-4 5-1" stroke-width="2.4"/><path d="M10 14v5M14 14v5M4 10v3M20 10v3" stroke-width="2"/>',
+  frame: '<path d="M3 18L10 6h8l3 12z" stroke-width="2.2"/><path d="M10 6l4 12M5 14h15M14 6l-4 12" stroke-width="1.8"/>',
+  tank: '<path d="M3 14c0-4 4-8 10-8h4l4 4v5c0 2-2 3-5 3H7c-3 0-4-1-4-4z" stroke-width="2.2"/><path d="M13 6V4h3v2" stroke-width="2"/><path d="M7 12h10" stroke-width="1.8"/>'
+};
+
+const GEAR_SVG =
+  '<svg class="gx-gear" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.3 2h3.4l.5 2.6 1.9.8 2.2-1.5 2.4 2.4-1.5 2.2.8 1.9 2.6.5v3.4l-2.6.5-.8 1.9 1.5 2.2-2.4 2.4-2.2-1.5-1.9.8-.5 2.6h-3.4l-.5-2.6-1.9-.8-2.2 1.5-2.4-2.4 1.5-2.2-.8-1.9L2 13.7v-3.4l2.6-.5.8-1.9-1.5-2.2 2.4-2.4 2.2 1.5 1.9-.8zM12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>';
+
+const LOCK_SVG =
+  '<svg class="gx-lock" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V7a5 5 0 0 1 10 0v3" fill="none" stroke="#0a0b10" stroke-width="2.5"/><rect x="4" y="10" width="16" height="11" rx="2" fill="#ffffff" stroke="#0a0b10" stroke-width="2.5"/><circle cx="12" cy="15.5" r="2" fill="#0a0b10"/></svg>';
+
+const CHECK_SVG =
+  '<svg class="gx-lock" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12.5l5 5L20 6.5" fill="none" stroke="#ffd60a" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+/** Escapes text before interpolating it into innerHTML templates. */
+function esc(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** Formats an item's stat block as "a, b, c". */
+function statsText(stats: EquipmentItem['stats']): string {
+  return (Object.entries(stats) as [StatKey, number | undefined][])
+    .map(([k, v]) => fmtStat(k, v ?? 0))
+    .join(', ');
+}
+
+function slotIcon(slot: EquipSlot): string {
+  return `<svg viewBox="0 0 24 24" aria-hidden="true">${SLOT_ICONS[slot]}</svg>`;
+}
+
 export class GarageController {
   private overlay: HTMLElement | null = null;
   private modalTitle: HTMLElement | null = null;
   private modalScrap: HTMLElement | null = null;
+  private koBurst: HTMLElement | null = null;
+  private koFloor: HTMLElement | null = null;
   private slotsLeft: HTMLElement | null = null;
   private slotsRight: HTMLElement | null = null;
   private bikeCanvas: HTMLCanvasElement | null = null;
@@ -52,6 +128,7 @@ export class GarageController {
   private unlockList: HTMLElement | null = null;
   private metaUpgradeList: HTMLElement | null = null;
   private resumeBtn: HTMLButtonElement | null = null;
+  private backBtn: HTMLButtonElement | null = null;
   private newRunBtn: HTMLButtonElement | null = null;
   private resetSaveBtn: HTMLButtonElement | null = null;
 
@@ -66,6 +143,8 @@ export class GarageController {
       this.overlay = document.getElementById('garage-overlay');
       this.modalTitle = document.getElementById('modal-title');
       this.modalScrap = document.getElementById('modal-scrap');
+      this.koBurst = document.getElementById('garage-ko');
+      this.koFloor = document.getElementById('garage-ko-floor');
       this.slotsLeft = document.getElementById('slots-left');
       this.slotsRight = document.getElementById('slots-right');
       this.bikeCanvas = document.getElementById('bike-canvas') as HTMLCanvasElement | null;
@@ -77,12 +156,25 @@ export class GarageController {
       this.unlockList = document.getElementById('unlock-list');
       this.metaUpgradeList = document.getElementById('meta-upgrade-list');
       this.resumeBtn = document.getElementById('btn-resume') as HTMLButtonElement | null;
+      this.backBtn = document.getElementById('btn-back') as HTMLButtonElement | null;
       this.newRunBtn = document.getElementById('btn-new-run') as HTMLButtonElement | null;
       this.resetSaveBtn = document.getElementById('btn-reset-save') as HTMLButtonElement | null;
 
       this.resumeBtn?.addEventListener('click', () => {
         this.callbacks.onPlayUiClick?.();
-        this.callbacks.onResumeRun();
+        if (this.isDead) {
+          this.callbacks.onNewRun();
+        } else {
+          this.callbacks.onResumeRun();
+        }
+        this.close();
+      });
+
+      this.backBtn?.addEventListener('click', () => {
+        this.callbacks.onPlayUiClick?.();
+        if (this.isDead) {
+          this.callbacks.onNewRun();
+        }
         this.close();
       });
 
@@ -96,6 +188,22 @@ export class GarageController {
         this.callbacks.onPlayUiClick?.();
         this.callbacks.onResetSave();
       });
+
+      if (typeof window !== 'undefined') {
+        window.addEventListener('keydown', (ev: KeyboardEvent) => {
+          if (!this.isVisible) return;
+          if (ev.key === 'Enter') {
+            ev.preventDefault();
+            this.callbacks.onPlayUiClick?.();
+            if (this.isDead) {
+              this.callbacks.onNewRun();
+            } else {
+              this.callbacks.onResumeRun();
+            }
+            this.close();
+          }
+        });
+      }
     }
   }
 
@@ -117,18 +225,24 @@ export class GarageController {
 
     if (this.overlay) {
       this.overlay.classList.add('visible');
+      this.overlay.classList.toggle('is-dead', isDead);
     }
 
     if (this.modalTitle) {
-      this.modalTitle.textContent = isDead
-        ? `MOTORCYCLE WRECKED ON FLOOR ${floorNum} // GARAGE`
-        : 'MOTO-GARAGE & PERMANENT TUNING';
+      this.modalTitle.textContent = 'GARAGE BAY';
+    }
+
+    // Fighting-game style defeat burst ("K.O." + floor reached)
+    if (this.koBurst) {
+      this.koBurst.hidden = !isDead;
+    }
+    if (this.koFloor) {
+      this.koFloor.textContent = `RUN OVER \u00b7 FLOOR ${floorNum}`;
     }
 
     if (this.resumeBtn) {
-      this.resumeBtn.textContent = isDead
-        ? 'Launch New Run (Floor 1)'
-        : 'Resume Current Run';
+      const label = isDead ? 'RIDE OUT (NEW RUN)' : 'RIDE OUT';
+      this.resumeBtn.innerHTML = `<span class="gx-btn-key">[ENTER]</span> <span class="gx-btn-text">${label}</span>`;
     }
 
     this.render(metaSave, player);
@@ -188,58 +302,58 @@ export class GarageController {
     this.slotsLeft.innerHTML = '';
     this.slotsRight.innerHTML = '';
 
-    const leftSlots: EquipSlot[] = ['tires', 'engine', 'handlebars'];
-    const rightSlots: EquipSlot[] = ['exhaust', 'frame', 'tank'];
-
-    const renderSlot = (slotDef: typeof EQUIP_SLOTS[number], container: HTMLElement) => {
+    const renderSlot = (slotId: EquipSlot, container: HTMLElement) => {
+      const slotDef = EQUIP_SLOTS.find(s => s.id === slotId);
+      if (!slotDef) return;
       const it = metaSave.equipped[slotDef.id];
-      const el = document.createElement('div');
-      el.className = 'eq-slot';
 
       if (it) {
         const R = RARITY[it.rarity];
-        const statsStr = Object.keys(it.stats)
-          .map(k => fmtStat(k as any, (it.stats as any)[k]))
-          .join(', ');
-
-        el.style.borderColor = R.color;
+        const statsStr = statsText(it.stats);
+        const el = document.createElement('button');
+        el.type = 'button';
+        el.className = `eq-slot is-filled rarity-${R.id}`;
+        el.style.setProperty('--rar', R.color);
+        el.title = `${it.name} (${R.name}) - ${statsStr}. Click to remove.`;
+        el.setAttribute('aria-label', `${slotDef.label}: ${it.name}, ${R.name}. ${statsStr}. Remove part`);
         el.innerHTML = `
-          <div class="sl-label">${slotDef.label}</div>
-          <div class="sl-name" style="color:${R.color}">${it.name}</div>
-          <div class="sl-stats">${statsStr}</div>
+          <span class="gx-slot-icon">${slotIcon(slotDef.id)}</span>
+          <span class="sl-name">${esc(it.name)}</span>
+          <span class="sl-stats">${esc(statsStr)}</span>
+          <span class="sl-label">${esc(slotDef.label.toUpperCase())}</span>
         `;
         el.onclick = () => {
           this.callbacks.onUnequipSlot(slotDef.id);
         };
+        container.appendChild(el);
       } else {
+        const el = document.createElement('div');
+        el.className = 'eq-slot is-empty';
+        el.setAttribute('aria-label', `${slotDef.label}: Empty Slot`);
         el.innerHTML = `
-          <div class="sl-label">${slotDef.label}</div>
-          <div class="sl-name" style="color:#666677;">Empty Slot</div>
-          <div class="sl-stats" style="color:#555566;">No part installed</div>
+          <span class="gx-slot-icon">${slotIcon(slotDef.id)}</span>
+          <span class="sl-name">Empty Slot</span>
+          <span class="sl-stats">No part installed</span>
+          <span class="sl-label">${esc(slotDef.label.toUpperCase())}</span>
         `;
+        container.appendChild(el);
       }
-      container.appendChild(el);
     };
 
-    EQUIP_SLOTS.forEach(slotDef => {
-      if (leftSlots.includes(slotDef.id)) {
-        renderSlot(slotDef, this.slotsLeft!);
-      } else if (rightSlots.includes(slotDef.id)) {
-        renderSlot(slotDef, this.slotsRight!);
-      }
-    });
+    LEFT_SLOTS.forEach(id => renderSlot(id, this.slotsLeft!));
+    RIGHT_SLOTS.forEach(id => renderSlot(id, this.slotsRight!));
 
     // Compute total installed equipment stats
     if (this.eqTotals) {
-      const totals: Record<string, number> = {};
+      const totals: Partial<Record<StatKey, number>> = {};
       Object.values(metaSave.equipped).forEach(it => {
         if (!it) return;
-        Object.entries(it.stats).forEach(([k, v]) => {
+        (Object.entries(it.stats) as [StatKey, number | undefined][]).forEach(([k, v]) => {
           totals[k] = (totals[k] || 0) + (v || 0);
         });
       });
 
-      const totalStrings = Object.keys(totals).map(k => fmtStat(k as any, totals[k]));
+      const totalStrings = (Object.entries(totals) as [StatKey, number][]).map(([k, v]) => fmtStat(k, v));
       this.eqTotals.textContent = totalStrings.length > 0
         ? `Installed Bonuses: ${totalStrings.join(' | ')}`
         : 'Installed Bonuses: None';
@@ -253,27 +367,33 @@ export class GarageController {
     if (!this.stashList) return;
     this.stashList.innerHTML = '';
 
-    if (!metaSave.stash || metaSave.stash.length === 0) {
-      this.stashList.innerHTML = '<span style="color:#666677;font-size:11px;grid-column:span 3;">Stash empty — kill bosses &amp; elites for loot parts!</span>';
-      return;
+    const stash = metaSave.stash || [];
+    const GHOST_FILL = 12;
+
+    if (stash.length === 0) {
+      const msg = document.createElement('div');
+      msg.className = 'gx-stash-empty';
+      msg.textContent = 'Stash empty — kill bosses & elites for loot parts!';
+      this.stashList.appendChild(msg);
     }
 
-    metaSave.stash.forEach(it => {
+    stash.forEach(it => {
       const R = RARITY[it.rarity];
       const slotDef = EQUIP_SLOTS.find(s => s.id === it.slot);
       const slotLabel = slotDef ? slotDef.label : it.slot;
-      const statsStr = Object.keys(it.stats)
-        .map(k => fmtStat(k as any, (it.stats as any)[k]))
-        .join(', ');
+      const statsStr = statsText(it.stats);
 
-      const el = document.createElement('div');
-      el.className = 'stash-item';
-      el.style.borderColor = R.color;
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = `stash-item rarity-${R.id}`;
+      el.style.setProperty('--rar', R.color);
+      el.title = `${it.name} - ${R.name} ${slotLabel}\n${statsStr}\nClick: install | Right-click / Del: sell for ${R.sell} scrap`;
+      el.setAttribute('aria-label', `${it.name}, ${R.name} ${slotLabel}. ${statsStr}. Install. Press Delete to sell for ${R.sell} scrap`);
       el.innerHTML = `
-        <b style="color:${R.color}">${it.name}</b>
-        <span>${R.name} ${slotLabel}</span><br/>
-        <span style="color:#aeb3c2;">${statsStr}</span><br/>
-        <span style="color:#ffd166;">Sell: ${R.sell} ⚙️</span>
+        <b>${esc(it.name)}</b>
+        <span class="gx-stash-meta">${esc(R.name)} ${esc(slotLabel)}</span>
+        <span class="gx-stash-stats">${esc(statsStr)}</span>
+        <span class="gx-stash-sell">${GEAR_SVG}${R.sell}</span>
       `;
 
       // Left-click equips
@@ -287,8 +407,25 @@ export class GarageController {
         this.callbacks.onSellItem(it);
       };
 
+      // Keyboard parity for selling
+      el.onkeydown = (ev) => {
+        if (ev.key === 'Delete' || ev.key === 'Backspace') {
+          ev.preventDefault();
+          this.callbacks.onSellItem(it);
+        }
+      };
+
       this.stashList!.appendChild(el);
     });
+
+    // Ghost tiles keep the 2-row stash grid shape from the concept art
+    const used = stash.length === 0 ? 3 : stash.length;
+    for (let i = used; i < Math.min(GHOST_FILL, MAX_STASH); i++) {
+      const ghost = document.createElement('div');
+      ghost.className = 'gx-stash-ghost';
+      ghost.setAttribute('aria-hidden', 'true');
+      this.stashList.appendChild(ghost);
+    }
   }
 
   /**
@@ -302,17 +439,22 @@ export class GarageController {
       const w = WEAPONS[id];
       const isUnlocked = !!metaSave.unlocked[id];
       const isEquipped = player.weapon === id;
+      const canAfford = metaSave.scrap >= w.cost;
 
       const row = document.createElement('div');
-      row.className = 'unlock-item';
+      const state = isEquipped ? 'is-equipped' : isUnlocked ? 'is-unlocked' : 'is-locked';
+      row.className = `unlock-item gx-weapon ${state}`;
+      row.style.setProperty('--wc', w.color);
       row.innerHTML = `
+        <div class="gx-weapon-art">${isUnlocked ? CHECK_SVG : LOCK_SVG}</div>
         <div class="info">
-          <strong style="color:${w.color}">[${w.key}] ${w.name}</strong>
-          <span>${w.desc}</span>
+          <strong><span class="gx-key">${esc(w.key)}</span>${esc(w.name.toUpperCase())}</strong>
+          <span>${esc(w.desc)}</span>
         </div>
       `;
 
       const btn = document.createElement('button');
+      btn.type = 'button';
       btn.className = 'btn';
 
       if (isUnlocked) {
@@ -322,8 +464,11 @@ export class GarageController {
           this.callbacks.onEquipWeapon(id);
         };
       } else {
-        btn.textContent = `Unlock (${w.cost} ⚙️)`;
-        btn.disabled = metaSave.scrap < w.cost;
+        btn.classList.add('gx-price');
+        btn.innerHTML = `<span class="gx-price-label">Unlock</span>${GEAR_SVG}<span class="gx-price-val">${w.cost}</span>`;
+        btn.setAttribute('aria-label', `Unlock ${w.name} for ${w.cost} scrap`);
+        btn.disabled = !canAfford;
+        if (!canAfford) btn.title = `Need ${w.cost - metaSave.scrap} more scrap`;
         btn.onclick = () => {
           this.callbacks.onUnlockWeapon(id);
         };
@@ -346,24 +491,36 @@ export class GarageController {
       const isMax = rank >= up.maxRank;
       const cost = calcUpgradeCost(up, rank);
 
+      let pips = '';
+      for (let i = 0; i < up.maxRank; i++) {
+        pips += `<i class="gx-pip${i < rank ? ' on' : ''}"></i>`;
+      }
+
       const row = document.createElement('div');
-      row.className = 'unlock-item';
+      row.className = `unlock-item gx-upgrade${isMax ? ' is-max' : ''}`;
       row.innerHTML = `
         <div class="info">
-          <strong>${up.name} <span style="display:inline;color:#7bdff2;">(Lv ${rank}/${up.maxRank})</span></strong>
-          <span>${up.desc}</span>
+          <strong>${esc(up.statLabel ? up.statLabel.toUpperCase() : up.name)}</strong>
+          <div class="gx-rank" role="img" aria-label="Rank ${rank} of ${up.maxRank}">
+            <span class="gx-pips">${pips}</span>
+            <span class="gx-rank-txt">RANK PIPS ${rank}</span>
+          </div>
+          <span>${esc(up.desc)}</span>
         </div>
       `;
 
       const btn = document.createElement('button');
-      btn.className = 'btn';
+      btn.type = 'button';
+      btn.className = 'btn gx-upgrade-btn';
 
       if (isMax) {
         btn.textContent = 'MAXED';
         btn.disabled = true;
       } else {
-        btn.textContent = `Upgrade (${cost} ⚙️)`;
+        btn.innerHTML = `<span class="gx-price-label">UPGRADE</span><span class="gx-cost">${GEAR_SVG}${cost}</span>`;
+        btn.setAttribute('aria-label', `Upgrade ${up.name} for ${cost} scrap`);
         btn.disabled = metaSave.scrap < cost;
+        if (btn.disabled) btn.title = `Need ${cost - metaSave.scrap} more scrap`;
         btn.onclick = () => {
           this.callbacks.onBuyUpgrade(up.id);
         };
@@ -376,138 +533,395 @@ export class GarageController {
 
   /**
    * Draws the interactive motorcycle preview on the bike lift canvas.
+   * The backing store is sized to the canvas's CSS box (garage.css stretches it
+   * to fill the bay), so the illustration stays crisp and undistorted.
    */
   public drawBikeLift(metaSave: MetaSaveState): void {
     if (!this.bikeCanvas || !this.bikeCtx) return;
     const c = this.bikeCanvas;
     const g = this.bikeCtx;
-    const cw = (c as any)._lw || 300;
-    const ch = (c as any)._lh || 190;
 
-    g.setTransform(c.width / cw, 0, 0, c.height / ch, 0, 0);
-    g.clearRect(0, 0, cw, ch);
+    const rect = c.getBoundingClientRect();
+    if (rect.width < 2 || rect.height < 2) return; // Hidden overlay: nothing to draw
+    const W = rect.width;
+    const H = rect.height;
+    const dpr = Math.min(3, (typeof window !== 'undefined' && window.devicePixelRatio) || 1);
+    const bw = Math.round(W * dpr);
+    const bh = Math.round(H * dpr);
+    if (c.width !== bw) c.width = bw;
+    if (c.height !== bh) c.height = bh;
 
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, W, H);
+
+    // Uniform fit of the logical illustration inside the canvas box
+    const s = Math.min(W / BIKE_W, H / BIKE_H);
+    const ox = (W - BIKE_W * s) / 2;
+    const oy = (H - BIKE_H * s) / 2;
+    const toScreen = (x: number, y: number): [number, number] => [ox + x * s, oy + y * s];
+
+    const equipped = (slot: EquipSlot): EquipmentItem | null => metaSave.equipped[slot] || null;
     const colorOf = (slot: EquipSlot): string => {
-      const it = metaSave.equipped[slot];
-      return it ? RARITY[it.rarity].color : '#5b606c';
+      const it = equipped(slot);
+      return it ? RARITY[it.rarity].color : EMPTY_PART_COLOR[slot];
     };
-
     const glow = (slot: EquipSlot) => {
-      const it = metaSave.equipped[slot];
+      const it = equipped(slot);
       g.shadowColor = it ? RARITY[it.rarity].color : 'transparent';
-      g.shadowBlur = it && it.rarity >= 2 ? 14 : 0;
+      g.shadowBlur = it && it.rarity >= 1 ? 6 + it.rarity * 5 : 0;
+    };
+    const noGlow = () => {
+      g.shadowColor = 'transparent';
+      g.shadowBlur = 0;
     };
 
-    // 1. Hydraulic Lift Platform with Caution Stripes
-    g.fillStyle = '#3a3d46';
-    g.fillRect(20, 168, 260, 10);
-    g.fillStyle = '#ffd60a';
-    for (let x = 20; x < 280; x += 26) {
-      g.fillRect(x, 168, 13, 10);
+    // 0. Speed-line burst behind the bike (screen space)
+    const [bcx, bcy] = toScreen(220, 150);
+    const reach = Math.hypot(W, H);
+    g.save();
+    g.fillStyle = 'rgba(40, 28, 20, 0.16)';
+    const rays = 44;
+    for (let i = 0; i < rays; i++) {
+      const a0 = (i / rays) * Math.PI * 2;
+      const a1 = a0 + (Math.PI * 2) / rays * (0.25 + 0.3 * ((i * 7) % 3) / 2);
+      g.beginPath();
+      g.moveTo(bcx + Math.cos(a0) * 40 * s, bcy + Math.sin(a0) * 40 * s);
+      g.lineTo(bcx + Math.cos(a0) * reach, bcy + Math.sin(a0) * reach);
+      g.lineTo(bcx + Math.cos(a1) * reach, bcy + Math.sin(a1) * reach);
+      g.closePath();
+      g.fill();
     }
+    g.restore();
 
+    // 1. Connector lines from the slot frames to each part (screen space)
+    const drawConnector = (slot: EquipSlot, side: 'left' | 'right', idx: number) => {
+      const sy = (H * (idx * 2 + 1)) / 6;
+      const sx = side === 'left' ? 0 : W;
+      const [ax, ay] = toScreen(PART_ANCHORS[slot][0], PART_ANCHORS[slot][1]);
+      const kneeX = side === 'left' ? Math.min(ax - 6, sx + 24) : Math.max(ax + 6, sx - 24);
+      const it = equipped(slot);
+      g.save();
+      g.lineCap = 'round';
+      g.lineJoin = 'round';
+      g.beginPath();
+      g.moveTo(sx, sy);
+      g.lineTo(kneeX, sy);
+      g.lineTo(ax, ay);
+      g.strokeStyle = INK;
+      g.lineWidth = 4;
+      g.stroke();
+      g.strokeStyle = it ? RARITY[it.rarity].color : '#ffd60a';
+      g.lineWidth = 1.8;
+      g.stroke();
+      g.beginPath();
+      g.arc(ax, ay, 4.5, 0, Math.PI * 2);
+      g.fillStyle = it ? RARITY[it.rarity].color : '#ffd60a';
+      g.fill();
+      g.strokeStyle = INK;
+      g.lineWidth = 2;
+      g.stroke();
+      g.restore();
+    };
+
+    // Logical-space illustration
+    g.save();
+    g.translate(ox, oy);
+    g.scale(s, s);
     g.lineCap = 'round';
     g.lineJoin = 'round';
 
-    // 2. Bike Frame
-    g.save();
-    glow('frame');
-    g.strokeStyle = colorOf('frame');
-    g.lineWidth = 7;
-    g.beginPath();
-    g.moveTo(70, 140);
-    g.lineTo(135, 95);
-    g.lineTo(195, 95);
-    g.lineTo(230, 140);
-    g.lineTo(135, 140);
-    g.closePath();
-    g.stroke();
-    g.restore();
+    const poly = (pts: readonly (readonly [number, number])[]) => {
+      g.beginPath();
+      pts.forEach(([x, y], i) => (i === 0 ? g.moveTo(x, y) : g.lineTo(x, y)));
+      g.closePath();
+    };
+    const inkFill = (fill: string, lw: number = 3.5) => {
+      g.fillStyle = fill;
+      g.fill();
+      noGlow();
+      g.strokeStyle = INK;
+      g.lineWidth = lw;
+      g.stroke();
+    };
+    const inkLine = (color: string, width: number) => {
+      g.strokeStyle = INK;
+      g.lineWidth = width + 4;
+      g.stroke();
+      noGlow();
+      g.strokeStyle = color;
+      g.lineWidth = width;
+      g.stroke();
+    };
 
-    // 3. Engine Block
+    // 2. Scissor lift (legs, base, platform with caution stripes)
+    g.beginPath();
+    g.moveTo(122, 246);
+    g.lineTo(298, 286);
+    g.moveTo(298, 246);
+    g.lineTo(122, 286);
+    inkLine('#6c7787', 6);
+    poly([[104, 284], [316, 284], [316, 292], [104, 292]]);
+    inkFill('#56606e', 3);
+    [[114, 296], [306, 296]].forEach(([x, y]) => {
+      g.beginPath();
+      g.arc(x, y, 5, 0, Math.PI * 2);
+      inkFill('#22252c', 2.5);
+    });
+    poly([[86, 236], [334, 236], [334, 249], [86, 249]]);
+    inkFill('#8893a3', 3);
     g.save();
-    glow('engine');
-    g.fillStyle = colorOf('engine');
-    g.fillRect(125, 110, 45, 30);
-    g.strokeStyle = '#1a1b20';
-    g.lineWidth = 2;
-    g.strokeRect(125, 110, 45, 30);
-    // Cylinder fins
-    for (let f = 0; f < 3; f++) {
-      g.fillStyle = '#fff';
-      g.fillRect(130, 116 + f * 7, 35, 2);
+    poly([[88, 243], [332, 243], [332, 248], [88, 248]]);
+    g.clip();
+    g.fillStyle = '#ffd60a';
+    for (let x = 80; x < 340; x += 18) {
+      g.beginPath();
+      g.moveTo(x, 248);
+      g.lineTo(x + 9, 248);
+      g.lineTo(x + 14, 243);
+      g.lineTo(x + 5, 243);
+      g.closePath();
+      g.fill();
     }
     g.restore();
 
-    // 4. Exhaust Pipe
+    // 3. Wheels & tires
+    const tireAccent = colorOf('tires');
+    const drawWheel = (wx: number, wy: number, front: boolean) => {
+      g.save();
+      glow('tires');
+      g.beginPath();
+      g.arc(wx, wy, 40, 0, Math.PI * 2);
+      g.fillStyle = '#141318';
+      g.fill();
+      noGlow();
+      g.strokeStyle = INK;
+      g.lineWidth = 3.5;
+      g.stroke();
+      // Sidewall stripe (rarity accent when tires installed)
+      g.beginPath();
+      g.arc(wx, wy, 33, 0, Math.PI * 2);
+      g.strokeStyle = equipped('tires') ? tireAccent : '#3a3844';
+      g.lineWidth = 3;
+      g.stroke();
+      // Rim
+      g.beginPath();
+      g.arc(wx, wy, 28, 0, Math.PI * 2);
+      g.fillStyle = '#26242c';
+      g.fill();
+      if (front) {
+        g.beginPath();
+        g.arc(wx, wy, 17, 0, Math.PI * 2);
+        g.strokeStyle = '#b8bec9';
+        g.lineWidth = 4;
+        g.stroke();
+      }
+      for (let k = 0; k < 5; k++) {
+        const a = (k * Math.PI * 2) / 5 - Math.PI / 2;
+        g.beginPath();
+        g.moveTo(wx + Math.cos(a) * 6, wy + Math.sin(a) * 6);
+        g.lineTo(wx + Math.cos(a) * 27, wy + Math.sin(a) * 27);
+        g.strokeStyle = INK;
+        g.lineWidth = 7;
+        g.stroke();
+        g.strokeStyle = tireAccent;
+        g.lineWidth = 4;
+        g.stroke();
+      }
+      g.beginPath();
+      g.arc(wx, wy, 28, 0, Math.PI * 2);
+      g.strokeStyle = tireAccent;
+      g.lineWidth = 3;
+      g.stroke();
+      g.beginPath();
+      g.arc(wx, wy, 6, 0, Math.PI * 2);
+      inkFill('#c9ced8', 2.5);
+      g.restore();
+    };
+    drawWheel(128, 196, false);
+    drawWheel(300, 196, true);
+
+    // 4. Swingarm / trellis frame
     g.save();
-    glow('exhaust');
-    g.strokeStyle = colorOf('exhaust');
-    g.lineWidth = 5;
+    glow('frame');
+    poly([[124, 190], [128, 203], [204, 190], [202, 174]]);
+    inkFill(colorOf('frame'));
     g.beginPath();
-    g.moveTo(150, 135);
-    g.lineTo(100, 145);
-    g.lineTo(65, 138);
-    g.stroke();
+    g.moveTo(200, 176);
+    g.lineTo(226, 136);
+    g.lineTo(292, 118);
+    inkLine(colorOf('frame'), 5);
     g.restore();
 
-    // 5. Fuel Tank
+    // 5. Exhaust (header pipe + side can)
     g.save();
-    glow('tank');
-    g.fillStyle = colorOf('tank');
+    glow('exhaust');
     g.beginPath();
-    g.moveTo(135, 95);
-    g.quadraticCurveTo(165, 75, 195, 95);
-    g.closePath();
-    g.fill();
-    g.strokeStyle = '#222';
+    g.moveTo(236, 206);
+    g.quadraticCurveTo(200, 222, 156, 196);
+    inkLine(colorOf('exhaust'), 6);
+    glow('exhaust');
+    poly([[160, 186], [104, 164], [96, 182], [152, 204]]);
+    inkFill(colorOf('exhaust'));
+    g.beginPath();
+    g.ellipse(100, 173, 5, 9, 0.38, 0, Math.PI * 2);
+    inkFill('#26242c', 2.5);
+    g.beginPath();
+    g.moveTo(150, 190);
+    g.lineTo(112, 175);
+    g.strokeStyle = 'rgba(255,255,255,0.6)';
     g.lineWidth = 2;
     g.stroke();
     g.restore();
 
-    // 6. Handlebars & Fork
+    // 6. Engine block
     g.save();
-    glow('handlebars');
-    g.strokeStyle = colorOf('handlebars');
-    g.lineWidth = 5;
+    glow('engine');
+    poly([[182, 160], [246, 156], [256, 196], [236, 214], [194, 210], [178, 186]]);
+    inkFill(colorOf('engine'));
+    g.strokeStyle = 'rgba(10, 11, 16, 0.75)';
+    g.lineWidth = 2.5;
+    for (let f = 0; f < 4; f++) {
+      g.beginPath();
+      g.moveTo(188, 168 + f * 9);
+      g.lineTo(244, 166 + f * 9);
+      g.stroke();
+    }
     g.beginPath();
-    g.moveTo(195, 95);
-    g.lineTo(210, 65);
-    g.moveTo(200, 68);
-    g.lineTo(220, 68);
+    g.arc(214, 198, 8, 0, Math.PI * 2);
+    inkFill('#c9ced8', 2.5);
+    g.restore();
+
+    // 7. Front fork (gold USD forks)
+    g.beginPath();
+    g.moveTo(300, 196);
+    g.lineTo(318, 108);
+    inkLine('#ffb627', 7);
+
+    // 8. Tail section + seat
+    poly([[94, 116], [150, 122], [200, 126], [204, 150], [166, 158], [128, 150], [108, 134]]);
+    inkFill('#ff6b2b');
+    poly([[128, 150], [166, 158], [204, 150], [204, 142], [150, 146], [112, 136]]);
+    g.fillStyle = '#c2410c';
+    g.fill();
+    poly([[146, 120], [206, 122], [216, 132], [150, 130]]);
+    inkFill('#1d1b22', 3);
+
+    // 9. Main fairing (cel shaded) — always the bike's orange identity color
+    poly([[214, 128], [252, 110], [300, 104], [334, 116], [356, 134], [344, 150], [314, 160], [290, 188], [262, 198], [244, 172], [222, 150]]);
+    inkFill('#ff6b2b');
+    poly([[244, 172], [262, 198], [290, 188], [314, 160], [344, 150], [304, 162], [270, 176]]);
+    g.fillStyle = '#c2410c';
+    g.fill();
+    poly([[262, 150], [300, 140], [292, 152], [258, 162]]);
+    g.fillStyle = INK;
+    g.fill();
+    g.beginPath();
+    g.moveTo(258, 118);
+    g.lineTo(330, 122);
+    g.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+    g.lineWidth = 3;
+    g.stroke();
+    // re-ink the fairing outline over the shading
+    poly([[214, 128], [252, 110], [300, 104], [334, 116], [356, 134], [344, 150], [314, 160], [290, 188], [262, 198], [244, 172], [222, 150]]);
+    g.strokeStyle = INK;
+    g.lineWidth = 3.5;
+    g.stroke();
+
+    // 10. Fuel tank
+    g.save();
+    glow('tank');
+    g.beginPath();
+    g.moveTo(204, 124);
+    g.quadraticCurveTo(226, 98, 262, 102);
+    g.lineTo(270, 114);
+    g.lineTo(252, 138);
+    g.lineTo(210, 140);
+    g.closePath();
+    inkFill(colorOf('tank'));
+    g.beginPath();
+    g.moveTo(218, 116);
+    g.quadraticCurveTo(234, 106, 254, 107);
+    g.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+    g.lineWidth = 3;
     g.stroke();
     g.restore();
 
-    // 7. Wheels & Tires
+    // 11. Windscreen + headlight
+    poly([[300, 104], [318, 84], [340, 112], [334, 116]]);
+    inkFill('rgba(46, 230, 255, 0.55)', 3);
+    poly([[340, 128], [356, 134], [348, 142]]);
+    inkFill('#ffd60a', 2.5);
+
+    // 12. Clip-on handlebars
     g.save();
-    glow('tires');
-    const drawWheel = (wx: number, wy: number) => {
-      // Outer tire rubber
-      g.strokeStyle = '#1b1c20';
-      g.lineWidth = 9;
-      g.beginPath();
-      g.arc(wx, wy, 28, 0, Math.PI * 2);
-      g.stroke();
-
-      // Rim colored by part rarity
-      g.strokeStyle = colorOf('tires');
-      g.lineWidth = 3.5;
-      g.beginPath();
-      g.arc(wx, wy, 22, 0, Math.PI * 2);
-      g.stroke();
-
-      // Spokes
-      g.lineWidth = 1.5;
-      for (let s = 0; s < 4; s++) {
-        const a = (s * Math.PI) / 4;
-        g.beginPath();
-        g.moveTo(wx + Math.cos(a) * 20, wy + Math.sin(a) * 20);
-        g.lineTo(wx - Math.cos(a) * 20, wy - Math.sin(a) * 20);
-        g.stroke();
-      }
-    };
-    drawWheel(70, 140);
-    drawWheel(230, 140);
+    glow('handlebars');
+    g.beginPath();
+    g.moveTo(318, 106);
+    g.lineTo(298, 92);
+    inkLine(colorOf('handlebars'), 5);
+    g.beginPath();
+    g.arc(296, 91, 4, 0, Math.PI * 2);
+    inkFill(colorOf('handlebars'), 2.5);
     g.restore();
+
+    // 13. Cel-shaded anime racer leaning against the bike (matches concept art)
+    g.save();
+    // Helmet
+    g.beginPath();
+    g.arc(282, 88, 15, 0, Math.PI * 2);
+    inkFill('#ff6b2b', 3.5);
+    // Helmet Visor
+    poly([[273, 82], [295, 82], [293, 94], [275, 94]]);
+    inkFill('#0a0b10', 2);
+    g.beginPath();
+    g.moveTo(277, 85);
+    g.lineTo(291, 85);
+    g.strokeStyle = '#2ee6ff';
+    g.lineWidth = 1.5;
+    g.stroke();
+
+    // Collar
+    poly([[275, 102], [289, 102], [291, 108], [273, 108]]);
+    inkFill('#1d1b22', 2.5);
+
+    // Torso / Jacket
+    poly([[267, 108], [297, 108], [302, 142], [262, 142]]);
+    inkFill('#ff6b2b', 3.5);
+    // Shoulder armor pads
+    poly([[265, 108], [275, 108], [273, 120], [263, 118]]);
+    inkFill('#1d1b22', 2);
+    poly([[289, 108], [299, 108], [301, 118], [291, 120]]);
+    inkFill('#1d1b22', 2);
+    // Crossed arms
+    poly([[265, 118], [299, 118], [295, 136], [269, 136]]);
+    inkFill('#ff6b2b', 3);
+    poly([[273, 124], [291, 124], [289, 135], [275, 135]]);
+    inkFill('#1d1b22', 2);
+
+    // Belt
+    poly([[263, 142], [301, 142], [301, 147], [263, 147]]);
+    inkFill('#1d1b22', 2.5);
+
+    // Left leg
+    poly([[279, 147], [297, 147], [295, 215], [281, 215]]);
+    inkFill('#ff6b2b', 3.5);
+    // Left boot
+    poly([[279, 215], [297, 215], [303, 238], [277, 238]]);
+    inkFill('#1d1b22', 3);
+
+    // Right leg (bent knee resting on bike footpeg)
+    poly([[265, 147], [279, 147], [267, 185], [253, 180]]);
+    inkFill('#e05318', 3);
+    poly([[253, 180], [267, 185], [271, 210], [259, 210]]);
+    inkFill('#ff6b2b', 3);
+    poly([[259, 210], [271, 210], [273, 226], [257, 226]]);
+    inkFill('#1d1b22', 3);
+    g.restore();
+
+    g.restore();
+
+    // Connectors drawn last so they read above the burst and bike edges
+    LEFT_SLOTS.forEach((slot, i) => drawConnector(slot, 'left', i));
+    RIGHT_SLOTS.forEach((slot, i) => drawConnector(slot, 'right', i));
   }
 }

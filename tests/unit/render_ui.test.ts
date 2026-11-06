@@ -21,7 +21,8 @@ import { TooltipManager } from '../../src/ui/tooltip';
 import { ShopModalController } from '../../src/ui/shopModal';
 import { FilterManager } from '../../src/render/shaders';
 import { StageManager } from '../../src/render/stage';
-import { Pickup } from '../../src/types/game';
+import { Pickup, MetaSaveState, PlayerState } from '../../src/types/game';
+import { GarageController } from '../../src/ui/garage';
 
 describe('Render & UI Subsystems', () => {
   describe('Semicircular Fuel Gauge Math', () => {
@@ -237,6 +238,227 @@ describe('Render & UI Subsystems', () => {
 
       fm.update(0.05);
       expect(fm.isImpactActive()).toBe(false);
+    });
+  });
+
+  describe('GarageController & Game Over Polish', () => {
+    let callbacks: any;
+    let metaSave: MetaSaveState;
+    let player: PlayerState;
+
+    beforeEach(() => {
+      document.body.innerHTML = `
+        <div id="garage-overlay">
+          <div class="overlay-card garage-card">
+            <header class="gx-header">
+              <div class="gx-banner">
+                <h1 id="modal-title">GARAGE BAY</h1>
+                <span class="gx-banner-stripes"></span>
+              </div>
+              <div class="gx-ko" id="garage-ko" hidden>
+                <span class="gx-ko-main">K.O.</span>
+                <span class="gx-ko-sub" id="garage-ko-floor">RUN OVER</span>
+              </div>
+              <div class="gx-scrap">
+                <span class="gx-scrap-val" id="modal-scrap">0</span>
+              </div>
+            </header>
+            <div class="bay gx-bay">
+              <div class="slot-col" id="slots-left"></div>
+              <canvas id="bike-canvas" width="300" height="190"></canvas>
+              <div class="slot-col" id="slots-right"></div>
+            </div>
+            <div id="eq-totals"></div>
+            <div id="meta-upgrade-list"></div>
+            <div id="unlock-list"></div>
+            <div id="stash-list"></div>
+            <div class="gx-actions">
+              <button id="btn-resume">Resume</button>
+              <button id="btn-back">Back</button>
+              <button id="btn-new-run">New Run</button>
+              <button id="btn-reset-save">Reset</button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      callbacks = {
+        onEquipItem: vi.fn(),
+        onUnequipSlot: vi.fn(),
+        onSellItem: vi.fn(),
+        onUnlockWeapon: vi.fn(),
+        onEquipWeapon: vi.fn(),
+        onBuyUpgrade: vi.fn(),
+        onResumeRun: vi.fn(),
+        onNewRun: vi.fn(),
+        onResetSave: vi.fn(),
+        onPlayUiClick: vi.fn(),
+        onPlayShopBuy: vi.fn()
+      };
+
+      metaSave = {
+        scrap: 120,
+        unlocked: {
+          machine_gun: true,
+          shotgun: false,
+          flamethrower: false,
+          railgun: false,
+          grenade_launcher: false,
+          arc_coil: false
+        },
+        ranks: { dmg: 2, fireRate: 1, speed: 0, maxHp: 0 },
+        equipped: {
+          tires: { slot: 'tires', rarity: 3, name: 'Apex Tires', stats: { speed: 0.25 } }
+        },
+        stash: [
+          { slot: 'engine', rarity: 1, name: 'Sport Engine', stats: { dmg: 0.1 } }
+        ]
+      };
+
+      player = {
+        x: 360,
+        y: 360,
+        vx: 0,
+        vy: 0,
+        radius: 17,
+        bikeAngle: 0,
+        aimAngle: 0,
+        baseSpeed: 265,
+        hp: 6,
+        maxHp: 6,
+        coins: 10,
+        invuln: 0,
+        weapon: 'machine_gun',
+        runWeapons: {},
+        fireTimer: 0,
+        dmgMult: 1,
+        fireRateMult: 1,
+        speedMult: 1,
+        projSpeedMult: 1,
+        blastMult: 1,
+        pierce: 0,
+        bounce: 0,
+        multiShot: 1,
+        vampChance: 0,
+        items: [],
+        itemStacks: {},
+        killCount: 0,
+        nos: 100,
+        nosMax: 100,
+        nosLock: false,
+        nosDelay: 0
+      };
+    });
+
+    it('opens garage, renders title "GARAGE BAY", scrap count, and equipment slots', () => {
+      const garage = new GarageController(callbacks);
+      garage.open(false, 1, metaSave, player);
+
+      expect(garage.isOpen()).toBe(true);
+      const title = document.getElementById('modal-title');
+      expect(title?.textContent).toBe('GARAGE BAY');
+
+      const scrap = document.getElementById('modal-scrap');
+      expect(scrap?.textContent).toBe('120');
+
+      const leftSlots = document.getElementById('slots-left');
+      expect(leftSlots?.children.length).toBe(3); // tires, engine, exhaust
+
+      const rightSlots = document.getElementById('slots-right');
+      expect(rightSlots?.children.length).toBe(3); // handlebars, frame, tank
+
+      // Tires equipped
+      const tiresSlot = leftSlots?.firstElementChild as HTMLElement;
+      expect(tiresSlot.className).toContain('is-filled');
+      expect(tiresSlot.className).toContain('rarity-legendary');
+      expect(tiresSlot.innerHTML).toContain('TIRES');
+
+      // Engine empty
+      const engineSlot = leftSlots?.children[1] as HTMLElement;
+      expect(engineSlot.className).toContain('is-empty');
+      expect(engineSlot.innerHTML).toContain('ENGINE');
+    });
+
+    it('displays dramatic K.O. / RUN OVER defeat header when isDead is true', () => {
+      const garage = new GarageController(callbacks);
+      garage.open(true, 3, metaSave, player);
+
+      const ko = document.getElementById('garage-ko');
+      expect(ko?.hidden).toBe(false);
+
+      const koFloor = document.getElementById('garage-ko-floor');
+      expect(koFloor?.textContent).toContain('RUN OVER · FLOOR 3');
+
+      const resumeBtn = document.getElementById('btn-resume');
+      expect(resumeBtn?.innerHTML).toContain('RIDE OUT (NEW RUN)');
+      expect(resumeBtn?.innerHTML).toContain('[ENTER]');
+    });
+
+    it('hides K.O. burst and shows standard RIDE OUT when alive', () => {
+      const garage = new GarageController(callbacks);
+      garage.open(false, 2, metaSave, player);
+
+      const ko = document.getElementById('garage-ko');
+      expect(ko?.hidden).toBe(true);
+
+      const resumeBtn = document.getElementById('btn-resume');
+      expect(resumeBtn?.innerHTML).toContain('RIDE OUT');
+      expect(resumeBtn?.innerHTML).not.toContain('NEW RUN');
+    });
+
+    it('renders TUNING upgrades with rank pips and UPGRADE buttons', () => {
+      const garage = new GarageController(callbacks);
+      garage.open(false, 1, metaSave, player);
+
+      const list = document.getElementById('meta-upgrade-list');
+      expect(list?.children.length).toBeGreaterThan(0);
+
+      const firstRow = list?.firstElementChild as HTMLElement;
+      expect(firstRow.innerHTML).toContain('RANK PIPS');
+      expect(firstRow.querySelector('.gx-upgrade-btn')).not.toBeNull();
+      expect(firstRow.querySelectorAll('.gx-pip.on').length).toBe(2);
+    });
+
+    it('renders ARMORY weapons with locks for locked and equip button for unlocked', () => {
+      const garage = new GarageController(callbacks);
+      garage.open(false, 1, metaSave, player);
+
+      const list = document.getElementById('unlock-list');
+      expect(list?.children.length).toBe(6);
+
+      const mg = list?.firstElementChild as HTMLElement; // machine_gun is unlocked & equipped
+      expect(mg.className).toContain('is-equipped');
+      expect(mg.textContent).toContain('Equipped');
+
+      const shotgun = list?.children[1] as HTMLElement; // shotgun is locked
+      expect(shotgun.className).toContain('is-locked');
+      expect(shotgun.querySelector('.gx-lock')).not.toBeNull();
+      expect(shotgun.querySelector('.gx-price')).not.toBeNull();
+    });
+
+    it('triggers resume or new run on action button clicks and closes overlay', () => {
+      const garage = new GarageController(callbacks);
+      garage.open(false, 1, metaSave, player);
+
+      const resumeBtn = document.getElementById('btn-resume');
+      resumeBtn?.click();
+      expect(callbacks.onResumeRun).toHaveBeenCalledTimes(1);
+      expect(garage.isOpen()).toBe(false);
+
+      // Dead run check
+      garage.open(true, 1, metaSave, player);
+      resumeBtn?.click();
+      expect(callbacks.onNewRun).toHaveBeenCalledTimes(1);
+      expect(garage.isOpen()).toBe(false);
+    });
+
+    it('triggers close on [ESC] BACK button click', () => {
+      const garage = new GarageController(callbacks);
+      garage.open(false, 1, metaSave, player);
+
+      const backBtn = document.getElementById('btn-back');
+      backBtn?.click();
+      expect(garage.isOpen()).toBe(false);
     });
   });
 });

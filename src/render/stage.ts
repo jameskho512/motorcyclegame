@@ -479,8 +479,10 @@ export class StageManager {
   }
 
   private renderHUD(g: Graphics, room: Room, damageNumbers: DamageNumber[]): void {
-    // Clear previous price text labels
-    this.priceTextContainer.removeChildren();
+    // Price text labels are pooled: children of priceTextContainer are reused each frame
+    // (previously removeChildren() + new Text/TextStyle per frame leaked textures).
+    const pricePool = this.priceTextContainer.children;
+    let priceUsed = 0;
 
     // Render price tags below each shop/priced item
     for (const p of room.pickups) {
@@ -489,27 +491,50 @@ export class StageManager {
         const isFree = p.cost === 0;
         const textStr = isFree ? 'FREE' : `${p.cost} 🪙`;
         const col = isFree ? 0x06d6a0 : 0xffd166;
-        const textCol = isFree ? '#06d6a0' : '#ffd166';
 
-        // Draw small badge pill background
-        g.roundRect(p.x - 26, badgeY - 10, 52, 20, 5)
-          .fill({ color: 0x0a0b10, alpha: 0.9 })
-          .stroke({ color: col, width: 1.5 });
+        // Slanted comic parallelogram badge (drop shadow + fill + black ink border)
+        const halfW = 27;
+        const halfH = 10;
+        const slant = 6;
+        const badge = [
+          p.x - halfW + slant, badgeY - halfH,
+          p.x + halfW + slant, badgeY - halfH,
+          p.x + halfW - slant, badgeY + halfH,
+          p.x - halfW - slant, badgeY + halfH
+        ];
+        g.poly(badge.map((v) => v + 3))
+          .fill({ color: 0x0a0b10, alpha: 0.85 });
+        g.poly(badge)
+          .fill({ color: col, alpha: 1 })
+          .stroke({ color: 0x0a0b10, width: 2.5, join: 'miter' });
 
-        const priceText = new Text({
-          text: textStr,
-          style: new TextStyle({
-            fontFamily: "'Segoe UI', Impact, Arial, sans-serif",
-            fontSize: 12,
-            fontWeight: '800',
-            fill: textCol,
-            stroke: { color: '#0a0b10', width: 2 }
-          })
-        });
-        priceText.anchor.set(0.5, 0.5);
+        let priceText = pricePool[priceUsed] as Text | undefined;
+        if (!priceText) {
+          priceText = new Text({
+            text: textStr,
+            style: new TextStyle({
+              fontFamily: "'Impact', 'Haettenschweiler', 'Arial Black', sans-serif",
+              fontSize: 13,
+              fontStyle: 'italic',
+              fontWeight: '900',
+              fill: '#ffffff',
+              stroke: { color: '#0a0b10', width: 3.5, join: 'round' },
+              padding: 4
+            })
+          });
+          priceText.anchor.set(0.5, 0.5);
+          this.priceTextContainer.addChild(priceText);
+        }
+        priceUsed++;
+        if (priceText.text !== textStr) priceText.text = textStr;
+        priceText.visible = true;
         priceText.position.set(p.x, badgeY);
-        this.priceTextContainer.addChild(priceText);
       }
+    }
+
+    // Hide leftover pooled price labels
+    for (let i = priceUsed; i < pricePool.length; i++) {
+      pricePool[i].visible = false;
     }
 
     // Enemy & Boss Health Bars

@@ -10,7 +10,7 @@
  * 6. Comic-style floating combat text ('CRIT!', damage numbers).
  */
 
-import { Graphics, Container, Text, TextStyle } from 'pixi.js';
+import { Graphics, Container, Text, TextStyle, FillGradient } from 'pixi.js';
 import {
   Particle,
   BeamEffect,
@@ -32,6 +32,10 @@ export interface MangaHitSpark {
 export class VFXManager {
   private speedLineTimer: number = 0;
   private hitSparks: MangaHitSpark[] = [];
+  // Floating combat text pools (reused every frame by renderFloatingText)
+  private floatingTextPool: Text[] = [];
+  private floatingTextStyles: Map<string, TextStyle> = new Map();
+  private floatingBurstGfx: Graphics = new Graphics();
 
   /**
    * Spawns a manga-style starburst hit spark on weapon impact.
@@ -279,32 +283,150 @@ export class VFXManager {
    * Renders floating comic combat text ('CRIT!', damage numbers).
    */
   public renderFloatingText(container: Container, damageNumbers: DamageNumber[]): void {
-    // Clear previous text children
-    container.removeChildren();
+    // Pooled rendering: Text objects and TextStyles are reused across frames instead of
+    // being recreated (the old removeChildren() + new Text per frame leaked GPU textures).
+    if (this.floatingBurstGfx.parent !== container) {
+      container.addChildAt(this.floatingBurstGfx, 0);
+    }
+    const burst = this.floatingBurstGfx;
+    burst.clear();
 
+    let used = 0;
     for (const dn of damageNumbers) {
       const alpha = Math.max(0, dn.life / dn.maxLife);
-      const isCrit = dn.text.includes('CRIT') || dn.text.includes('!');
+      if (alpha <= 0) continue;
+      // Only explicit 'CRIT' text gets the big comic burst; other '!' texts
+      // (e.g. "NEED X COINS!") are emphasized but keep their color override.
+      const isCrit = dn.text.includes('CRIT');
+      const isLoud = !isCrit && dn.text.includes('!');
 
-      const style = new TextStyle({
-        fontFamily: "'Segoe UI', Impact, Arial Black, sans-serif",
-        fontSize: isCrit ? 16 : 13,
-        fontWeight: '900',
-        fill: dn.color || (isCrit ? '#ffd166' : '#ffffff'),
-        stroke: { color: '#0a0b10', width: isCrit ? 4 : 3 },
-        dropShadow: isCrit ? {
-          color: '#ff4d6d',
-          blur: 4,
-          distance: 2
-        } : undefined
-      });
+      let text = this.floatingTextPool[used];
+      if (!text) {
+        text = new Text({ text: '', style: this.getFloatingTextStyle('normal', '#ffffff') });
+        text.anchor.set(0.5, 0.5);
+        this.floatingTextPool.push(text);
+      }
+      if (text.parent !== container) container.addChild(text);
+      used++;
 
-      const text = new Text({ text: dn.text, style });
-      text.anchor.set(0.5, 0.5);
+      const kind: FloatingTextKind = isCrit ? 'crit' : isLoud ? 'loud' : 'normal';
+      const style = this.getFloatingTextStyle(kind, dn.color || '#ffffff');
+      if (text.style !== style) text.style = style;
+      if (text.text !== dn.text) text.text = dn.text;
+
+      // Deterministic per-number tilt (no per-frame randomness => no jitter)
+      const h = floatingTextHash(dn.text, dn.x, dn.maxLife);
+      const tilt = ((h % 1000) / 1000 - 0.5) * (isCrit ? 0.36 : 0.26);
+
+      // Crit pop-in: scale overshoot during the first ~15% of life
+      const age = 1 - alpha;
+      const pop = isCrit && age < 0.15 ? 1 + (0.15 - age) * 3 : 1;
+
+      text.visible = true;
       text.position.set(dn.x, dn.y);
+      text.rotation = tilt;
+      text.scale.set(pop);
       text.alpha = alpha;
 
-      container.addChild(text);
+      if (isCrit) {
+        drawComicStarburst(burst, dn.x, dn.y, 34 * pop, 20 * pop, tilt, h, alpha);
+      }
+    }
+
+    // Hide leftover pooled Text objects
+    for (let i = used; i < this.floatingTextPool.length; i++) {
+      this.floatingTextPool[i].visible = false;
     }
   }
+
+  /** Cached TextStyle lookup for floating combat text (one instance per kind+color). */
+  private getFloatingTextStyle(kind: FloatingTextKind, color: string): TextStyle {
+    const key = `${kind}|${color}`;
+    const cached = this.floatingTextStyles.get(key);
+    if (cached) return cached;
+
+    let style: TextStyle;
+    if (kind === 'crit') {
+      style = new TextStyle({
+        fontFamily: FLOATING_TEXT_FONT,
+        fontSize: 24,
+        fontStyle: 'italic',
+        fontWeight: '900',
+        fill: new FillGradient({
+          type: 'linear',
+          start: { x: 0, y: 0 },
+          end: { x: 0, y: 1 },
+          colorStops: [
+            { offset: 0, color: '#fff275' },
+            { offset: 0.55, color: '#ffb703' },
+            { offset: 1, color: '#ff6b00' }
+          ],
+          textureSpace: 'local'
+        }),
+        stroke: { color: '#0a0b10', width: 5, join: 'round' },
+        padding: 6
+      });
+    } else {
+      style = new TextStyle({
+        fontFamily: FLOATING_TEXT_FONT,
+        fontSize: kind === 'loud' ? 17 : 15,
+        fontStyle: 'italic',
+        fontWeight: '900',
+        fill: color,
+        stroke: { color: '#0a0b10', width: 4, join: 'round' },
+        padding: 4
+      });
+    }
+    this.floatingTextStyles.set(key, style);
+    return style;
+  }
+}
+
+// --- Floating combat text helpers (used by VFXManager.renderFloatingText) ---
+
+type FloatingTextKind = 'normal' | 'loud' | 'crit';
+
+const FLOATING_TEXT_FONT = "'Impact', 'Haettenschweiler', 'Arial Black', sans-serif";
+
+/** Cheap deterministic hash (FNV-1a style) so each number gets a stable tilt/burst shape. */
+function floatingTextHash(text: string, x: number, maxLife: number): number {
+  let h = 2166136261 ^ Math.floor(x * 7) ^ Math.floor(maxLife * 1000);
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+/** Draws a spiky comic "CRIT!" starburst: black ink outer burst + white inner burst. */
+function drawComicStarburst(
+  g: Graphics,
+  cx: number,
+  cy: number,
+  rx: number,
+  ry: number,
+  rotation: number,
+  seed: number,
+  alpha: number
+): void {
+  const spikes = 12;
+  const outer: number[] = [];
+  const inner: number[] = [];
+  const cos = Math.cos(rotation);
+  const sin = Math.sin(rotation);
+  for (let i = 0; i < spikes * 2; i++) {
+    const a = (i / (spikes * 2)) * Math.PI * 2;
+    const isTip = i % 2 === 0;
+    // Deterministic per-spike jitter in [0.85, 1.15]
+    const jitter = 0.85 + (((seed >>> (i % 24)) & 0xff) / 255) * 0.3;
+    const k = isTip ? jitter : 0.62;
+    const lx = Math.cos(a) * rx * k;
+    const ly = Math.sin(a) * ry * k;
+    const px = lx * cos - ly * sin;
+    const py = lx * sin + ly * cos;
+    outer.push(cx + px * 1.12, cy + py * 1.12);
+    inner.push(cx + px, cy + py);
+  }
+  g.poly(outer).fill({ color: 0x0a0b10, alpha });
+  g.poly(inner).fill({ color: 0xffffff, alpha });
 }
