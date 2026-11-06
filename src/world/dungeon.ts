@@ -568,10 +568,11 @@ export function generateDungeon(
 /**
  * Creates the persistent Outlaw Home Base Hub room.
  * Hub stations / NPCs:
- * 1. Garage Bay (Wrench) - Tune bike, stash, weapon unlocks
- * 2. Scrap Forge (Sparky) - Spend 12 scrap to forge equipment part
- * 3. War Room (Valkyrie) - Free outlaw supply cache (+15 coins, +1 hull)
- * 4. Highway Gate - Deploy into Floor 1
+ * 1. Garage Bay (Wrench) - Tune bike, select paint livery, equip stash parts & unlock weapons
+ * 2. Scrap Forge (Sparky) - Spend 12 Scrap to reforge equipped part rarity or forge new gear
+ * 3. Cyber-Codex (Doc) - Inspect lifetime outlaw telemetry & claim +12% Tactical Scanner Buff
+ * 4. War Room (Valkyrie) - Claim Outlaw Supply Cache & cycle Bounty Heat Level (0-3)
+ * 5. Highway Gate - Deploy from Home Base into Floor 1
  */
 export function createHomeBaseRoom(): Room {
   return {
@@ -582,40 +583,59 @@ export function createHomeBaseRoom(): Room {
     visited: true,
     doors: { N: false, S: false, E: false, W: false },
     obstacles: [],
-    enemies: [],
+    enemies: [
+      {
+        ...createEnemy('charger', 360, 545, 1),
+        hp: 9999,
+        maxHp: 9999,
+        speed: 0,
+        isDummy: true,
+        color: '#ffd60a'
+      }
+    ],
     pickups: [
       {
-        x: 195,
+        x: 185,
         y: 215,
         type: 'hub_npc',
         npcId: 'garage',
         name: 'WRENCH // GARAGE BAY',
-        subtitle: 'Tune bike, equip stash parts & unlock permanent weapons',
+        subtitle: 'Tune bike, select paint livery, equip stash parts & unlock weapons',
         cost: 0,
         radius: 34
       },
       {
-        x: 525,
+        x: 535,
         y: 215,
         type: 'hub_npc',
         npcId: 'blacksmith',
         name: 'SPARKY // SCRAP FORGE',
-        subtitle: 'Spend 12 Scrap to forge a random Bike Equipment Part',
+        subtitle: 'Spend 12 Scrap to reforge equipped part rarity or forge new gear',
         cost: 12,
         radius: 34
       },
       {
-        x: 195,
-        y: 505,
+        x: 360,
+        y: 155,
         type: 'hub_npc',
-        npcId: 'bounty',
-        name: 'VALKYRIE // WAR ROOM',
-        subtitle: 'Claim a free Outlaw Supply Cache (+15 Coins & +1 Hull for next run)',
+        npcId: 'codex',
+        name: 'DOC // CYBER-CODEX',
+        subtitle: 'Inspect lifetime outlaw telemetry & claim +12% Tactical Scanner Buff',
         cost: 0,
         radius: 34
       },
       {
-        x: 525,
+        x: 185,
+        y: 505,
+        type: 'hub_npc',
+        npcId: 'bounty',
+        name: 'VALKYRIE // WAR ROOM',
+        subtitle: 'Claim Outlaw Supply Cache & cycle Bounty Heat Level (0-3)',
+        cost: 0,
+        radius: 34
+      },
+      {
+        x: 535,
         y: 505,
         type: 'hub_npc',
         npcId: 'launch',

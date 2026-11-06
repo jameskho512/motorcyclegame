@@ -46,6 +46,68 @@ export function parseColor(colorStr: string, fallback: number = 0xffffff): numbe
 }
 
 // ============================================================================
+// 0. BIKE PAINT LIVERY PALETTES
+// ============================================================================
+
+export interface BikeLiveryPalette {
+  lower: number;
+  upper: number;
+  highlight: number;
+  tank: number;
+  padL: number;
+  padR: number;
+  visor: number;
+}
+
+export const BIKE_LIVERIES: Record<string, BikeLiveryPalette> = {
+  crimson_kaneda: {
+    lower: 0xb33000,
+    upper: 0xff5c00,
+    highlight: 0xff9e44,
+    tank: 0xff6d1a,
+    padL: 0xff5c00,
+    padR: 0xd94800,
+    visor: 0x2ee6ff
+  },
+  cyber_neon: {
+    lower: 0x00509d,
+    upper: 0x00bbf9,
+    highlight: 0x72efdd,
+    tank: 0x0096c7,
+    padL: 0x00bbf9,
+    padR: 0x0077b6,
+    visor: 0xffbe0b
+  },
+  golden_valhalla: {
+    lower: 0x99582a,
+    upper: 0xffbe0b,
+    highlight: 0xffee99,
+    tank: 0xfb8500,
+    padL: 0xffbe0b,
+    padR: 0xd68c00,
+    visor: 0xff0055
+  },
+  midnight_stealth: {
+    lower: 0x240046,
+    upper: 0x7b2cbf,
+    highlight: 0xc77dff,
+    tank: 0x5a189a,
+    padL: 0x9d4edd,
+    padR: 0x5a189a,
+    visor: 0x00f5d4
+  },
+  toxic_hazard: {
+    lower: 0x004b23,
+    upper: 0x38b000,
+    highlight: 0x80ed99,
+    tank: 0x2b9348,
+    padL: 0x70e000,
+    padR: 0x38b000,
+    visor: 0xffbe0b
+  }
+};
+
+// ============================================================================
 // 1. PLAYER MOTORCYCLE RENDERING
 // ============================================================================
 
@@ -63,6 +125,10 @@ export function drawMotorcycle(g: Graphics, player: PlayerState, timestampMs: nu
   const aAngle = isDead ? bAngle + 0.35 : player.aimAngle;
   const wDef = WEAPONS[player.weapon] || WEAPONS.pistol;
   const weaponColor = parseColor(wDef.color, 0xffd166);
+
+  // Bike Paint Livery Palette
+  const liveryKey = (player as any).livery || 'crimson_kaneda';
+  const palette = BIKE_LIVERIES[liveryKey] || BIKE_LIVERIES.crimson_kaneda;
 
   // Invulnerability flicker
   const isBlinking = player.invuln > 0 && Math.floor(player.invuln * 16) % 2 === 0;
@@ -208,7 +274,7 @@ export function drawMotorcycle(g: Graphics, player: PlayerState, timestampMs: nu
     toWorld(-18, 8.2, 3.2)
   ].flat();
   g.poly(lowerFairing)
-    .fill({ color: 0xb33000, alpha })
+    .fill({ color: palette.lower, alpha })
     .stroke({ color: 0x0a0b10, width: 3.5, alpha });
 
   // Main Sculpted Upper Fairing & Swept Tail Cowl (Vibrant Anime Racing Orange)
@@ -224,7 +290,7 @@ export function drawMotorcycle(g: Graphics, player: PlayerState, timestampMs: nu
     toWorld(-21, 4.5, 5.5)
   ].flat();
   g.poly(upperFairing)
-    .fill({ color: 0xff5c00, alpha })
+    .fill({ color: palette.upper, alpha })
     .stroke({ color: 0x0a0b10, width: 3, alpha });
 
   // Cel-Shaded Top-Left Specular Highlight Plane
@@ -237,7 +303,7 @@ export function drawMotorcycle(g: Graphics, player: PlayerState, timestampMs: nu
     toWorld(-15, -1.0, 5.8)
   ].flat();
   g.poly(fairingHighlight)
-    .fill({ color: 0xff9e44, alpha });
+    .fill({ color: palette.highlight, alpha });
 
   // Sculpted Fuel Tank Bulge with Graphic Black Racing Stripe & Crisp Rim Glint
   const tankShape = [
@@ -249,7 +315,7 @@ export function drawMotorcycle(g: Graphics, player: PlayerState, timestampMs: nu
     toWorld(-4, 6.2, 6.5)
   ].flat();
   g.poly(tankShape)
-    .fill({ color: 0xff6d1a, alpha })
+    .fill({ color: palette.tank, alpha })
     .stroke({ color: 0x0a0b10, width: 2.2, alpha });
 
   const racingStripe = [
@@ -316,8 +382,8 @@ export function drawMotorcycle(g: Graphics, player: PlayerState, timestampMs: nu
     toWorld(2, 7.2, 9.2),
     toWorld(-5, 7.8, 8.8)
   ].flat();
-  g.poly(leftPad).fill({ color: 0xff5c00, alpha }).stroke({ color: 0x0a0b10, width: 1.8, alpha });
-  g.poly(rightPad).fill({ color: 0xd94800, alpha }).stroke({ color: 0x0a0b10, width: 1.8, alpha });
+  g.poly(leftPad).fill({ color: palette.padL, alpha }).stroke({ color: 0x0a0b10, width: 1.8, alpha });
+  g.poly(rightPad).fill({ color: palette.padR, alpha }).stroke({ color: 0x0a0b10, width: 1.8, alpha });
 
   // Segmented Cybernetic Spine Armor Ribs along Rider's Back
   for (const sx of [-11, -8, -5]) {
@@ -331,7 +397,7 @@ export function drawMotorcycle(g: Graphics, player: PlayerState, timestampMs: nu
   g.moveTo(shLx, shLy)
     .lineTo(hbLx, hbLy)
     .stroke({ color: 0x292c3d, width: 4.2, alpha });
-  g.circle(hbLx, hbLy, 3).fill({ color: 0xff5c00, alpha }).stroke({ color: 0x0a0b10, width: 1.5, alpha });
+  g.circle(hbLx, hbLy, 3).fill({ color: palette.padL, alpha }).stroke({ color: 0x0a0b10, width: 1.5, alpha });
 
   // --- 5. Aimed Heavy Weapon Rig & Sculpted Anime Racing Helmet (aimAngle) ---
   const cosA = Math.cos(aAngle);
@@ -435,7 +501,7 @@ export function drawMotorcycle(g: Graphics, player: PlayerState, timestampMs: nu
     toHelm(-12.0, 0)
   ].flat();
   g.poly(helmetShell)
-    .fill({ color: 0xff5c00, alpha })
+    .fill({ color: palette.upper, alpha })
     .stroke({ color: 0x0a0b10, width: 3.2, alpha });
 
   // Helmet Crown Specular Highlight (Top-left cel-shaded light crescent)
@@ -447,7 +513,7 @@ export function drawMotorcycle(g: Graphics, player: PlayerState, timestampMs: nu
     toHelm(-4.5, -2.2)
   ].flat();
   g.poly(helmetHighlight)
-    .fill({ color: 0xff9e44, alpha });
+    .fill({ color: palette.highlight, alpha });
 
   // Center Black Racing Stripe across Helmet Crown
   const helmStripe = [
@@ -477,7 +543,7 @@ export function drawMotorcycle(g: Graphics, player: PlayerState, timestampMs: nu
   const [vg2x, vg2y] = toHelm(8.6, -1.2);
   g.moveTo(vg1x, vg1y)
     .lineTo(vg2x, vg2y)
-    .stroke({ color: weaponColor, width: 2.2, alpha });
+    .stroke({ color: palette.visor, width: 2.2, alpha });
 
   // --- 7. Anime Death / Crash Explosion & Mechanical Carnage ---
   if (isDead) {
@@ -1507,6 +1573,20 @@ export function drawEnemy(g: Graphics, en: Enemy, timestampMs: number = 0): void
     g.circle(ex, ey, r + 3)
       .stroke({ color: 0xffd166, width: 2, alpha: 0.8 });
   }
+
+  // Target Dummy Car Visual (Firing Range)
+  if ((en as any).isDummy) {
+    const cx = ex;
+    const cy = ey;
+    const pulse = 1 + Math.sin(timestampMs * 0.006) * 0.08;
+    g.circle(cx, cy, (r + 10) * pulse)
+      .stroke({ color: 0xffd60a, width: 2, alpha: 0.7 });
+    g.circle(cx, cy - 5, 7)
+      .fill({ color: 0xffd60a })
+      .stroke({ color: 0x0a0b10, width: 2 });
+    g.circle(cx, cy - 5, 3)
+      .fill({ color: 0x0a0b10 });
+  }
 }
 
 // ============================================================================
@@ -2235,6 +2315,111 @@ export function drawPickup(g: Graphics, p: Pickup, timestampMs: number = 0): voi
         // Glowing Golden Visor Slash (#ffd166)
         g.moveTo(nX - 5, nY - 14).lineTo(nX + 5, nY - 14).stroke({ color: 0xffd166, width: 2.5 });
         g.circle(nX, nY - 14, 1.5).fill({ color: 0xffffff });
+
+      } else if (npcId === 'codex') {
+        // --------------------------------------------------------------------
+        // DOC — Cyber-Codex & Firing Range Overseer
+        // Violet & cyan neon octagonal pad border (0x9d4edd & 0x2ee6ff),
+        // twin cyber-server monoliths behind pad with blinking cyan/gold LEDs,
+        // floating holographic data screen with horizontal scanlines,
+        // anime cyber-scientist DOC in crisp white/cyan lab trenchcoat,
+        // dark hair, glowing violet/cyan single-lens cyber-optic visor.
+        // --------------------------------------------------------------------
+        // Violet & cyan neon pad border
+        g.poly(octPts).stroke({ color: 0x9d4edd, width: 2.5 });
+        g.circle(p.x, padY, 23).stroke({ color: 0x2ee6ff, width: 1.8, alpha: 0.75 });
+
+        // Twin cyber-server monoliths behind the pad (0x181c2b with blinking cyan/gold LED bars)
+        for (const sign of [-1, 1]) {
+          const sX = p.x + sign * 22;
+          const sY = p.y - 14;
+          // Monolith pillar
+          g.rect(sX - 7, sY - 18, 14, 34)
+            .fill({ color: 0x181c2b })
+            .stroke({ color: 0x0a0b10, width: 2.5 });
+          // Bevel highlight
+          g.rect(sX - 5, sY - 16, 3, 30).fill({ color: 0x2a3045 });
+          // Blinking cyan/gold LED activity indicator bars
+          for (let b = 0; b < 4; b++) {
+            const ledY = sY - 10 + b * 6;
+            const blink = Math.floor((timestampMs + b * 150 + (sign === 1 ? 300 : 0)) / 220) % 3;
+            const ledCol = blink === 0 ? 0x2ee6ff : (blink === 1 ? 0xffd60a : 0x10131e);
+            g.rect(sX - 1, ledY, 5, 2.5).fill({ color: ledCol });
+          }
+        }
+
+        // Floating holographic data screen (0x2ee6ff semi-transparent panel with horizontal scanlines)
+        const scrX = p.x - 14;
+        const scrY = p.y - 18 + bob * 0.6;
+        const scrW = 28;
+        const scrH = 18;
+        // Holographic projector emitter on ground
+        g.ellipse(p.x - 14, padY - 6, 8, 4).fill({ color: 0x10131e }).stroke({ color: 0x2ee6ff, width: 1.5 });
+        // Projector cone
+        g.poly([
+          p.x - 14, padY - 6,
+          scrX, scrY + scrH,
+          scrX + scrW, scrY + scrH
+        ]).fill({ color: 0x2ee6ff, alpha: 0.1 });
+        // Holo Screen Panel
+        g.rect(scrX, scrY, scrW, scrH)
+          .fill({ color: 0x101828, alpha: 0.75 })
+          .stroke({ color: 0x2ee6ff, width: 1.8, alpha: 0.9 });
+        // Horizontal scanlines & simulated text/graphs
+        for (let l = 3; l < scrH - 2; l += 3.5) {
+          const lineAlpha = 0.4 + Math.sin(timestampMs * 0.01 + l) * 0.25;
+          g.moveTo(scrX + 3, scrY + l)
+            .lineTo(scrX + scrW - 3, scrY + l)
+            .stroke({ color: 0x2ee6ff, width: 1.2, alpha: lineAlpha });
+        }
+        // Accent graph blip on screen
+        g.rect(scrX + 4, scrY + 4, 6, 4).fill({ color: 0xffd60a, alpha: 0.85 });
+
+        // Anime Cyber-Scientist Character (DOC)
+        const nX = p.x + 8;
+        const nY = p.y - 10 + bob * 0.4;
+
+        // Crisp White/Cyan Lab Trenchcoat (0xe2eafc)
+        const coatPts = [
+          nX - 8, nY + 16,
+          nX - 8, nY - 4,
+          nX + 8, nY - 4,
+          nX + 8, nY + 16,
+          nX + 2, nY + 16,
+          nX, nY + 8,
+          nX - 2, nY + 16
+        ];
+        g.poly(coatPts).fill({ color: 0xe2eafc }).stroke({ color: 0x0a0b10, width: 2.5 });
+        // Cyan inner lapels & trim (0x2ee6ff)
+        g.moveTo(nX - 5, nY - 4).lineTo(nX - 2, nY + 8).stroke({ color: 0x2ee6ff, width: 1.8 });
+        g.moveTo(nX + 5, nY - 4).lineTo(nX + 2, nY + 8).stroke({ color: 0x2ee6ff, width: 1.8 });
+        // High-tech dark undershirt & data lanyard
+        g.poly([nX - 3, nY - 4, nX + 3, nY - 4, nX, nY + 3]).fill({ color: 0x181c2b });
+
+        // Head & skin
+        g.circle(nX, nY - 12, 7.5).fill({ color: 0xf1c27d }).stroke({ color: 0x0a0b10, width: 2 });
+
+        // Dark anime sleek scientist hair
+        const hairPts = [
+          nX - 8, nY - 10,
+          nX - 9, nY - 18,
+          nX - 5, nY - 21,
+          nX + 2, nY - 21,
+          nX + 8, nY - 17,
+          nX + 8, nY - 10,
+          nX + 5, nY - 13,
+          nX + 1, nY - 17,
+          nX - 3, nY - 16,
+          nX - 6, nY - 12
+        ];
+        g.poly(hairPts).fill({ color: 0x141824 }).stroke({ color: 0x0a0b10, width: 1.6 });
+
+        // Glowing Violet/Cyan Single-Lens Cyber-Optic Visor on Left Eye
+        g.rect(nX - 6, nY - 14, 6, 4.5).fill({ color: 0x0a0b10 });
+        g.circle(nX - 3, nY - 12, 2.5).fill({ color: 0x9d4edd }).stroke({ color: 0x2ee6ff, width: 1.2 });
+        g.circle(nX - 3, nY - 12, 1.2).fill({ color: 0xffffff });
+        // Data reticle trace line
+        g.moveTo(nX - 6, nY - 12).lineTo(nX - 9, nY - 12).stroke({ color: 0x2ee6ff, width: 1.2 });
       }
     }
   }

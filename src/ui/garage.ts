@@ -23,13 +23,30 @@ import {
   WeaponId,
   MetaUpgradeId,
   UnlockableWeaponId,
-  StatKey
+  StatKey,
+  BikeLiveryId
 } from '../types/game';
 
 import { WEAPONS, UNLOCKABLE_IDS } from '../data/weapons';
 import { META_UPGRADES, calcUpgradeCost } from '../data/upgrades';
 import { EQUIP_SLOTS, RARITY, MAX_STASH, fmtStat } from '../data/equipment';
 import { EQUIP_SLOT_HI_FI_SVG, WEAPON_HI_FI_SVG } from './icons';
+
+export interface BikeLiveryDef {
+  id: BikeLiveryId;
+  name: string;
+  primary: string;
+  secondary: string;
+  accent: string;
+}
+
+export const BIKE_LIVERIES: readonly BikeLiveryDef[] = [
+  { id: 'crimson_kaneda', name: 'KANEDA RED', primary: '#ff5c00', secondary: '#b33000', accent: '#ffd60a' },
+  { id: 'cyber_neon', name: 'CYBER NEON', primary: '#00bbf9', secondary: '#00509d', accent: '#00f5d4' },
+  { id: 'golden_valhalla', name: 'VALHALLA GOLD', primary: '#ffbe0b', secondary: '#b5651d', accent: '#ffee99' },
+  { id: 'midnight_stealth', name: 'NIGHT STEALTH', primary: '#7b2cbf', secondary: '#240046', accent: '#e0aaff' },
+  { id: 'toxic_hazard', name: 'TOXIC HAZARD', primary: '#38b000', secondary: '#004b23', accent: '#b5e48c' }
+] as const;
 
 export interface GarageCallbacks {
   onEquipItem: (item: EquipmentItem) => void;
@@ -38,6 +55,7 @@ export interface GarageCallbacks {
   onUnlockWeapon: (weaponId: UnlockableWeaponId) => void;
   onEquipWeapon: (weaponId: WeaponId) => void;
   onBuyUpgrade: (upgradeId: MetaUpgradeId) => void;
+  onSelectLivery?: (liveryId: BikeLiveryId) => void;
   onResumeRun: () => void;
   onNewRun: () => void;
   onResetSave: () => void;
@@ -114,6 +132,7 @@ export class GarageController {
   private slotsRight: HTMLElement | null = null;
   private bikeCanvas: HTMLCanvasElement | null = null;
   private bikeCtx: CanvasRenderingContext2D | null = null;
+  private liveryBar: HTMLElement | null = null;
   private eqTotals: HTMLElement | null = null;
   private stashList: HTMLElement | null = null;
   private unlockList: HTMLElement | null = null;
@@ -142,6 +161,7 @@ export class GarageController {
       if (this.bikeCanvas) {
         this.bikeCtx = this.bikeCanvas.getContext('2d');
       }
+      this.liveryBar = document.getElementById('livery-bar');
       this.eqTotals = document.getElementById('eq-totals');
       this.stashList = document.getElementById('stash-list');
       this.unlockList = document.getElementById('unlock-list');
@@ -278,10 +298,40 @@ export class GarageController {
     }
 
     this.renderEquipmentBay(metaSave);
+    this.renderLiveryBar(metaSave, player);
     this.renderStash(metaSave);
     this.renderWeaponUnlocks(metaSave, player);
     this.renderMetaUpgrades(metaSave);
     this.drawBikeLift(metaSave);
+  }
+
+  /**
+   * Renders the 5 custom bike paint livery swatches.
+   */
+  private renderLiveryBar(metaSave: MetaSaveState, player: PlayerState): void {
+    if (!this.liveryBar) return;
+    this.liveryBar.innerHTML = '';
+    const activeId: BikeLiveryId = metaSave.livery || player.livery || 'crimson_kaneda';
+
+    for (const liv of BIKE_LIVERIES) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      const isActive = liv.id === activeId;
+      btn.className = `gx-livery-btn${isActive ? ' is-active' : ''}`;
+      btn.style.setProperty('--liv-col', liv.primary);
+      btn.setAttribute('role', 'radio');
+      btn.setAttribute('aria-checked', isActive ? 'true' : 'false');
+      btn.innerHTML = `<span class="gx-livery-dot"></span><span>${esc(liv.name)}</span>`;
+      btn.onclick = () => {
+        this.callbacks.onPlayUiClick?.();
+        metaSave.livery = liv.id;
+        player.livery = liv.id;
+        this.callbacks.onSelectLivery?.(liv.id);
+        this.renderLiveryBar(metaSave, player);
+        this.drawBikeLift(metaSave);
+      };
+      this.liveryBar.appendChild(btn);
+    }
   }
 
   /**
@@ -789,20 +839,21 @@ export class GarageController {
     g.lineTo(318, 108);
     inkLine('#ffb627', 7);
 
-    // 8. Tail section + seat
+    // 8. Tail section + seat (uses active livery colors)
+    const activeLivery = BIKE_LIVERIES.find(l => l.id === (metaSave.livery || 'crimson_kaneda')) || BIKE_LIVERIES[0];
     poly([[94, 116], [150, 122], [200, 126], [204, 150], [166, 158], [128, 150], [108, 134]]);
-    inkFill('#ff6b2b');
+    inkFill(activeLivery.primary);
     poly([[128, 150], [166, 158], [204, 150], [204, 142], [150, 146], [112, 136]]);
-    g.fillStyle = '#c2410c';
+    g.fillStyle = activeLivery.secondary;
     g.fill();
     poly([[146, 120], [206, 122], [216, 132], [150, 130]]);
     inkFill('#1d1b22', 3);
 
-    // 9. Main fairing (cel shaded) — always the bike's orange identity color
+    // 9. Main fairing (cel shaded) — uses active livery primary/secondary colors
     poly([[214, 128], [252, 110], [300, 104], [334, 116], [356, 134], [344, 150], [314, 160], [290, 188], [262, 198], [244, 172], [222, 150]]);
-    inkFill('#ff6b2b');
+    inkFill(activeLivery.primary);
     poly([[244, 172], [262, 198], [290, 188], [314, 160], [344, 150], [304, 162], [270, 176]]);
-    g.fillStyle = '#c2410c';
+    g.fillStyle = activeLivery.secondary;
     g.fill();
     poly([[262, 150], [300, 140], [292, 152], [258, 162]]);
     g.fillStyle = INK;
@@ -829,7 +880,7 @@ export class GarageController {
     g.lineTo(252, 138);
     g.lineTo(210, 140);
     g.closePath();
-    inkFill(colorOf('tank'));
+    inkFill(equipped('tank') ? colorOf('tank') : activeLivery.primary);
     g.beginPath();
     g.moveTo(218, 116);
     g.quadraticCurveTo(234, 106, 254, 107);

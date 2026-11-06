@@ -30,7 +30,8 @@ import {
   EquipSlot,
   WeaponId,
   UnlockableWeaponId,
-  MetaUpgradeId
+  MetaUpgradeId,
+  BikeLiveryId
 } from '../types/game';
 
 import {
@@ -130,7 +131,13 @@ export function createDefaultMetaSave(): MetaSaveState {
       maxHp: 0
     },
     equipped: {},
-    stash: []
+    stash: [],
+    livery: 'crimson_kaneda',
+    heatLevel: 0,
+    totalRuns: 0,
+    totalKills: 0,
+    bestFloor: 1,
+    bossesSlain: 0
   };
 }
 
@@ -172,7 +179,9 @@ export function createDefaultPlayerState(): PlayerState {
     nos: 100,
     nosMax: 100,
     nosLock: false,
-    nosDelay: 0
+    nosDelay: 0,
+    livery: 'crimson_kaneda',
+    heatLevel: 0
   };
 }
 
@@ -210,6 +219,24 @@ export function loadMetaSave(storage: StorageDriver = defaultStorage): MetaSaveS
             saveState.ranks[k] = parsed.ranks[k];
           }
         }
+      }
+      if (typeof parsed.livery === 'string') {
+        saveState.livery = parsed.livery as BikeLiveryId;
+      }
+      if (typeof parsed.heatLevel === 'number' && !isNaN(parsed.heatLevel)) {
+        saveState.heatLevel = parsed.heatLevel;
+      }
+      if (typeof parsed.totalRuns === 'number' && !isNaN(parsed.totalRuns)) {
+        saveState.totalRuns = parsed.totalRuns;
+      }
+      if (typeof parsed.totalKills === 'number' && !isNaN(parsed.totalKills)) {
+        saveState.totalKills = parsed.totalKills;
+      }
+      if (typeof parsed.bestFloor === 'number' && !isNaN(parsed.bestFloor)) {
+        saveState.bestFloor = parsed.bestFloor;
+      }
+      if (typeof parsed.bossesSlain === 'number' && !isNaN(parsed.bossesSlain)) {
+        saveState.bossesSlain = parsed.bossesSlain;
       }
     }
   } catch {
@@ -444,6 +471,8 @@ export function resetPlayerStatsForRun(
   player.nosDelay = 0;
   player.invuln = 0;
   player.weapon = getStartingWeapon(save);
+  player.livery = save.livery || 'crimson_kaneda';
+  player.heatLevel = save.heatLevel || 0;
 }
 
 /**

@@ -32,7 +32,8 @@ import {
   DamageNumber,
   Enemy,
   Room,
-  AudioService
+  AudioService,
+  MetaSaveState
 } from '../types/game';
 import { WEAPONS, WeaponDef } from '../data/weapons';
 import { DROP_ITEM_IDS } from '../data/upgrades';
@@ -200,6 +201,9 @@ export function damageEnemy(
   state?: CombatState
 ): void {
   en.hp -= amount;
+  if (en.isDummy && en.hp <= 500) {
+    en.hp = en.maxHp;
+  }
   if (state && (isBlast || amount >= 15)) {
     addFloatingText(state, en.x, en.y - en.radius, `-${Math.round(amount)}`, isBlast ? '#ff9f1c' : '#ffffff');
   }
@@ -556,7 +560,7 @@ export interface DeathResolutionContext {
   index: number;
   player: PlayerState;
   state: CombatState;
-  metaState?: { scrap: number };
+  metaState?: MetaSaveState | { scrap: number; totalKills?: number; bossesSlain?: number };
   audio?: AudioService;
   rng?: () => number;
   floorNum?: number;
@@ -576,6 +580,14 @@ export function handleEnemyDeath({
   rng = Math.random,
   floorNum = 1
 }: DeathResolutionContext): void {
+  const metaSave = metaState;
+  if (metaSave) {
+    metaSave.totalKills = (metaSave.totalKills || 0) + 1;
+    if (en.type === 'boss') {
+      metaSave.bossesSlain = (metaSave.bossesSlain || 0) + 1;
+    }
+  }
+
   if (audio) {
     audio.enemyKill(en.type === 'boss');
   }
@@ -676,7 +688,8 @@ export function handleEnemyDeath({
 
   // Currency & reward drops
   if (en.type === 'boss') {
-    const bossScrap = 7 + floorNum * 2;
+    const rawBossScrap = 7 + floorNum * 2;
+    const bossScrap = Math.round(rawBossScrap * (1 + (player.heatLevel || 0) * 0.25));
     const bossCoins = 8 + floorNum * 2;
     if (metaState) metaState.scrap += bossScrap;
     player.coins += bossCoins;
@@ -705,7 +718,8 @@ export function handleEnemyDeath({
     }
     // 25% chance for scrap (or guaranteed 2 scrap for elite)
     if (en.isElite || rng() < 0.25) {
-      const s = en.isElite ? 2 : 1;
+      const rawScrap = en.isElite ? 2 : 1;
+      const s = Math.round(rawScrap * (1 + (player.heatLevel || 0) * 0.25));
       if (metaState) metaState.scrap += s;
       addFloatingText(state, en.x, en.y - 14, `+${s} ⚙️`, '#7bdff2');
     }
@@ -1066,7 +1080,9 @@ export function updateEnemyCollisions(
       player.x = Math.max(WALL_THICKNESS + player.radius, Math.min(ARENA_WIDTH - WALL_THICKNESS - player.radius, player.x));
       player.y = Math.max(WALL_THICKNESS + player.radius, Math.min(ARENA_HEIGHT - WALL_THICKNESS - player.radius, player.y));
 
-      if (onPlayerHurt) onPlayerHurt(1);
+      if (!en.isDummy && onPlayerHurt) {
+        onPlayerHurt(1);
+      }
     }
   }
 }
@@ -1090,6 +1106,9 @@ export function updateBurnDoT(
         en.burnTick = 0.35;
         const tickDmg = 2.2 * player.dmgMult * player.blastMult;
         en.hp -= tickDmg;
+        if (en.isDummy && en.hp <= 500) {
+          en.hp = en.maxHp;
+        }
         state.particles.push({
           x: en.x + (rng() - 0.5) * en.radius,
           y: en.y + (rng() - 0.5) * en.radius,
@@ -1163,7 +1182,7 @@ export function updateCombatPipeline(
   room: Room,
   player: PlayerState,
   state: CombatState,
-  metaState?: { scrap: number },
+  metaState?: MetaSaveState | { scrap: number; totalKills?: number; bossesSlain?: number },
   audio?: AudioService,
   onPlayerHurt?: (dmg: number) => void,
   rng: () => number = Math.random
@@ -1190,6 +1209,10 @@ export function updateCombatPipeline(
   // 7. Check enemy deaths
   for (let i = room.enemies.length - 1; i >= 0; i--) {
     const en = room.enemies[i];
+    if (en.isDummy) {
+      if (en.hp <= 500) en.hp = en.maxHp;
+      continue;
+    }
     if (en.hp <= 0) {
       handleEnemyDeath({
         room,

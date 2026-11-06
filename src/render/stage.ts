@@ -449,12 +449,13 @@ export class StageManager {
    * Renders the safe sanctuary Outlaw Skull & Gear emblem in the center of the Home Base hub.
    */
   private renderHubSanctuaryDecal(g: Graphics, cx: number, cy: number, timestampMs: number): void {
-    // 1. Four glowing diagonal power tracks radiating out to the 4 NPC stations
+    // 1. Glowing power tracks radiating out to all 5 NPC stations
     const stations = [
-      [195, 215],
-      [525, 215],
-      [195, 505],
-      [525, 505]
+      [185, 215],
+      [535, 215],
+      [360, 155],
+      [185, 505],
+      [535, 505]
     ];
     for (const [stX, stY] of stations) {
       g.moveTo(cx, cy)
@@ -469,6 +470,31 @@ export class StageManager {
       const interY = cy + (stY - cy) * (0.35 + pulsePhase * 0.4);
       g.circle(interX, interY, 3.5).fill({ color: 0xffd60a, alpha: 0.85 });
     }
+
+    // 1b. Tactical Firing Range Target Bay at (360, 545)
+    const bayX = 360;
+    const bayY = 545;
+    const bayW = 92;
+    const bayH = 64;
+    g.roundRect(bayX - 46, bayY - 32, bayW, bayH, 8)
+      .fill({ color: 0x12151f, alpha: 0.85 })
+      .stroke({ color: 0xffd60a, width: 2, alpha: 0.65 });
+
+    // Corner crosshair ticks & firing-range markings
+    const tickLen = 8;
+    const left = bayX - 46;
+    const right = bayX + 46;
+    const top = bayY - 32;
+    const bot = bayY + 32;
+
+    g.moveTo(left, top + tickLen).lineTo(left, top).lineTo(left + tickLen, top).stroke({ color: 0xffd60a, width: 2, alpha: 0.85 });
+    g.moveTo(right - tickLen, top).lineTo(right, top).lineTo(right, top + tickLen).stroke({ color: 0xffd60a, width: 2, alpha: 0.85 });
+    g.moveTo(left, bot - tickLen).lineTo(left, bot).lineTo(left + tickLen, bot).stroke({ color: 0xffd60a, width: 2, alpha: 0.85 });
+    g.moveTo(right - tickLen, bot).lineTo(right, bot).lineTo(right, bot - tickLen).stroke({ color: 0xffd60a, width: 2, alpha: 0.85 });
+
+    // Center crosshair markings
+    g.moveTo(bayX - 12, bayY).lineTo(bayX + 12, bayY).stroke({ color: 0xffd60a, width: 1.5, alpha: 0.4 });
+    g.moveTo(bayX, bayY - 12).lineTo(bayX, bayY + 12).stroke({ color: 0xffd60a, width: 1.5, alpha: 0.4 });
 
     // 2. Large Outer Heavy Industrial Sanctuary Gear (radius ~74 with 12 teeth)
     const gearInnerR = 64;
@@ -833,6 +859,9 @@ export class StageManager {
         } else if (npcId === 'bounty') {
           textStr = 'WAR ROOM';
           col = 0x06d6a0;
+        } else if (npcId === 'codex') {
+          textStr = 'CYBER-CODEX';
+          col = 0x9d4edd;
         } else if (npcId === 'launch') {
           textStr = 'RIDE OUT ►';
           col = 0xe5203a;

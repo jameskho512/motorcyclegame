@@ -197,6 +197,13 @@ export type Projectile = PlayerBullet | EnemyBullet;
 // 3. ENTITY TYPES (PLAYER, ENEMIES, BOSSES, OBSTACLES)
 // ============================================================================
 
+export type BikeLiveryId =
+  | 'crimson_kaneda'
+  | 'cyber_neon'
+  | 'golden_valhalla'
+  | 'midnight_stealth'
+  | 'toxic_hazard';
+
 export interface PlayerState {
   x: number;
   y: number;
@@ -234,6 +241,9 @@ export interface PlayerState {
   nosMax: number;
   nosLock: boolean;
   nosDelay: number;
+  // Bike livery & meta modifiers
+  livery?: BikeLiveryId;
+  heatLevel?: number;
 }
 
 export type RegularEnemyType =
@@ -266,6 +276,7 @@ export interface BaseEnemy {
   state: string;
   angle: number;
   isElite: boolean;
+  isDummy?: boolean;
   color: string;
 }
 
@@ -482,7 +493,7 @@ export interface RunWeaponPickup extends BasePickup {
   cost: number;
 }
 
-export type HubNpcId = 'garage' | 'blacksmith' | 'bounty' | 'launch';
+export type HubNpcId = 'garage' | 'blacksmith' | 'bounty' | 'codex' | 'launch';
 
 export interface HubNpcPickup {
   x: number;
@@ -514,6 +525,12 @@ export interface MetaSaveState {
   ranks: Record<MetaUpgradeId, number>;
   equipped: Partial<Record<EquipSlot, EquipmentItem>>;
   stash: EquipmentItem[];
+  livery?: BikeLiveryId;
+  heatLevel?: number;
+  totalRuns?: number;
+  totalKills?: number;
+  bestFloor?: number;
+  bossesSlain?: number;
 }
 
 export interface RunSaveState {

@@ -70,6 +70,7 @@ export class MotoRogueApp {
   public deathExplosionTriggered: boolean = false;
   public inHomeBase: boolean = false;
   public bountyClaimedInHub: boolean = false;
+  public codexBuffClaimedInHub: boolean = false;
 
   public curRoomX: number = 0;
   public curRoomY: number = 0;
@@ -174,6 +175,12 @@ export class MotoRogueApp {
           this.garage.render(meta, player);
           this.updateHUD();
         }
+      },
+      onSelectLivery: (liveryId) => {
+        this.stateManager.metaSave.livery = liveryId;
+        this.stateManager.player.livery = liveryId;
+        this.stateManager.saveMeta();
+        this.updateHUD();
       },
       onResumeRun: () => {
         if (this.stateManager.gameOver || this.inHomeBase) {
@@ -309,10 +316,25 @@ export class MotoRogueApp {
 
     const floor = this.stateManager.floorNum;
     const meta = this.stateManager.metaSave;
+    meta.bestFloor = Math.max(meta.bestFloor || 1, floor);
+    this.stateManager.saveMeta();
 
     const dungeonGraph = generateDungeon(floor, {
       isWeaponAvailable: (wId: WeaponId) => !!meta.unlocked[wId as UnlockableWeaponId] || wId === 'pistol'
     });
+
+    const heatLevel = meta.heatLevel || 0;
+    if (heatLevel > 0) {
+      for (const rm of Object.values(dungeonGraph.rooms)) {
+        for (const en of rm.enemies) {
+          if (!en.isDummy) {
+            en.maxHp = Math.round(en.maxHp * (1 + heatLevel * 0.2));
+            en.hp = en.maxHp;
+            en.speed *= 1 + heatLevel * 0.08;
+          }
+        }
+      }
+    }
 
     this.dungeon = dungeonGraph.rooms;
     this.curRoomX = 0;
@@ -634,6 +656,14 @@ export class MotoRogueApp {
     // 6. Enemy AI Updates
     const projScale = calcEnemyProjSpeedScale(this.stateManager.floorNum);
     for (const en of room.enemies) {
+      if (en.isDummy) {
+        en.hp = Math.min(en.maxHp, en.hp + dt * 400);
+        en.vx *= Math.pow(0.05, dt);
+        en.vy *= Math.pow(0.05, dt);
+        en.x = 360 + (en.x - 360) * Math.pow(0.2, dt);
+        en.y = 545 + (en.y - 545) * Math.pow(0.2, dt);
+        continue;
+      }
       updateEnemyAI({
         room,
         enemy: en,
@@ -767,18 +797,38 @@ export class MotoRogueApp {
             const meta = this.stateManager.metaSave;
             if (meta.scrap >= 12) {
               meta.scrap -= 12;
-              const forged = genLoot(2);
-              this.stateManager.receiveLoot(forged);
-              this.stateManager.saveMeta();
-              this.audio.pickupLoot(forged.rarity);
-              this.combatState.damageNumbers.push({
-                x: p.x,
-                y: p.y - 34,
-                text: `FORGED: ${forged.name.toUpperCase()}!`,
-                color: '#2ee6ff',
-                life: 1.4,
-                maxLife: 1.4
-              });
+              const upgradable = Object.values(meta.equipped).find(it => it && it.rarity < 3);
+              if (upgradable) {
+                upgradable.rarity = Math.min(3, upgradable.rarity + 1) as any;
+                for (const k of Object.keys(upgradable.stats) as (keyof typeof upgradable.stats)[]) {
+                  if (typeof upgradable.stats[k] === 'number') {
+                    upgradable.stats[k] = Number((upgradable.stats[k]! * 1.25).toFixed(2));
+                  }
+                }
+                this.stateManager.saveMeta();
+                this.audio.pickupLoot(upgradable.rarity);
+                this.combatState.damageNumbers.push({
+                  x: p.x,
+                  y: p.y - 34,
+                  text: `REFORGED: ${upgradable.name.toUpperCase()} UPGRADED!`,
+                  color: '#ffd60a',
+                  life: 1.5,
+                  maxLife: 1.5
+                });
+              } else {
+                const forged = genLoot(Math.max(2, this.stateManager.floorNum + 1));
+                this.stateManager.receiveLoot(forged);
+                this.stateManager.saveMeta();
+                this.audio.pickupLoot(forged.rarity);
+                this.combatState.damageNumbers.push({
+                  x: p.x,
+                  y: p.y - 34,
+                  text: `FORGED: ${forged.name.toUpperCase()}!`,
+                  color: '#2ee6ff',
+                  life: 1.4,
+                  maxLife: 1.4
+                });
+              }
               this.updateHUD();
             } else {
               this.audio.shopError();
@@ -790,6 +840,31 @@ export class MotoRogueApp {
                 life: 1.1,
                 maxLife: 1.1
               });
+            }
+          } else if (npc.npcId === 'codex') {
+            const meta = this.stateManager.metaSave;
+            this.combatState.damageNumbers.push({
+              x: p.x,
+              y: p.y - 42,
+              text: `CODEX // BEST FLR ${meta.bestFloor || 1} · KILLS ${meta.totalKills || 0} · BOSSES ${meta.bossesSlain || 0}`,
+              color: '#2ee6ff',
+              life: 1.8,
+              maxLife: 1.8
+            });
+            if (!this.codexBuffClaimedInHub) {
+              this.codexBuffClaimedInHub = true;
+              player.projSpeedMult += 0.15;
+              player.dmgMult += 0.08;
+              this.audio.pickupItem();
+              this.combatState.damageNumbers.push({
+                x: p.x,
+                y: p.y - 22,
+                text: 'TACTICAL SCANNER: +8% DMG & +15% PROJ SPD!',
+                color: '#ffd60a',
+                life: 1.8,
+                maxLife: 1.8
+              });
+              this.updateHUD();
             }
           } else if (npc.npcId === 'bounty') {
             if (!this.bountyClaimedInHub) {
@@ -808,18 +883,30 @@ export class MotoRogueApp {
               });
               this.updateHUD();
             } else {
+              const meta = this.stateManager.metaSave;
+              const nextHeat = ((meta.heatLevel || 0) + 1) % 4;
+              meta.heatLevel = nextHeat;
+              player.heatLevel = nextHeat;
+              this.stateManager.saveMeta();
+              this.audio.uiClick();
               this.combatState.damageNumbers.push({
                 x: p.x,
                 y: p.y - 34,
-                text: 'CACHE CLAIMED — HEAD TO HIGHWAY GATE!',
-                color: '#ffd166',
-                life: 1.1,
-                maxLife: 1.1
+                text: nextHeat === 0
+                  ? 'BOUNTY HEAT RESET: STANDARD THREAT (0%)'
+                  : `BOUNTY HEAT LVL ${nextHeat}: +${nextHeat * 25}% SCRAP & THREAT!`,
+                color: nextHeat === 0 ? '#2ee6ff' : '#ff5400',
+                life: 1.5,
+                maxLife: 1.5
               });
+              this.updateHUD();
             }
           } else if (npc.npcId === 'launch') {
             const savedCoins = player.coins;
             const savedExtraHp = Math.max(0, player.maxHp - (6 + (this.stateManager.metaSave.ranks.maxHp || 0)));
+            const savedScanner = this.codexBuffClaimedInHub;
+            this.stateManager.metaSave.totalRuns = (this.stateManager.metaSave.totalRuns || 0) + 1;
+            this.stateManager.saveMeta();
             this.audio.nextFloor();
             this.startNewRun(false);
             if (savedCoins > 0) {
@@ -828,6 +915,10 @@ export class MotoRogueApp {
             if (savedExtraHp > 0) {
               this.stateManager.player.maxHp += savedExtraHp;
               this.stateManager.player.hp = this.stateManager.player.maxHp;
+            }
+            if (savedScanner) {
+              this.stateManager.player.projSpeedMult += 0.15;
+              this.stateManager.player.dmgMult += 0.08;
             }
             this.updateHUD();
             return;
@@ -907,6 +998,7 @@ export class MotoRogueApp {
     this.deathExplosionTriggered = false;
     this.inHomeBase = true;
     this.bountyClaimedInHub = false;
+    this.codexBuffClaimedInHub = false;
     this.stateManager.gameOver = false;
     this.stateManager.floorNum = 1;
     this.dismissedPickup = null;
