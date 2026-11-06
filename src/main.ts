@@ -845,7 +845,8 @@ export class MotoRogueApp {
           {
             floorNum: this.stateManager.floorNum,
             playerHp: player.hp,
-            playerMaxHp: player.maxHp
+            playerMaxHp: player.maxHp,
+            heatLevel: this.stateManager.metaSave.heatLevel || 0
           },
           () => this.nextFloor(),
           () => { this.portalDismissed = true; }

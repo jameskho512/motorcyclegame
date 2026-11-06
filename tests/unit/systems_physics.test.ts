@@ -26,7 +26,9 @@ import {
   handleWallAndDoors,
   updatePlayerPhysics,
   getStyleAdrenalineBonus,
-  type StyleAdrenalineBonus
+  type StyleAdrenalineBonus,
+  getRiderMobilitySummary,
+  type RiderMobilitySummary
 } from '@/systems/physics';
 import {
   ARENA_WIDTH,
@@ -727,6 +729,129 @@ describe('Physics Module: Kinematics, NOS, and Collisions (src/systems/physics.t
         nosRegenBonusPerSec: 12,
         speedBonusMult: 1.15
       });
+    });
+  });
+
+  describe('Rider Mobility & Drift Efficiency Telemetry Helper (getRiderMobilitySummary)', () => {
+    it('returns default STANDARD summary when player is null or undefined or empty', () => {
+      const expectedSummary: RiderMobilitySummary = {
+        topSpeedRating: 295,
+        driftChargePct: 0,
+        nosReservePct: 100,
+        mobilityTier: 'STANDARD',
+        summaryText: 'STANDARD · 295 MPH RATING · 0% DRIFT · 100% NOS'
+      };
+
+      expect(getRiderMobilitySummary(null)).toEqual(expectedSummary);
+      expect(getRiderMobilitySummary(undefined)).toEqual(expectedSummary);
+      expect(getRiderMobilitySummary({})).toEqual(expectedSummary);
+    });
+
+    it('returns STANDARD tier when player is within baseline limits', () => {
+      const summary = getRiderMobilitySummary({
+        baseSpeed: 295,
+        speedMult: 1.0,
+        driftCharge: 0.20,
+        nos: 80,
+        nosMax: 100
+      });
+
+      expect(summary).toEqual({
+        topSpeedRating: 295,
+        driftChargePct: 20,
+        nosReservePct: 80,
+        mobilityTier: 'STANDARD',
+        summaryText: 'STANDARD · 295 MPH RATING · 20% DRIFT · 80% NOS'
+      });
+    });
+
+    it('classifies INTERCEPTOR tier when speedMult >= 1.15', () => {
+      const summary = getRiderMobilitySummary({
+        baseSpeed: 295,
+        speedMult: 1.15,
+        driftCharge: 0.10,
+        nos: 50,
+        nosMax: 100
+      });
+
+      expect(summary.mobilityTier).toBe('INTERCEPTOR');
+      expect(summary.topSpeedRating).toBe(Math.round(295 * 1.15));
+      expect(summary.driftChargePct).toBe(10);
+      expect(summary.nosReservePct).toBe(50);
+      expect(summary.summaryText).toBe('INTERCEPTOR · 339 MPH RATING · 10% DRIFT · 50% NOS');
+    });
+
+    it('classifies INTERCEPTOR tier when driftChargePct >= 35', () => {
+      const summary = getRiderMobilitySummary({
+        baseSpeed: 295,
+        speedMult: 1.0,
+        driftCharge: 0.35,
+        nos: 90,
+        nosMax: 100
+      });
+
+      expect(summary.mobilityTier).toBe('INTERCEPTOR');
+      expect(summary.driftChargePct).toBe(35);
+      expect(summary.summaryText).toBe('INTERCEPTOR · 295 MPH RATING · 35% DRIFT · 90% NOS');
+    });
+
+    it('classifies HYPER-DRIFTER tier when speedMult >= 1.35', () => {
+      const summary = getRiderMobilitySummary({
+        baseSpeed: 295,
+        speedMult: 1.40,
+        driftCharge: 0.75,
+        nos: 100,
+        nosMax: 100
+      });
+
+      expect(summary).toEqual({
+        topSpeedRating: 413,
+        driftChargePct: 75,
+        nosReservePct: 100,
+        mobilityTier: 'HYPER-DRIFTER',
+        summaryText: 'HYPER-DRIFTER · 413 MPH RATING · 75% DRIFT · 100% NOS'
+      });
+    });
+
+    it('classifies HYPER-DRIFTER tier when speedMult >= 1.20 and driftChargePct >= 50', () => {
+      const summary = getRiderMobilitySummary({
+        baseSpeed: 300,
+        speedMult: 1.22,
+        driftCharge: 0.52,
+        nos: 60,
+        nosMax: 120
+      });
+
+      expect(summary.mobilityTier).toBe('HYPER-DRIFTER');
+      expect(summary.topSpeedRating).toBe(366);
+      expect(summary.driftChargePct).toBe(52);
+      expect(summary.nosReservePct).toBe(50);
+      expect(summary.summaryText).toBe('HYPER-DRIFTER · 366 MPH RATING · 52% DRIFT · 50% NOS');
+    });
+
+    it('handles driftCharge and NOS clamping and zero values correctly', () => {
+      const summary = getRiderMobilitySummary({
+        baseSpeed: 200,
+        speedMult: 1.0,
+        driftCharge: -0.5,
+        nos: 0,
+        nosMax: 100
+      });
+
+      expect(summary.driftChargePct).toBe(0);
+      expect(summary.nosReservePct).toBe(0);
+      expect(summary.topSpeedRating).toBe(200);
+      expect(summary.mobilityTier).toBe('STANDARD');
+      expect(summary.summaryText).toBe('STANDARD · 200 MPH RATING · 0% DRIFT · 0% NOS');
+
+      const overclamped = getRiderMobilitySummary({
+        driftCharge: 1.5,
+        nos: 200,
+        nosMax: 100
+      });
+
+      expect(overclamped.driftChargePct).toBe(100);
+      expect(overclamped.nosReservePct).toBe(100);
     });
   });
 });

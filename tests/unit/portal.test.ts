@@ -19,6 +19,8 @@ import {
   getNextSectorBriefing,
   getPortalRiskAssessment,
   PortalRiskAssessment,
+  getPortalHeatBriefing,
+  PortalHeatBriefing,
   PORTAL_X,
   PORTAL_Y,
   PORTAL_RADIUS,
@@ -271,6 +273,83 @@ describe('PortalModalController', () => {
     modal.open({ floorNum: 3, playerHp: 4, playerMaxHp: 6 }, vi.fn());
     expect(overlay.getAttribute('data-readiness')).toBe('⚡ COMBAT READY');
     expect(overlay.getAttribute('data-low-hull-warning')).toBe('false');
+  });
+
+  it('sets data-portal-heat and data-portal-heat-label defaulting to heat 0 when heatLevel is omitted', () => {
+    modal.open({ floorNum: 1 }, vi.fn());
+    expect(overlay.getAttribute('data-portal-heat')).toBe('0');
+    expect(overlay.getAttribute('data-portal-heat-label')).toBe('HEAT 0 // STANDARD');
+  });
+
+  it.each([
+    { heat: 0, expectedHeat: '0', expectedLabel: 'HEAT 0 // STANDARD' },
+    { heat: 1, expectedHeat: '1', expectedLabel: 'HEAT 1 // OVERCLOCKED' },
+    { heat: 2, expectedHeat: '2', expectedLabel: 'HEAT 2 // BLOOD PACT' },
+    { heat: 3, expectedHeat: '3', expectedLabel: 'HEAT 3 // VALHALLA INFERNO' },
+    { heat: 5, expectedHeat: '3', expectedLabel: 'HEAT 3 // VALHALLA INFERNO' }
+  ])('sets data-portal-heat and data-portal-heat-label for heat level $heat on open', ({ heat, expectedHeat, expectedLabel }) => {
+    modal.open({ floorNum: 2, heatLevel: heat }, vi.fn());
+    expect(overlay.getAttribute('data-portal-heat')).toBe(expectedHeat);
+    expect(overlay.getAttribute('data-portal-heat-label')).toBe(expectedLabel);
+  });
+});
+
+describe('getPortalHeatBriefing pure helper', () => {
+  it('returns HEAT 0 // STANDARD briefing for heat level 0', () => {
+    const briefing: PortalHeatBriefing = getPortalHeatBriefing(0);
+    expect(briefing).toEqual({
+      heatLevel: 0,
+      label: 'HEAT 0 // STANDARD',
+      enemyScaleText: 'Standard Enemy HP & Speed',
+      scrapBonusText: '+0% Bonus Scrap'
+    });
+  });
+
+  it('returns HEAT 1 // OVERCLOCKED briefing for heat level 1', () => {
+    const briefing: PortalHeatBriefing = getPortalHeatBriefing(1);
+    expect(briefing).toEqual({
+      heatLevel: 1,
+      label: 'HEAT 1 // OVERCLOCKED',
+      enemyScaleText: '+24% Enemy HP · +12% Speed',
+      scrapBonusText: '+25% Bonus Scrap'
+    });
+  });
+
+  it('returns HEAT 2 // BLOOD PACT briefing for heat level 2', () => {
+    const briefing: PortalHeatBriefing = getPortalHeatBriefing(2);
+    expect(briefing).toEqual({
+      heatLevel: 2,
+      label: 'HEAT 2 // BLOOD PACT',
+      enemyScaleText: '+48% Enemy HP · +24% Speed',
+      scrapBonusText: '+50% Bonus Scrap'
+    });
+  });
+
+  it('returns HEAT 3 // VALHALLA INFERNO briefing for heat level 3', () => {
+    const briefing: PortalHeatBriefing = getPortalHeatBriefing(3);
+    expect(briefing).toEqual({
+      heatLevel: 3,
+      label: 'HEAT 3 // VALHALLA INFERNO',
+      enemyScaleText: '+72% Enemy HP · +36% Speed',
+      scrapBonusText: '+75% Bonus Scrap'
+    });
+  });
+
+  it('clamps out-of-bounds heat levels to 0..3 range', () => {
+    expect(getPortalHeatBriefing(-1).heatLevel).toBe(0);
+    expect(getPortalHeatBriefing(-99).label).toBe('HEAT 0 // STANDARD');
+    expect(getPortalHeatBriefing(4).heatLevel).toBe(3);
+    expect(getPortalHeatBriefing(10).label).toBe('HEAT 3 // VALHALLA INFERNO');
+    expect(getPortalHeatBriefing(1.4).heatLevel).toBe(1);
+    expect(getPortalHeatBriefing(2.6).heatLevel).toBe(3);
+    expect(getPortalHeatBriefing(NaN).heatLevel).toBe(0);
+    expect(getPortalHeatBriefing(undefined).heatLevel).toBe(0);
+  });
+
+  it('is accessible via PortalModalController static and instance methods', () => {
+    expect(PortalModalController.getPortalHeatBriefing(2)).toEqual(getPortalHeatBriefing(2));
+    const controller = new PortalModalController();
+    expect(controller.getPortalHeatBriefing(3)).toEqual(getPortalHeatBriefing(3));
   });
 });
 

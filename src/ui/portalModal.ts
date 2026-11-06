@@ -46,9 +46,11 @@ export interface PortalModalInfo {
   floorNum: number;
   playerHp?: number;
   playerMaxHp?: number;
+  heatLevel?: number;
 }
 
 export type PortalModalContext = PortalModalInfo;
+export type PortalContext = PortalModalInfo;
 
 export interface PortalRiskAssessment {
   readinessLabel: string;
@@ -130,6 +132,52 @@ export function getNextSectorBriefing(currentFloor: number): SectorBriefing {
   };
 }
 
+export interface PortalHeatBriefing {
+  heatLevel: number;
+  label: string;
+  enemyScaleText: string;
+  scrapBonusText: string;
+}
+
+/**
+ * Pure helper calculating the portal descent heat threat briefing and bonus scrap scaling.
+ * Heat is clamped to 0..3.
+ */
+export function getPortalHeatBriefing(heatLevel: number = 0): PortalHeatBriefing {
+  const clamped = Math.max(0, Math.min(3, Math.round(Number(heatLevel) || 0)));
+  switch (clamped) {
+    case 1:
+      return {
+        heatLevel: 1,
+        label: 'HEAT 1 // OVERCLOCKED',
+        enemyScaleText: '+24% Enemy HP · +12% Speed',
+        scrapBonusText: '+25% Bonus Scrap'
+      };
+    case 2:
+      return {
+        heatLevel: 2,
+        label: 'HEAT 2 // BLOOD PACT',
+        enemyScaleText: '+48% Enemy HP · +24% Speed',
+        scrapBonusText: '+50% Bonus Scrap'
+      };
+    case 3:
+      return {
+        heatLevel: 3,
+        label: 'HEAT 3 // VALHALLA INFERNO',
+        enemyScaleText: '+72% Enemy HP · +36% Speed',
+        scrapBonusText: '+75% Bonus Scrap'
+      };
+    case 0:
+    default:
+      return {
+        heatLevel: 0,
+        label: 'HEAT 0 // STANDARD',
+        enemyScaleText: 'Standard Enemy HP & Speed',
+        scrapBonusText: '+0% Bonus Scrap'
+      };
+  }
+}
+
 const CONFIRM_KEYS = new Set(['enter', 'e', ' ', 'spacebar']);
 
 export class PortalModalController {
@@ -195,29 +243,38 @@ export class PortalModalController {
     return getPortalRiskAssessment(floorNum, playerHp, playerMaxHp);
   }
 
-  public open(info: PortalModalInfo, onConfirm: () => void, onCancel?: () => void): void {
+  public static getPortalHeatBriefing(heatLevel: number = 0): PortalHeatBriefing {
+    return getPortalHeatBriefing(heatLevel);
+  }
+
+  public getPortalHeatBriefing(heatLevel: number = 0): PortalHeatBriefing {
+    return getPortalHeatBriefing(heatLevel);
+  }
+
+  public open(context: PortalContext, onConfirm: () => void, onCancel?: () => void): void {
     this.pendingConfirm = onConfirm;
     this.pendingCancel = onCancel || null;
 
-    const briefing = getNextSectorBriefing(info.floorNum);
-    const assessment = getPortalRiskAssessment(info.floorNum, info.playerHp, info.playerMaxHp);
+    const briefing = getNextSectorBriefing(context.floorNum);
+    const assessment = getPortalRiskAssessment(context.floorNum, context.playerHp, context.playerMaxHp);
+    const heatBrief = getPortalHeatBriefing(context.heatLevel ?? 0);
 
-    if (info.floorNum === 6) {
+    if (context.floorNum === 6) {
       if (this.floorLabelEl) {
         this.floorLabelEl.textContent = 'VALHALLA CONQUERED! ENTER OVERDRIVE FLR 7?';
       }
       if (this.warningEl) {
         this.warningEl.textContent = 'Victory Bonus (+50 Scrap) ready! Enter Endless Overdrive for 2x Scrap & Elite swarms.';
       }
-    } else if (info.floorNum > 6) {
+    } else if (context.floorNum > 6) {
       if (this.floorLabelEl) {
-        this.floorLabelEl.textContent = `ENDLESS OVERDRIVE // FLOOR ${info.floorNum + 1}?`;
+        this.floorLabelEl.textContent = `ENDLESS OVERDRIVE // FLOOR ${context.floorNum + 1}?`;
       }
       if (this.warningEl) {
         this.warningEl.textContent = 'Overdrive scaling intensifies. Unbought items on this floor will be lost.';
       }
     } else {
-      const nextFloor = info.floorNum + 1;
+      const nextFloor = context.floorNum + 1;
       const biomePreviews: Record<number, string> = {
         2: 'NEXT SECTOR: SMELTER FOUNDRY (Molten Lava Vents & Boost Strips).',
         3: 'NEXT SECTOR: NEON CYBER-FREEWAY (High-Speed Boost Strips & Oil Slicks).',
@@ -249,6 +306,8 @@ export class PortalModalController {
       this.overlay.setAttribute('title', `Next: ${briefing.biomeName} (Boss: ${briefing.bossName}, Threat: ${briefing.threatMult})`);
       this.overlay.setAttribute('data-readiness', assessment.readinessLabel);
       this.overlay.setAttribute('data-low-hull-warning', String(assessment.isLowHullWarning));
+      this.overlay.setAttribute('data-portal-heat', `${heatBrief.heatLevel}`);
+      this.overlay.setAttribute('data-portal-heat-label', heatBrief.label);
     }
 
     if (this.warningEl) {

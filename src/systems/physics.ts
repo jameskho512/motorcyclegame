@@ -463,3 +463,42 @@ export function getStyleAdrenalineBonus(styleScore: number = 12): StyleAdrenalin
   if (s >= 20) return { rank: 'C', nosRegenBonusPerSec: 0.5, speedBonusMult: 1.0 };
   return { rank: 'D', nosRegenBonusPerSec: 0, speedBonusMult: 1.0 };
 }
+
+export interface RiderMobilitySummary {
+  topSpeedRating: number;
+  driftChargePct: number;
+  nosReservePct: number;
+  mobilityTier: 'STANDARD' | 'INTERCEPTOR' | 'HYPER-DRIFTER';
+  summaryText: string;
+}
+
+export function getRiderMobilitySummary(player?: Partial<PlayerState> | null): RiderMobilitySummary {
+  const baseSpeed = player?.baseSpeed || 295;
+  const speedMult = player?.speedMult || 1;
+  const topSpeedRating = Math.round(baseSpeed * speedMult);
+
+  const driftChargePct = Math.max(0, Math.min(100, Math.round((player?.driftCharge || 0) * 100)));
+
+  const nosMax = Math.max(1, player?.nosMax || 100);
+  const nos = Math.max(0, Math.min(nosMax, player?.nos ?? 100));
+  const nosReservePct = Math.round((nos / nosMax) * 100);
+
+  let mobilityTier: 'STANDARD' | 'INTERCEPTOR' | 'HYPER-DRIFTER';
+  if (speedMult >= 1.35 || (speedMult >= 1.2 && driftChargePct >= 50)) {
+    mobilityTier = 'HYPER-DRIFTER';
+  } else if (speedMult >= 1.15 || driftChargePct >= 35) {
+    mobilityTier = 'INTERCEPTOR';
+  } else {
+    mobilityTier = 'STANDARD';
+  }
+
+  const summaryText = `${mobilityTier} · ${topSpeedRating} MPH RATING · ${driftChargePct}% DRIFT · ${nosReservePct}% NOS`;
+
+  return {
+    topSpeedRating,
+    driftChargePct,
+    nosReservePct,
+    mobilityTier,
+    summaryText
+  };
+}

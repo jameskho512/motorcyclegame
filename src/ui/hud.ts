@@ -30,6 +30,7 @@ import {
 import { formatWeaponMasteryHint, formatStyleRankTooltip } from './tooltip';
 import { getFloorBountyContract, getRoomHazardSummary, type RoomHazardSummary } from '@/world/dungeon';
 import { getCombatOffenseSummary } from '@/systems/combat';
+import { getRoomThreatAssessment } from '@/systems/enemyAI';
 
 export type DungeonGrid = Dungeon;
 export type { RoomHazardSummary };
@@ -249,6 +250,7 @@ export class HUDController {
   private lastDungeonRef: Dungeon | null = null;
   private lastCurRoomX: number = 0;
   private lastCurRoomY: number = 0;
+  private lastFloorNum: number = 1;
   public onFastTravelRoom?: (rx: number, ry: number) => void;
 
   private onSelectWeapon?: (id: WeaponId) => void;
@@ -306,14 +308,14 @@ export class HUDController {
           const next = hit ? { rx: hit.rx, ry: hit.ry } : null;
           if ((prev?.rx !== next?.rx || prev?.ry !== next?.ry) && this.lastDungeonRef) {
             this.hoveredMinimapRoom = next;
-            this.drawMinimap(this.lastDungeonRef, this.lastCurRoomX, this.lastCurRoomY);
+            this.drawMinimap(this.lastDungeonRef, this.lastCurRoomX, this.lastCurRoomY, this.lastFloorNum);
           }
         });
         this.minimapCanvas.addEventListener('mouseleave', () => {
           if (this.minimapCanvas) this.minimapCanvas.style.cursor = 'default';
           if (this.hoveredMinimapRoom && this.lastDungeonRef) {
             this.hoveredMinimapRoom = null;
-            this.drawMinimap(this.lastDungeonRef, this.lastCurRoomX, this.lastCurRoomY);
+            this.drawMinimap(this.lastDungeonRef, this.lastCurRoomX, this.lastCurRoomY, this.lastFloorNum);
           }
         });
       }
@@ -414,10 +416,15 @@ export class HUDController {
   }
 
   /**
-   * Evaluates and updates room hazard telemetry data attributes on #hud-sector-biome
+   * Evaluates and updates room hazard and threat telemetry data attributes on #hud-sector-biome
    * and this.minimapCanvas.
    */
-  public updateRoomHazardTelemetry(dungeon?: DungeonGrid | Dungeon | null, curX?: number, curY?: number): void {
+  public updateRoomHazardTelemetry(
+    dungeon?: DungeonGrid | Dungeon | null,
+    curX?: number,
+    curY?: number,
+    floorNum: number = 1
+  ): void {
     if (typeof document === 'undefined') return;
 
     if (!this.minimapCanvas) {
@@ -435,17 +442,25 @@ export class HUDController {
     const zoneStr = hazardInfo.zoneTypes.join(',') || 'none';
     const tacticalHint = hazardInfo.tacticalHint;
 
+    const threatInfo = getRoomThreatAssessment(currentRoom, floorNum);
+
     const sectorBiomeEl = document.getElementById('hud-sector-biome');
     if (sectorBiomeEl) {
       sectorBiomeEl.setAttribute('data-room-hazards', totalHazards);
       sectorBiomeEl.setAttribute('data-room-zones', zoneStr);
       sectorBiomeEl.setAttribute('data-room-tactical-hint', tacticalHint);
+      sectorBiomeEl.setAttribute('data-room-threat-tier', threatInfo.threatTier);
+      sectorBiomeEl.setAttribute('data-room-threat-score', String(threatInfo.threatScore));
+      sectorBiomeEl.setAttribute('data-room-threat-advisory', threatInfo.advisory);
     }
 
     if (this.minimapCanvas) {
       this.minimapCanvas.setAttribute('data-room-hazards', totalHazards);
       this.minimapCanvas.setAttribute('data-room-zones', zoneStr);
       this.minimapCanvas.setAttribute('data-room-tactical-hint', tacticalHint);
+      this.minimapCanvas.setAttribute('data-room-threat-tier', threatInfo.threatTier);
+      this.minimapCanvas.setAttribute('data-room-threat-score', String(threatInfo.threatScore));
+      this.minimapCanvas.setAttribute('data-room-threat-advisory', threatInfo.advisory);
     }
   }
 
@@ -456,10 +471,11 @@ export class HUDController {
     dungeon: DungeonGrid,
     curX: number,
     curY: number,
-    _floorNum: number = 1
+    floorNum: number = 1
   ): void {
-    this.updateRoomHazardTelemetry(dungeon, curX, curY);
-    this.drawMinimap(dungeon, curX, curY);
+    this.lastFloorNum = floorNum;
+    this.updateRoomHazardTelemetry(dungeon, curX, curY, floorNum);
+    this.drawMinimap(dungeon, curX, curY, floorNum);
   }
 
   /**
@@ -471,8 +487,9 @@ export class HUDController {
    * - Glowing Yellow (#ffd60a) diamond room with beacon icon for the current room
    * - 3D bottom thickness lip on every diamond tile
    */
-  public drawMinimap(dungeon: Dungeon, curRoomX: number, curRoomY: number): void {
-    this.updateRoomHazardTelemetry(dungeon, curRoomX, curRoomY);
+  public drawMinimap(dungeon: Dungeon, curRoomX: number, curRoomY: number, floorNum: number = 1): void {
+    this.lastFloorNum = floorNum;
+    this.updateRoomHazardTelemetry(dungeon, curRoomX, curRoomY, floorNum);
     if (!this.minimapCanvas || !this.minimapCtx) return;
     const mc = this.minimapCanvas;
     const g = this.minimapCtx;

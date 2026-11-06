@@ -14,6 +14,8 @@
  *  9. Biome Zone Mastery Gauntlet (Boost Strip, Oil Slick & Ice Patch Thermal Dynamics)
  * 10. Elite Affix Trio (Volatile, Overclocked, Vampiric) & Floor 4 Cryo Barrel Thermal Shock Combo
  * 11. Post-Mortem Run Grade S Evaluation, Stash Salvage Summary & Weapon Mastery III Meta Carry-Over
+ * 12. Full Sanctuary-to-Dungeon Preparation & Multi-Floor Combat Telemetry Workflow (Floor 1 -> Floor 3 -> Boss Room)
+ * 13. Full Biker Build Archetype Progression Loop (Road Freelancer -> Hellfire Gunner -> Nitro Drifter -> Iron Juggernaut -> Vampiric Reaper)
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -50,13 +52,15 @@ import {
   enableChoicePedestalsInTreasureRooms,
   createHomeBaseRoom,
   getFloorBountyContract,
-  getHubNpcGreeting
+  getHubNpcGreeting,
+  getRoomHazardSummary
 } from '@/world/dungeon';
 
 import {
   BOSS_NAMES,
   createEnemy,
-  updateEnemyAI
+  updateEnemyAI,
+  getRoomThreatAssessment
 } from '@/systems/enemyAI';
 
 import {
@@ -64,7 +68,8 @@ import {
   handleEnemyDeath,
   calcOverkillBonus,
   updateCombatPipeline,
-  formatDummyHitTelemetry
+  formatDummyHitTelemetry,
+  getCombatOffenseSummary
 } from '@/systems/combat';
 
 import { updateBikeKinematics } from '@/systems/physics';
@@ -72,8 +77,10 @@ import { getModStackTierClass } from '@/ui/hud';
 import {
   buildRunPostMortemSummary,
   getStashSalvageSummary,
-  getWeaponMasteryTier
+  getWeaponMasteryTier,
+  getBuildArchetypeSummary
 } from '@/ui/garage';
+import { getHubStationPromptInfo } from '@/ui/hubStationModal';
 
 function createMockRoom(overrides: Partial<Room> = {}): Room {
   return {
@@ -936,6 +943,313 @@ describe('Tier 4: Real-World Application Scenarios', () => {
       meta.weaponKills.shotgun = 100;
       applyMetaStats(shotgunPlayer, meta);
       expect(shotgunPlayer.dmg).toBe(23); // 20 * 1.15 = 23
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Scenario 12: Full Sanctuary-to-Dungeon Preparation & Combat Telemetry Workflow
+  // --------------------------------------------------------------------------
+  describe('Scenario 12: Full Sanctuary-to-Dungeon Preparation & Combat Telemetry Workflow', () => {
+    it('verifies sanctuary hub station readiness and validates combat offense, room hazards, and threat assessments across Floor 1 -> Floor 3 -> Boss Room transitions', () => {
+      // 1. Sanctuary Hub Pre-Run Preparation & Station Prompts
+      const hubRoom = createHomeBaseRoom();
+      expect(hubRoom.type).toBe('hub');
+
+      // Check all 5 Hub Station Prompts
+      const garagePrompt = getHubStationPromptInfo('garage');
+      expect(garagePrompt.title).toBe('🔧 GARAGE & ARMORY BAY');
+      expect(garagePrompt.actionLabel).toBe('OPEN GARAGE [E]');
+      expect(garagePrompt.accentColor).toBe('#ffd60a');
+
+      const forgePrompt = getHubStationPromptInfo('blacksmith');
+      expect(forgePrompt.title).toBe('⚒️ THE SCRAP FORGE');
+      expect(forgePrompt.summary).toContain('12 Scrap');
+
+      // Unclaimed vs Claimed Buffs for Codex & Bounty
+      const codexUnclaimed = getHubStationPromptInfo('codex', undefined, undefined, { scannerClaimed: false });
+      expect(codexUnclaimed.summary).toContain('Claim FREE +8–20% Weapon DMG');
+
+      const codexClaimed = getHubStationPromptInfo('codex', undefined, undefined, { scannerClaimed: true });
+      expect(codexClaimed.summary).toContain('Tactical Scanner +DMG/+SPD Buff Active');
+
+      const bountyUnclaimed = getHubStationPromptInfo('bounty', undefined, undefined, { bountyClaimed: false });
+      expect(bountyUnclaimed.summary).toContain('Claim FREE +15 Coins');
+
+      const bountyClaimed = getHubStationPromptInfo('bounty', undefined, undefined, { bountyClaimed: true });
+      expect(bountyClaimed.summary).toContain('Threat Heat Level (0–3)');
+
+      const launchPrompt = getHubStationPromptInfo('launch');
+      expect(launchPrompt.title).toBe('🚀 SECTOR 1 HIGHWAY LAUNCH GATE');
+      expect(launchPrompt.actionLabel).toBe('OPEN LAUNCH GATE [E]');
+
+      // Sanctuary Hub Environmental & Threat Telemetry (Safe Zone)
+      const hubHazards = getRoomHazardSummary(hubRoom);
+      expect(hubHazards.explosiveCount).toBe(0);
+      expect(hubHazards.toxicCount).toBe(0);
+      expect(hubHazards.cryoCount).toBe(0);
+      expect(hubHazards.zoneTypes).toEqual([]);
+      expect(hubHazards.tacticalHint).toBe('Clear asphalt sector — standard traction.');
+
+      const hubThreat = getRoomThreatAssessment(hubRoom, 1);
+      expect(hubThreat.threatTier).toBe('CLEAR');
+      expect(hubThreat.threatScore).toBe(0);
+      expect(hubThreat.livingCount).toBe(0);
+      expect(hubThreat.hasBoss).toBe(false);
+      expect(hubThreat.advisory).toContain('Sector clear');
+
+      // Baseline Sanctuary Player Offense Telemetry
+      const baselineOffense = getCombatOffenseSummary(player);
+      expect(baselineOffense.effectiveDpsMult).toBe(1.0);
+      expect(baselineOffense.siphonPct).toBe(0);
+      expect(baselineOffense.siphonStatus).toBe('NONE');
+      expect(baselineOffense.isEvolved).toBe(false);
+      expect(baselineOffense.summaryLine).toBe('DPS x1.00 · NONE (0% Siphon)');
+
+      // 2. Transition: Deploy into Floor 1 Dungeon (Rust Belt Outskirts)
+      const f1Dungeon = generateDungeon(1);
+      const f1Start = f1Dungeon.rooms['0,0'];
+      const f1StartThreat = getRoomThreatAssessment(f1Start, 1);
+      expect(f1StartThreat.threatTier).toBe('CLEAR');
+      expect(f1StartThreat.threatScore).toBe(0);
+
+      // Floor 1 Combat Room with standard hostiles & explosive barrel
+      const f1CombatRoom = createMockRoom({
+        x: 1,
+        y: 0,
+        obstacles: [
+          { x: 300, y: 300, size: 32, type: 'barrel', variant: 'explosive', hp: 10 }
+        ],
+        enemies: [
+          createEnemy('charger', 250, 250, 1),
+          createEnemy('turret', 350, 250, 1)
+        ]
+      });
+
+      const f1Hazards = getRoomHazardSummary(f1CombatRoom);
+      expect(f1Hazards.explosiveCount).toBe(1);
+      expect(f1Hazards.toxicCount).toBe(0);
+      expect(f1Hazards.cryoCount).toBe(0);
+      expect(f1Hazards.tacticalHint).toContain('Explosive barrels detected (1)');
+
+      const f1Threat = getRoomThreatAssessment(f1CombatRoom, 1);
+      expect(f1Threat.livingCount).toBe(2);
+      expect(f1Threat.eliteCount).toBe(0);
+      expect(f1Threat.hasBoss).toBe(false);
+      // Floor 1: livingCount * (10 + 1 * 2) = 2 * 12 = 24 -> LOW threat (< 45)
+      expect(f1Threat.threatScore).toBe(24);
+      expect(f1Threat.threatTier).toBe('LOW');
+      expect(f1Threat.advisory).toContain('Low threat: Minor skirmish (2 hostiles)');
+
+      // Player acquires Hollow Point mod on Floor 1 (+25% damage)
+      player.dmgMult = 1.25;
+      const f1PlayerOffense = getCombatOffenseSummary(player);
+      expect(f1PlayerOffense.effectiveDpsMult).toBe(1.25);
+      expect(f1PlayerOffense.summaryLine).toBe('DPS x1.25 · NONE (0% Siphon)');
+
+      // 3. Transition: Escalate to Floor 3 (Neon Sector Gauntlet)
+      const f3CombatRoom = createMockRoom({
+        x: 0,
+        y: 2,
+        biomeZones: [
+          { x: 300, y: 300, radius: 45, type: 'oil_slick' }
+        ],
+        obstacles: [
+          { x: 200, y: 200, size: 36, type: 'barrel', variant: 'cryo_barrel', hp: 10 },
+          { x: 400, y: 400, size: 32, type: 'barrel', variant: 'explosive', hp: 10 }
+        ],
+        enemies: [
+          createEnemy('charger', 200, 300, 3),
+          createEnemy('sniper', 400, 300, 3),
+          createEnemy('turret', 300, 400, 3, true, 1001) // Elite volatile enemy
+        ]
+      });
+
+      const f3Hazards = getRoomHazardSummary(f3CombatRoom);
+      expect(f3Hazards.cryoCount).toBe(1);
+      expect(f3Hazards.explosiveCount).toBe(1);
+      expect(f3Hazards.zoneTypes).toContain('oil_slick');
+      expect(f3Hazards.tacticalHint).toContain('Cryo barrels detected (1)');
+      expect(f3Hazards.tacticalHint).toContain('Explosive barrels detected (1)');
+      expect(f3Hazards.tacticalHint).toContain('Surface modifiers detected (oil slick)');
+
+      const f3Threat = getRoomThreatAssessment(f3CombatRoom, 3);
+      expect(f3Threat.livingCount).toBe(3);
+      expect(f3Threat.eliteCount).toBe(1);
+      expect(f3Threat.hasBoss).toBe(false);
+      // Floor 3: 3 * (10 + 3 * 2) + 1 * 25 = 3 * 16 + 25 = 48 + 25 = 73
+      expect(f3Threat.threatScore).toBe(73);
+      expect(f3Threat.threatTier).toBe('HIGH');
+      expect(f3Threat.advisory).toContain('High threat: 1 elite unit detected (3 total hostiles)');
+
+      // Player upgrades with fire rate and light siphon (8%) on Floor 3
+      player.fireRateMult = 1.2;
+      player.vampChance = 0.08;
+      const f3PlayerOffense = getCombatOffenseSummary(player);
+      // 1.25 * 1.2 = 1.50
+      expect(f3PlayerOffense.effectiveDpsMult).toBe(1.5);
+      expect(f3PlayerOffense.siphonPct).toBe(8);
+      expect(f3PlayerOffense.siphonStatus).toBe('LIGHT SIPHON');
+      expect(f3PlayerOffense.summaryLine).toBe('DPS x1.50 · LIGHT SIPHON (8% Siphon)');
+
+      // 4. Transition: Floor 3 Boss Encounter (Overlord Helion)
+      const boss = createBoss(3, 360, 360);
+      const bossAdd1 = createEnemy('charger', 200, 200, 3);
+      const bossAdd2 = createEnemy('turret', 500, 200, 3);
+      const f3BossRoom = createMockRoom({
+        x: 3,
+        y: 3,
+        type: 'boss',
+        enemies: [boss, bossAdd1, bossAdd2]
+      });
+
+      const bossThreat = getRoomThreatAssessment(f3BossRoom, 3);
+      expect(bossThreat.hasBoss).toBe(true);
+      expect(bossThreat.livingCount).toBe(3);
+      expect(bossThreat.threatTier).toBe('APEX');
+      // 3 * 16 + 0 * 25 + 100 = 148
+      expect(bossThreat.threatScore).toBe(148);
+      expect(bossThreat.advisory).toContain('Apex threat: Boss encounter active (3 total hostiles). Maximum evasion advised.');
+
+      // Player achieves weapon evolution (3 item stacks) and vampiric overdrive (16% siphon) for boss fight
+      player.weapon = 'pistol';
+      player.itemStacks = { nitro_syringe: 2, tire_iron: 1 }; // 3 stacks triggers evolution
+      player.vampChance = 0.16;
+      player.multiShot = 2;
+
+      const bossPrepOffense = getCombatOffenseSummary(player);
+      expect(bossPrepOffense.isEvolved).toBe(true);
+      expect(bossPrepOffense.siphonPct).toBe(16);
+      expect(bossPrepOffense.siphonStatus).toBe('VAMPIRIC OVERDRIVE');
+      // effectiveDpsMult = dmgMult (1.25) * fireRateMult (1.2) * projCount (2) * evoBonus (1.35) = 1.25 * 1.2 * 2 * 1.35 = 4.05
+      expect(bossPrepOffense.effectiveDpsMult).toBe(4.05);
+      expect(bossPrepOffense.summaryLine).toBe('DPS x4.05 · VAMPIRIC OVERDRIVE (16% Siphon) · OVERCLOCKED');
+
+      // Boss slain: All enemies eradicated
+      f3BossRoom.enemies = [];
+      f3BossRoom.cleared = true;
+      f3BossRoom.trapdoor = true;
+
+      const postBossThreat = getRoomThreatAssessment(f3BossRoom, 3);
+      expect(postBossThreat.threatTier).toBe('CLEAR');
+      expect(postBossThreat.threatScore).toBe(0);
+      expect(postBossThreat.livingCount).toBe(0);
+      expect(postBossThreat.hasBoss).toBe(false);
+      expect(postBossThreat.advisory).toContain('Sector clear — no active hostiles detected.');
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Scenario 13: Full Biker Build Archetype Progression Loop
+  // --------------------------------------------------------------------------
+  describe('Scenario 13: Full Biker Build Archetype Progression Loop', () => {
+    it('progresses across road_freelancer -> hellfire_gunner -> nitro_drifter -> iron_juggernaut -> vampiric_reaper as gear and run mods accumulate', () => {
+      const meta = createDefaultMetaSave();
+
+      // Stage 1: Initial Spawn — ROAD FREELANCER (Baseline Interceptor)
+      // Default player: maxHp: 6, speedMult: 1, dmgMult: 1, fireRateMult: 1, vampChance: 0
+      const stage1Archetype = getBuildArchetypeSummary(player, meta);
+      expect(stage1Archetype.id).toBe('road_freelancer');
+      expect(stage1Archetype.title).toBe('⚙️ ROAD FREELANCER');
+      expect(stage1Archetype.badgeColor).toBe('#a8dadc');
+      expect(stage1Archetype.description).toContain('Balanced outlaw interceptor');
+
+      const stage1Offense = getCombatOffenseSummary(player);
+      expect(stage1Offense.effectiveDpsMult).toBe(1.0);
+      expect(stage1Offense.siphonStatus).toBe('NONE');
+
+      // Stage 2: Floor 1 Mod & Gear Upgrades — HELLFIRE GUNNER (Ordnance Specialization)
+      // Equip engine part with +15% dmg and acquire Hollow Point mod (+25% dmg)
+      const enginePart: EquipmentItem = {
+        slot: 'engine',
+        rarity: 2,
+        name: 'Overbore High-Torque V-Twin',
+        stats: { dmg: 0.15 }
+      };
+      addLoot(meta, enginePart, player, storage);
+
+      // Apply Hollow Point mod from pool (+0.25 dmgMult)
+      const hollowPointMod = RUN_MOD_POOL.find(m => m.id === 'hollow_point')!;
+      hollowPointMod.apply(player);
+
+      // Total dmgMult = 1.0 (base) + 0.15 (gear) + 0.25 (mod) = 1.40 (>= 1.35)
+      expect(player.dmgMult).toBeCloseTo(1.40);
+      expect(player.speedMult).toBe(1.0);
+      expect(player.maxHp).toBe(6);
+      expect(player.vampChance).toBe(0);
+
+      const stage2Archetype = getBuildArchetypeSummary(player, meta);
+      expect(stage2Archetype.id).toBe('hellfire_gunner');
+      expect(stage2Archetype.title).toBe('🔥 HELLFIRE GUNNER');
+      expect(stage2Archetype.badgeColor).toBe('#ff5400');
+      expect(stage2Archetype.description).toContain('Overclocked ordnance build');
+
+      // Stage 3: Floor 2 Drift & Nitro Escalation — NITRO DRIFTER (High Velocity)
+      // Equip tires part with +12% speed and acquire Nitrous Injector mod (+16% speedMult)
+      const tiresPart: EquipmentItem = {
+        slot: 'tires',
+        rarity: 2,
+        name: 'Compound Racing Slicks',
+        stats: { speed: 0.12 }
+      };
+      addLoot(meta, tiresPart, player, storage);
+
+      // Apply Nitrous Injector (turbo_charger) mod from pool (+0.16 speedMult)
+      const turboMod = RUN_MOD_POOL.find(m => m.id === 'turbo_charger')!;
+      turboMod.apply(player);
+
+      // speedMult = 1.0 (base) + 0.12 (tires) + 0.16 (mod) = 1.28 (>= 1.25)
+      expect(player.speedMult).toBeCloseTo(1.28);
+      // dmgMult is still high (1.40), but speedMult >= 1.25 takes precedence over hellfire_gunner
+      const stage3Archetype = getBuildArchetypeSummary(player, meta);
+      expect(stage3Archetype.id).toBe('nitro_drifter');
+      expect(stage3Archetype.title).toBe('🏎️ NITRO DRIFTER');
+      expect(stage3Archetype.badgeColor).toBe('#ffd60a');
+      expect(stage3Archetype.description).toContain('High-velocity powerslide specialist');
+
+      // Stage 4: Floor 3 Hull & Armor Reinforcement — IRON JUGGERNAUT (Heavy Armored Tank)
+      // Equip reinforced frame part (+2 maxHp) and acquire Welded Armor Plate mod (+2 maxHp)
+      const framePart: EquipmentItem = {
+        slot: 'frame',
+        rarity: 3,
+        name: 'Titanium Cage Chassis',
+        stats: { hp: 2 }
+      };
+      addLoot(meta, framePart, player, storage);
+
+      // Apply Welded Armor Plate (armor_plate) mod from pool (+2 maxHp)
+      const armorMod = RUN_MOD_POOL.find(m => m.id === 'armor_plate')!;
+      armorMod.apply(player);
+
+      // maxHp = 6 (base) + 2 (gear) + 2 (mod) = 10 (>= 10)
+      expect(player.maxHp).toBeGreaterThanOrEqual(10);
+      // maxHp >= 10 takes precedence over nitro_drifter and hellfire_gunner
+      const stage4Archetype = getBuildArchetypeSummary(player, meta);
+      expect(stage4Archetype.id).toBe('iron_juggernaut');
+      expect(stage4Archetype.title).toBe('🛡️ IRON JUGGERNAUT');
+      expect(stage4Archetype.badgeColor).toBe('#00f5d4');
+      expect(stage4Archetype.description).toContain('Heavy-armored tank chassis');
+
+      // Stage 5: Floor 4+ Vampiric Siphon Culmination — VAMPIRIC REAPER (Life Leech Apex)
+      // Apply Scrap Siphon (vamp_siphon) mod from pool (+0.20 vampChance)
+      const vampMod = RUN_MOD_POOL.find(m => m.id === 'vamp_siphon')!;
+      vampMod.apply(player);
+
+      // vampChance = 0.20 (>= 0.12)
+      expect(player.vampChance).toBeGreaterThanOrEqual(0.12);
+
+      // siphon >= 0.12 has supreme highest precedence across all archetypes
+      const stage5Archetype = getBuildArchetypeSummary(player, meta);
+      expect(stage5Archetype.id).toBe('vampiric_reaper');
+      expect(stage5Archetype.title).toBe('🩸 VAMPIRIC REAPER');
+      expect(stage5Archetype.badgeColor).toBe('#ff1f4b');
+      expect(stage5Archetype.description).toContain('High-siphon hull regeneration build');
+
+      // Verify apex offense telemetry reflecting full build synergy
+      const stage5Offense = getCombatOffenseSummary(player);
+      expect(stage5Offense.siphonPct).toBe(20);
+      expect(stage5Offense.siphonStatus).toBe('VAMPIRIC OVERDRIVE');
+      expect(stage5Offense.effectiveDpsMult).toBeCloseTo(1.40);
+      expect(stage5Offense.summaryLine).toBe('DPS x1.40 · VAMPIRIC OVERDRIVE (20% Siphon)');
     });
   });
 });

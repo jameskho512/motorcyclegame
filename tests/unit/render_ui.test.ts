@@ -390,6 +390,232 @@ describe('Render & UI Subsystems', () => {
       expect(sectorBiome.getAttribute('data-room-hazards')).toBe('0');
       expect(sectorBiome.getAttribute('data-room-zones')).toBe('none');
       expect(sectorBiome.getAttribute('data-room-tactical-hint')).toBe('Clear asphalt sector — standard traction.');
+      expect(sectorBiome.getAttribute('data-room-threat-tier')).toBe('CLEAR');
+      expect(sectorBiome.getAttribute('data-room-threat-score')).toBe('0');
+      expect(sectorBiome.getAttribute('data-room-threat-advisory')).toBe('Sector clear — no active hostiles detected.');
+    });
+
+    it('sets room threat telemetry attributes to CLEAR for cleared rooms via renderMinimap', () => {
+      document.body.innerHTML = `
+        <div id="game-wrapper">
+          <canvas id="minimap-canvas" width="240" height="150"></canvas>
+          <div id="hud-sector-biome"></div>
+        </div>
+      `;
+
+      const canvas = document.getElementById('minimap-canvas') as HTMLCanvasElement;
+      const sectorBiome = document.getElementById('hud-sector-biome') as HTMLElement;
+      const mockCtx = {
+        setTransform: vi.fn(),
+        clearRect: vi.fn(),
+        fillRect: vi.fn(),
+        save: vi.fn(),
+        restore: vi.fn(),
+        beginPath: vi.fn(),
+        moveTo: vi.fn(),
+        lineTo: vi.fn(),
+        stroke: vi.fn(),
+        fill: vi.fn(),
+        closePath: vi.fn(),
+        arc: vi.fn(),
+        fillText: vi.fn(),
+        strokeText: vi.fn(),
+        measureText: vi.fn().mockReturnValue({ width: 24 }),
+        rect: vi.fn(),
+        roundRect: vi.fn(),
+        fillStyle: '',
+        strokeStyle: '',
+        lineWidth: 1,
+        lineCap: 'round',
+        shadowColor: '',
+        shadowBlur: 0,
+        font: '',
+        textAlign: 'left',
+        textBaseline: 'alphabetic',
+        lineJoin: 'miter'
+      };
+      vi.spyOn(canvas, 'getContext').mockReturnValue(mockCtx as any);
+
+      const hud = new HUDController();
+      const clearedRoom = makeRoom({
+        x: 0,
+        y: 0,
+        type: 'combat',
+        cleared: true,
+        enemies: [
+          { hp: 0, isDummy: false, type: 'swarmer' } as any
+        ]
+      });
+
+      const dungeon: DungeonGrid = {
+        '0,0': clearedRoom
+      };
+
+      hud.renderMinimap(dungeon, 0, 0, 1);
+
+      expect(canvas.getAttribute('data-room-threat-tier')).toBe('CLEAR');
+      expect(canvas.getAttribute('data-room-threat-score')).toBe('0');
+      expect(canvas.getAttribute('data-room-threat-advisory')).toBe('Sector clear — no active hostiles detected.');
+
+      expect(sectorBiome.getAttribute('data-room-threat-tier')).toBe('CLEAR');
+      expect(sectorBiome.getAttribute('data-room-threat-score')).toBe('0');
+      expect(sectorBiome.getAttribute('data-room-threat-advisory')).toBe('Sector clear — no active hostiles detected.');
+    });
+
+    it('sets room threat telemetry attributes to HIGH for elite skirmishes via renderMinimap', () => {
+      document.body.innerHTML = `
+        <div id="game-wrapper">
+          <canvas id="minimap-canvas" width="240" height="150"></canvas>
+          <div id="hud-sector-biome"></div>
+        </div>
+      `;
+
+      const canvas = document.getElementById('minimap-canvas') as HTMLCanvasElement;
+      const sectorBiome = document.getElementById('hud-sector-biome') as HTMLElement;
+      const mockCtx = {
+        setTransform: vi.fn(),
+        clearRect: vi.fn(),
+        fillRect: vi.fn(),
+        save: vi.fn(),
+        restore: vi.fn(),
+        beginPath: vi.fn(),
+        moveTo: vi.fn(),
+        lineTo: vi.fn(),
+        stroke: vi.fn(),
+        fill: vi.fn(),
+        closePath: vi.fn(),
+        arc: vi.fn(),
+        fillText: vi.fn(),
+        strokeText: vi.fn(),
+        measureText: vi.fn().mockReturnValue({ width: 24 }),
+        rect: vi.fn(),
+        roundRect: vi.fn(),
+        fillStyle: '',
+        strokeStyle: '',
+        lineWidth: 1,
+        lineCap: 'round',
+        shadowColor: '',
+        shadowBlur: 0,
+        font: '',
+        textAlign: 'left',
+        textBaseline: 'alphabetic',
+        lineJoin: 'miter'
+      };
+      vi.spyOn(canvas, 'getContext').mockReturnValue(mockCtx as any);
+
+      const hud = new HUDController();
+      const eliteRoom = makeRoom({
+        x: 1,
+        y: 0,
+        type: 'combat',
+        cleared: false,
+        enemies: [
+          {
+            id: 1,
+            hp: 60,
+            isDummy: false,
+            type: 'swarmer',
+            isElite: true
+          } as any
+        ]
+      });
+
+      const dungeon: DungeonGrid = {
+        '1,0': eliteRoom
+      };
+
+      hud.renderMinimap(dungeon, 1, 0, 2);
+
+      // Floor 2, 1 living elite: threatScore = 1 * (10 + 2*2) + 1*25 = 39 -> HIGH tier
+      expect(canvas.getAttribute('data-room-threat-tier')).toBe('HIGH');
+      expect(canvas.getAttribute('data-room-threat-score')).toBe('39');
+      expect(canvas.getAttribute('data-room-threat-advisory')).toBe(
+        'High threat: 1 elite unit detected (1 total hostile). Prioritize hardened hostiles.'
+      );
+
+      expect(sectorBiome.getAttribute('data-room-threat-tier')).toBe('HIGH');
+      expect(sectorBiome.getAttribute('data-room-threat-score')).toBe('39');
+      expect(sectorBiome.getAttribute('data-room-threat-advisory')).toBe(
+        'High threat: 1 elite unit detected (1 total hostile). Prioritize hardened hostiles.'
+      );
+    });
+
+    it('sets room threat telemetry attributes to APEX for boss rooms via renderMinimap', () => {
+      document.body.innerHTML = `
+        <div id="game-wrapper">
+          <canvas id="minimap-canvas" width="240" height="150"></canvas>
+          <div id="hud-sector-biome"></div>
+        </div>
+      `;
+
+      const canvas = document.getElementById('minimap-canvas') as HTMLCanvasElement;
+      const sectorBiome = document.getElementById('hud-sector-biome') as HTMLElement;
+      const mockCtx = {
+        setTransform: vi.fn(),
+        clearRect: vi.fn(),
+        fillRect: vi.fn(),
+        save: vi.fn(),
+        restore: vi.fn(),
+        beginPath: vi.fn(),
+        moveTo: vi.fn(),
+        lineTo: vi.fn(),
+        stroke: vi.fn(),
+        fill: vi.fn(),
+        closePath: vi.fn(),
+        arc: vi.fn(),
+        fillText: vi.fn(),
+        strokeText: vi.fn(),
+        measureText: vi.fn().mockReturnValue({ width: 24 }),
+        rect: vi.fn(),
+        roundRect: vi.fn(),
+        fillStyle: '',
+        strokeStyle: '',
+        lineWidth: 1,
+        lineCap: 'round',
+        shadowColor: '',
+        shadowBlur: 0,
+        font: '',
+        textAlign: 'left',
+        textBaseline: 'alphabetic',
+        lineJoin: 'miter'
+      };
+      vi.spyOn(canvas, 'getContext').mockReturnValue(mockCtx as any);
+
+      const hud = new HUDController();
+      const bossRoom = makeRoom({
+        x: 2,
+        y: 1,
+        type: 'boss',
+        cleared: false,
+        enemies: [
+          {
+            id: 99,
+            hp: 1200,
+            isDummy: false,
+            type: 'boss',
+            isElite: false
+          } as any
+        ]
+      });
+
+      const dungeon: DungeonGrid = {
+        '2,1': bossRoom
+      };
+
+      hud.renderMinimap(dungeon, 2, 1, 3);
+
+      // Floor 3, 1 boss: threatScore = 1 * (10 + 3*2) + 0 + 100 = 116 -> APEX tier
+      expect(canvas.getAttribute('data-room-threat-tier')).toBe('APEX');
+      expect(canvas.getAttribute('data-room-threat-score')).toBe('116');
+      expect(canvas.getAttribute('data-room-threat-advisory')).toBe(
+        'Apex threat: Boss encounter active (1 total hostile). Maximum evasion advised.'
+      );
+
+      expect(sectorBiome.getAttribute('data-room-threat-tier')).toBe('APEX');
+      expect(sectorBiome.getAttribute('data-room-threat-score')).toBe('116');
+      expect(sectorBiome.getAttribute('data-room-threat-advisory')).toBe(
+        'Apex threat: Boss encounter active (1 total hostile). Maximum evasion advised.'
+      );
     });
   });
 
