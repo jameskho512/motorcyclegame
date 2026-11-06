@@ -34,10 +34,10 @@
 #garage-overlay .garage-card {
   position: relative;
   box-sizing: border-box;
-  width: min(1280px, 98vw);
-  height: min(720px, 98vh);
-  max-width: 1280px;
-  max-height: 720px;
+  width: min(1420px, 98vw);
+  height: min(740px, 98vh);
+  max-width: 1420px;
+  max-height: 740px;
   margin: 0;
   padding: 10px 16px 10px;
   display: flex;
@@ -245,7 +245,7 @@
    -------------------------------------------------------------------------- */
 .garage-main-grid.gx-grid {
   display: grid;
-  grid-template-columns: 280px 1fr 280px;
+  grid-template-columns: 350px 1fr 370px;
   gap: 12px;
   flex: 1;
   min-height: 0;

@@ -504,7 +504,29 @@ export class StageManager {
         .stroke({ color: 0x0a0b10, width: 3 });
       g.rect(bx + 7, by + 7, WALL - 14, WALL - 14)
         .fill({ color: 0x1a1823 })
-        .stroke({ color: palette.accent, width: 1.5, alpha: 0.55 });
+        .stroke({ color: palette.accent, width: 1.5, alpha: 0.75 });
+      g.circle(bx + WALL / 2, by + WALL / 2, 4.5)
+        .fill({ color: palette.accent, alpha: 0.85 });
+    }
+
+    // Doorway threshold light cones & guiding floor chevrons
+    const doorLightColor = room.cleared ? 0x00f5d4 : 0xff1744;
+    const doorLightAlpha = room.cleared ? 0.14 : 0.18;
+    if (room.doors?.N) {
+      g.poly([cx - 38, WALL, cx + 38, WALL, cx + 68, WALL + 58, cx - 68, WALL + 58])
+        .fill({ color: doorLightColor, alpha: doorLightAlpha });
+    }
+    if (room.doors?.S) {
+      g.poly([cx - 38, H - WALL, cx + 38, H - WALL, cx + 68, H - WALL - 58, cx - 68, H - WALL - 58])
+        .fill({ color: doorLightColor, alpha: doorLightAlpha });
+    }
+    if (room.doors?.W) {
+      g.poly([WALL, cy - 38, WALL, cy + 38, WALL + 58, cy + 68, WALL + 58, cy - 68])
+        .fill({ color: doorLightColor, alpha: doorLightAlpha });
+    }
+    if (room.doors?.E) {
+      g.poly([W - WALL, cy - 38, W - WALL, cy + 38, W - WALL - 58, cy + 68, W - WALL - 58, cy - 68])
+        .fill({ color: doorLightColor, alpha: doorLightAlpha });
     }
 
     // Crisp inner arena 3D bounding contour

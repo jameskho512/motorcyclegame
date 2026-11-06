@@ -289,6 +289,35 @@ export class MotoRogueApp {
     window.addEventListener('resize', () => this.fitAll());
     this.fitAll();
 
+    // Minimap Fast-Travel handler (click any visited room on minimap when current room is cleared)
+    this.hud.onFastTravelRoom = (rx: number, ry: number) => {
+      const curRoom = this.getCurrentRoom();
+      if (!curRoom || !curRoom.cleared || this.inHomeBase) return;
+      if (rx === this.curRoomX && ry === this.curRoomY) return;
+      const targetRoom = this.dungeon[`${rx},${ry}`];
+      if (!targetRoom || !targetRoom.visited) return;
+      this.curRoomX = rx;
+      this.curRoomY = ry;
+      this.stateManager.player.x = ARENA_WIDTH / 2;
+      this.stateManager.player.y = ARENA_HEIGHT / 2;
+      this.stateManager.player.vx = 0;
+      this.stateManager.player.vy = 0;
+      this.combatState.bullets = [];
+      this.combatState.enemyBullets = [];
+      this.combatState.grenades = [];
+      this.combatState.enemyBombs = [];
+      this.audio.doorTransition();
+      this.combatState.damageNumbers.push({
+        x: ARENA_WIDTH / 2,
+        y: ARENA_HEIGHT / 2 - 28,
+        text: '⚡ FAST TRAVEL!',
+        color: '#00f5d4',
+        life: 1.0,
+        maxLife: 1.0
+      });
+      this.updateHUD();
+    };
+
     // Load existing run or initialize fresh run
     const restored = this.stateManager.loadRun();
     this.startNewRun(restored);

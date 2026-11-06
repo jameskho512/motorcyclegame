@@ -409,7 +409,7 @@ export class GarageController {
     this.stashList.innerHTML = '';
 
     const stash = metaSave.stash || [];
-    const GHOST_FILL = 12;
+    const GHOST_FILL = 11;
 
     if (stash.length === 0) {
       const msg = document.createElement('div');

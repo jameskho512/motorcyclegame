@@ -136,8 +136,13 @@ canvas#canvas {
 .hud-cluster .hud-btn,
 .hud-cluster .item-badge,
 .hud-cluster .sticker,
+.hud-cluster #minimap-canvas,
 .hud-cluster [data-tip] {
   pointer-events: auto;
+}
+
+#minimap-canvas {
+  cursor: pointer;
 }
 
 /* --------------------------------------------------------------------------

@@ -206,6 +206,8 @@ export class HUDController {
 
   private minimapCanvas: HTMLCanvasElement | null = null;
   private minimapCtx: CanvasRenderingContext2D | null = null;
+  private minimapRoomHitboxes: Array<{ x: number; y: number; rx: number; ry: number; visited: boolean }> = [];
+  public onFastTravelRoom?: (rx: number, ry: number) => void;
 
   private onSelectWeapon?: (id: WeaponId) => void;
 
@@ -237,6 +239,16 @@ export class HUDController {
       this.minimapCanvas = document.getElementById('minimap-canvas') as HTMLCanvasElement | null;
       if (this.minimapCanvas) {
         this.minimapCtx = this.minimapCanvas.getContext('2d');
+        this.minimapCanvas.addEventListener('click', (e: MouseEvent) => {
+          if (!this.onFastTravelRoom || !this.minimapCanvas) return;
+          const rect = this.minimapCanvas.getBoundingClientRect();
+          const mx = e.clientX - rect.left;
+          const my = e.clientY - rect.top;
+          const hit = this.minimapRoomHitboxes.find(hb => hb.visited && Math.hypot(mx - hb.x, my - hb.y) <= 22);
+          if (hit) {
+            this.onFastTravelRoom(hit.rx, hit.ry);
+          }
+        });
       }
     }
   }
@@ -474,11 +486,13 @@ export class HUDController {
     }
 
     // 3. Second pass: Draw 2.5D Isometric Diamond Room Tiles + Vector Icons
+    this.minimapRoomHitboxes = [];
     for (const r of rooms) {
       const { x: isoX, y: isoY } = projectIso(r.x, r.y);
       if (isoX < -tileW * 0.8 || isoX > mw + tileW * 0.8 || isoY < -tileH * 0.8 || isoY > mh + tileH * 0.8) {
         continue;
       }
+      this.minimapRoomHitboxes.push({ x: isoX, y: isoY, rx: r.x, ry: r.y, visited: !!r.visited });
 
       const isCurrent = r.x === curRoomX && r.y === curRoomY;
       let stroke: string;
