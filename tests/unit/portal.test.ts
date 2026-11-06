@@ -42,7 +42,8 @@ import {
   getScannerStationAdvisor,
   ScannerStationAdvisor,
   getWarRoomStationAdvisor,
-  WarRoomStationAdvisor
+  WarRoomStationAdvisor,
+  getLaunchGateAdvisor
 } from '../../src/ui/hubStationModal';
 import { WEAPONS, WeaponId, getWeaponTacticalProfile } from '../../src/data/weapons';
 import { getCareerOutlawRank } from '../../src/core/state';
@@ -1561,6 +1562,13 @@ describe('HubStationModalController & getHubStationPromptInfo (Wave 14-15)', () 
       });
       modal.open(options);
 
+      const overlay = document.getElementById('hub-station-overlay');
+      expect(overlay?.getAttribute('data-launch-ready-count')).toBe('0');
+      expect(overlay?.getAttribute('data-launch-fully-prepped')).toBe('false');
+      expect(overlay?.getAttribute('data-launch-advisor')).toBe(
+        'PRE-FLIGHT: ⚠️ MISSING SCANNER BUFF & WAR ROOM CACHE // WEAPON: SHOTGUN // HEAT 2'
+      );
+
       expect(document.getElementById('hub-station-title')?.textContent).toBe('🚀 SECTOR 1 HIGHWAY LAUNCH GATE');
       expect(document.getElementById('hub-station-speaker')?.textContent).toBe('DISPATCH OPERATOR');
       expect(document.body.innerHTML).toContain('SHOTGUN');
@@ -1576,6 +1584,12 @@ describe('HubStationModalController & getHubStationPromptInfo (Wave 14-15)', () 
       expect(options.bountyClaimed).toBe(true);
       expect(document.querySelector('.hub-ready-banner')?.textContent).toContain('All free pre-run systems calibrated');
 
+      expect(overlay?.getAttribute('data-launch-ready-count')).toBe('2');
+      expect(overlay?.getAttribute('data-launch-fully-prepped')).toBe('true');
+      expect(overlay?.getAttribute('data-launch-advisor')).toBe(
+        'PRE-FLIGHT: ✓ 2/2 BUFFS LOCKED // WEAPON: SHOTGUN // HEAT 2'
+      );
+
       // Click primary button to deploy into Sector 1
       const primaryBtn = document.getElementById('btn-hub-station-primary') as HTMLButtonElement;
       expect(primaryBtn.textContent).toContain('DEPLOY TO SECTOR 1 ►');
@@ -1583,6 +1597,77 @@ describe('HubStationModalController & getHubStationPromptInfo (Wave 14-15)', () 
 
       expect(modal.isOpen()).toBe(false);
       expect(onLaunchRun).toHaveBeenCalledTimes(1);
+    });
+
+    it('synchronizes #hub-station-overlay telemetry attributes across launch gate states', () => {
+      const overlay = document.getElementById('hub-station-overlay');
+
+      // State 0/2: missing both
+      modal.open(createHubOptions({
+        npcId: 'launch',
+        player: { weapon: 'pistol' },
+        metaSave: { heatLevel: 0 },
+        scannerClaimed: false,
+        bountyClaimed: false
+      }));
+      expect(overlay?.getAttribute('data-launch-ready-count')).toBe('0');
+      expect(overlay?.getAttribute('data-launch-fully-prepped')).toBe('false');
+      expect(overlay?.getAttribute('data-launch-advisor')).toBe(
+        'PRE-FLIGHT: ⚠️ MISSING SCANNER BUFF & WAR ROOM CACHE // WEAPON: PISTOL // HEAT 0'
+      );
+      modal.close();
+
+      // State 1/2: scanner only
+      modal.open(createHubOptions({
+        npcId: 'launch',
+        player: { weapon: 'shotgun', scannerBuff: true },
+        metaSave: { heatLevel: 1 },
+        scannerClaimed: false,
+        bountyClaimed: false
+      }));
+      expect(overlay?.getAttribute('data-launch-ready-count')).toBe('1');
+      expect(overlay?.getAttribute('data-launch-fully-prepped')).toBe('false');
+      expect(overlay?.getAttribute('data-launch-advisor')).toBe(
+        'PRE-FLIGHT: ⚠️ MISSING WAR ROOM CACHE // WEAPON: SHOTGUN // HEAT 1'
+      );
+      modal.close();
+
+      // State 1/2: cache only
+      modal.open(createHubOptions({
+        npcId: 'launch',
+        player: { weapon: 'plasma_rifle' },
+        metaSave: { heatLevel: 3 },
+        scannerClaimed: false,
+        bountyClaimed: true
+      }));
+      expect(overlay?.getAttribute('data-launch-ready-count')).toBe('1');
+      expect(overlay?.getAttribute('data-launch-fully-prepped')).toBe('false');
+      expect(overlay?.getAttribute('data-launch-advisor')).toBe(
+        'PRE-FLIGHT: ⚠️ MISSING SCANNER BUFF // WEAPON: PLASMA_RIFLE // HEAT 3'
+      );
+      modal.close();
+
+      // State 2/2: both claimed
+      const fullyPreppedOpts = createHubOptions({
+        npcId: 'launch',
+        player: { weapon: 'rocket_launcher' },
+        metaSave: { heatLevel: 2 },
+        scannerClaimed: true,
+        bountyClaimed: true
+      });
+      modal.open(fullyPreppedOpts);
+      expect(overlay?.getAttribute('data-launch-ready-count')).toBe('2');
+      expect(overlay?.getAttribute('data-launch-fully-prepped')).toBe('true');
+      expect(overlay?.getAttribute('data-launch-advisor')).toBe(
+        'PRE-FLIGHT: ✓ 2/2 BUFFS LOCKED // WEAPON: ROCKET_LAUNCHER // HEAT 2'
+      );
+
+      // Verify modal.render() resynchronizes attributes if state changes
+      fullyPreppedOpts.metaSave.heatLevel = 1;
+      modal.render();
+      expect(overlay?.getAttribute('data-launch-advisor')).toBe(
+        'PRE-FLIGHT: ✓ 2/2 BUFFS LOCKED // WEAPON: ROCKET_LAUNCHER // HEAT 1'
+      );
     });
 
     it('renders garage station summary and closes upon primary action click', () => {
@@ -2353,6 +2438,114 @@ describe('HubStationModalController & getHubStationPromptInfo (Wave 14-15)', () 
       const controller = new HubStationModalController();
       expect(controller.getWarRoomStationAdvisor(meta, true)).toEqual(
         getWarRoomStationAdvisor(meta, true)
+      );
+    });
+  });
+
+  describe('getLaunchGateAdvisor pure helper (M115)', () => {
+    it('returns State 0/2 when neither scanner nor cache is claimed', () => {
+      const advisor = getLaunchGateAdvisor({}, {}, false, false);
+      expect(advisor).toEqual({
+        readyCount: 0,
+        totalChecks: 2,
+        missingBuffs: ['SCANNER BUFF', 'WAR ROOM CACHE'],
+        isFullyPrepped: false,
+        summaryLine: 'PRE-FLIGHT: ⚠️ MISSING SCANNER BUFF & WAR ROOM CACHE // WEAPON: PISTOL // HEAT 0'
+      });
+    });
+
+    it('returns State 1/2 when only scanner is claimed (via scannerClaimed flag or player.scannerBuff)', () => {
+      // via scannerClaimed parameter
+      const advFlag = getLaunchGateAdvisor({ heatLevel: 1 }, { weapon: 'shotgun' }, true, false);
+      expect(advFlag.readyCount).toBe(1);
+      expect(advFlag.totalChecks).toBe(2);
+      expect(advFlag.missingBuffs).toEqual(['WAR ROOM CACHE']);
+      expect(advFlag.isFullyPrepped).toBe(false);
+      expect(advFlag.summaryLine).toBe(
+        'PRE-FLIGHT: ⚠️ MISSING WAR ROOM CACHE // WEAPON: SHOTGUN // HEAT 1'
+      );
+
+      // via player.scannerBuff property
+      const advBuff = getLaunchGateAdvisor({ heatLevel: 0 }, { weapon: 'shotgun', scannerBuff: true }, false, false);
+      expect(advBuff.readyCount).toBe(1);
+      expect(advBuff.totalChecks).toBe(2);
+      expect(advBuff.missingBuffs).toEqual(['WAR ROOM CACHE']);
+      expect(advBuff.isFullyPrepped).toBe(false);
+      expect(advBuff.summaryLine).toBe(
+        'PRE-FLIGHT: ⚠️ MISSING WAR ROOM CACHE // WEAPON: SHOTGUN // HEAT 0'
+      );
+    });
+
+    it('returns State 1/2 when only bounty cache is claimed', () => {
+      const advCache = getLaunchGateAdvisor({ heatLevel: 2 }, { weapon: 'plasma_rifle' }, false, true);
+      expect(advCache.readyCount).toBe(1);
+      expect(advCache.totalChecks).toBe(2);
+      expect(advCache.missingBuffs).toEqual(['SCANNER BUFF']);
+      expect(advCache.isFullyPrepped).toBe(false);
+      expect(advCache.summaryLine).toBe(
+        'PRE-FLIGHT: ⚠️ MISSING SCANNER BUFF // WEAPON: PLASMA_RIFLE // HEAT 2'
+      );
+    });
+
+    it('returns State 2/2 when both scanner and bounty cache are claimed', () => {
+      const advBoth = getLaunchGateAdvisor({ heatLevel: 3 }, { weapon: 'pistol' }, true, true);
+      expect(advBoth).toEqual({
+        readyCount: 2,
+        totalChecks: 2,
+        missingBuffs: [],
+        isFullyPrepped: true,
+        summaryLine: 'PRE-FLIGHT: ✓ 2/2 BUFFS LOCKED // WEAPON: PISTOL // HEAT 3'
+      });
+    });
+
+    it('formats weapon name in uppercase and defaults to PISTOL when missing or empty', () => {
+      expect(getLaunchGateAdvisor(null, null).summaryLine).toContain('// WEAPON: PISTOL');
+      expect(getLaunchGateAdvisor({}, {}).summaryLine).toContain('// WEAPON: PISTOL');
+      expect(getLaunchGateAdvisor({}, { weapon: 'shotgun' }).summaryLine).toContain('// WEAPON: SHOTGUN');
+      expect(getLaunchGateAdvisor({}, { weapon: 'rocket_launcher' }).summaryLine).toContain('// WEAPON: ROCKET_LAUNCHER');
+    });
+
+    it('clamps and floors heat levels between 0 and 3', () => {
+      expect(getLaunchGateAdvisor({ heatLevel: 0 }).summaryLine).toContain('// HEAT 0');
+      expect(getLaunchGateAdvisor({ heatLevel: 1 }).summaryLine).toContain('// HEAT 1');
+      expect(getLaunchGateAdvisor({ heatLevel: 2 }).summaryLine).toContain('// HEAT 2');
+      expect(getLaunchGateAdvisor({ heatLevel: 3 }).summaryLine).toContain('// HEAT 3');
+      expect(getLaunchGateAdvisor({ heatLevel: -2 }).summaryLine).toContain('// HEAT 0');
+      expect(getLaunchGateAdvisor({ heatLevel: 10 }).summaryLine).toContain('// HEAT 3');
+      expect(getLaunchGateAdvisor({ heatLevel: 2.8 }).summaryLine).toContain('// HEAT 2');
+      expect(getLaunchGateAdvisor({ heatLevel: NaN }).summaryLine).toContain('// HEAT 0');
+      expect(getLaunchGateAdvisor({ heatLevel: Infinity }).summaryLine).toContain('// HEAT 0');
+    });
+
+    it('gracefully handles missing, null, undefined, and non-object inputs', () => {
+      const advNull = getLaunchGateAdvisor(null, null);
+      expect(advNull.readyCount).toBe(0);
+      expect(advNull.totalChecks).toBe(2);
+      expect(advNull.isFullyPrepped).toBe(false);
+      expect(advNull.summaryLine).toBe(
+        'PRE-FLIGHT: ⚠️ MISSING SCANNER BUFF & WAR ROOM CACHE // WEAPON: PISTOL // HEAT 0'
+      );
+
+      const advUndef = getLaunchGateAdvisor(undefined, undefined);
+      expect(advUndef.readyCount).toBe(0);
+      expect(advUndef.isFullyPrepped).toBe(false);
+
+      const advPrimitive = getLaunchGateAdvisor('invalid' as any, 123 as any);
+      expect(advPrimitive.readyCount).toBe(0);
+      expect(advPrimitive.isFullyPrepped).toBe(false);
+    });
+
+    it('is accessible via HubStationModalController static and instance methods', () => {
+      const meta = { heatLevel: 2 };
+      const player = { weapon: 'shotgun', scannerBuff: true };
+
+      expect(HubStationModalController.getLaunchGateAdvisor(meta, player, false, true)).toEqual(
+        getLaunchGateAdvisor(meta, player, false, true)
+      );
+
+      const controller = new HubStationModalController();
+      expect(controller.getLaunchGateAdvisor(meta, player, false, true)).toEqual(
+        getLaunchGateAdvisor(meta, player, false, true)
       );
     });
   });

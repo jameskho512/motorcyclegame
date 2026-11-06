@@ -170,6 +170,50 @@ export function getWarRoomStationAdvisor(
   };
 }
 
+export interface LaunchGateAdvisor {
+  readyCount: number;
+  totalChecks: number;
+  missingBuffs: string[];
+  isFullyPrepped: boolean;
+  summaryLine: string;
+}
+
+/**
+ * Computes sanctuary launch gate pre-flight readiness and missing buff advisor intelligence.
+ */
+export function getLaunchGateAdvisor(
+  metaSave?: any,
+  player?: any,
+  scannerClaimed: boolean = false,
+  bountyClaimed: boolean = false
+): LaunchGateAdvisor {
+  const hasScanner = !!(scannerClaimed || player?.scannerBuff);
+  const hasCache = !!bountyClaimed;
+  const missingBuffs: string[] = [];
+  if (!hasScanner) missingBuffs.push('SCANNER BUFF');
+  if (!hasCache) missingBuffs.push('WAR ROOM CACHE');
+  const totalChecks = 2;
+  const readyCount = (hasScanner ? 1 : 0) + (hasCache ? 1 : 0);
+  const isFullyPrepped = readyCount === totalChecks;
+  const weaponName = String(player?.weapon || 'pistol').toUpperCase();
+  const heat =
+    typeof metaSave?.heatLevel === 'number' && Number.isFinite(metaSave.heatLevel)
+      ? Math.max(0, Math.min(3, Math.floor(metaSave.heatLevel)))
+      : 0;
+  const statusPart = isFullyPrepped
+    ? 'PRE-FLIGHT: ✓ 2/2 BUFFS LOCKED'
+    : 'PRE-FLIGHT: ⚠️ MISSING ' + missingBuffs.join(' & ');
+  const summaryLine = statusPart + ' // WEAPON: ' + weaponName + ' // HEAT ' + heat;
+
+  return {
+    readyCount,
+    totalChecks,
+    missingBuffs,
+    isFullyPrepped,
+    summaryLine
+  };
+}
+
 export interface HubStationPromptInfo {
   title: string;
   summary: string;
@@ -303,6 +347,8 @@ export class HubStationModalController {
   public getScannerStationAdvisor = getScannerStationAdvisor;
   public static getWarRoomStationAdvisor = getWarRoomStationAdvisor;
   public getWarRoomStationAdvisor = getWarRoomStationAdvisor;
+  public static getLaunchGateAdvisor = getLaunchGateAdvisor;
+  public getLaunchGateAdvisor = getLaunchGateAdvisor;
 
   constructor() {
     if (typeof document !== 'undefined') {
@@ -474,6 +520,18 @@ export class HubStationModalController {
         this.overlay.setAttribute('data-war-room-rec-heat', String(warAdv.recommendedMaxHeat));
         this.overlay.setAttribute('data-war-room-advisor', warAdv.summaryLine);
       }
+
+      if (options.npcId === 'launch') {
+        const launchAdv = getLaunchGateAdvisor(
+          options.metaSave,
+          options.player,
+          !!options.scannerClaimed,
+          !!options.bountyClaimed
+        );
+        this.overlay.setAttribute('data-launch-ready-count', String(launchAdv.readyCount));
+        this.overlay.setAttribute('data-launch-fully-prepped', launchAdv.isFullyPrepped ? 'true' : 'false');
+        this.overlay.setAttribute('data-launch-advisor', launchAdv.summaryLine);
+      }
     }
 
     this.renderHeaderAndPurpose(options.npcId);
@@ -512,6 +570,18 @@ export class HubStationModalController {
         this.overlay.setAttribute('data-war-room-heat', String(warAdv.currentHeat));
         this.overlay.setAttribute('data-war-room-rec-heat', String(warAdv.recommendedMaxHeat));
         this.overlay.setAttribute('data-war-room-advisor', warAdv.summaryLine);
+      }
+
+      if (this.currentOptions.npcId === 'launch') {
+        const launchAdv = getLaunchGateAdvisor(
+          this.currentOptions.metaSave,
+          this.currentOptions.player,
+          !!this.currentOptions.scannerClaimed,
+          !!this.currentOptions.bountyClaimed
+        );
+        this.overlay.setAttribute('data-launch-ready-count', String(launchAdv.readyCount));
+        this.overlay.setAttribute('data-launch-fully-prepped', launchAdv.isFullyPrepped ? 'true' : 'false');
+        this.overlay.setAttribute('data-launch-advisor', launchAdv.summaryLine);
       }
     }
     this.renderHeaderAndPurpose(this.currentOptions.npcId);
@@ -575,6 +645,28 @@ export class HubStationModalController {
         this.currentOptions.bountyClaimed = options.bountyClaimed;
       }
       this.renderBountyBody(opts.metaSave, opts.bountyClaimed);
+    }
+  }
+
+  /**
+   * Renders the sector 1 launch gate station view.
+   */
+  public renderLaunch(options?: HubStationOpenOptions): void {
+    const opts = options || this.currentOptions;
+    if (opts) {
+      if (options?.metaSave && this.currentOptions) {
+        this.currentOptions.metaSave = options.metaSave;
+      }
+      if (options?.player && this.currentOptions) {
+        this.currentOptions.player = options.player;
+      }
+      if (options?.scannerClaimed !== undefined && this.currentOptions) {
+        this.currentOptions.scannerClaimed = options.scannerClaimed;
+      }
+      if (options?.bountyClaimed !== undefined && this.currentOptions) {
+        this.currentOptions.bountyClaimed = options.bountyClaimed;
+      }
+      this.renderLaunchBody(opts.metaSave, opts.player, opts.scannerClaimed, opts.bountyClaimed);
     }
   }
 
@@ -705,6 +797,15 @@ export class HubStationModalController {
         this.overlayEl.setAttribute('data-war-room-heat', String(advisor.currentHeat));
         this.overlayEl.setAttribute('data-war-room-rec-heat', String(advisor.recommendedMaxHeat));
         this.overlayEl.setAttribute('data-war-room-advisor', advisor.summaryLine);
+      }
+    }
+
+    if (npcId === 'launch') {
+      const advisor = getLaunchGateAdvisor(metaSave, player, scannerClaimed, bountyClaimed);
+      if (this.overlayEl) {
+        this.overlayEl.setAttribute('data-launch-ready-count', String(advisor.readyCount));
+        this.overlayEl.setAttribute('data-launch-fully-prepped', advisor.isFullyPrepped ? 'true' : 'false');
+        this.overlayEl.setAttribute('data-launch-advisor', advisor.summaryLine);
       }
     }
 
@@ -1008,6 +1109,12 @@ export class HubStationModalController {
     bountyClaimed: boolean
   ): void {
     if (!this.bodyEl || !this.currentOptions) return;
+    const advisor = getLaunchGateAdvisor(metaSave, player, scannerClaimed, bountyClaimed);
+    if (this.overlay) {
+      this.overlay.setAttribute('data-launch-ready-count', String(advisor.readyCount));
+      this.overlay.setAttribute('data-launch-fully-prepped', advisor.isFullyPrepped ? 'true' : 'false');
+      this.overlay.setAttribute('data-launch-advisor', advisor.summaryLine);
+    }
     const weaponName = (player?.weapon || 'pistol').toUpperCase();
     const heat = metaSave?.heatLevel || 0;
     const heatBonus = heat * 25;

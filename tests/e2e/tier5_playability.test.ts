@@ -83,6 +83,9 @@ import { getModStackTierClass, HUDController } from '@/ui/hud';
 import { getPortalRiskAssessment, PORTAL_X, PORTAL_Y } from '@/ui/portalModal';
 import { getStashSalvageSummary } from '@/ui/garage';
 import { formatDummyHitTelemetry } from '@/systems/combat';
+import { HubStationModalController, getWarRoomStationAdvisor } from '@/ui/hubStationModal';
+import { META_UPGRADES, calcUpgradeCost, type MetaUpgradeId } from '@/data/upgrades';
+import { getFloorBountyContractStatus } from '@/core/state';
 
 describe('Tier 5: Playability Verification & End-to-End Simulation', () => {
   let player: PlayerState;
@@ -2375,6 +2378,551 @@ describe('Tier 5: Playability Verification & End-to-End Simulation', () => {
           expect(dist).toBeGreaterThanOrEqual(20);
         }
       }
+    });
+  });
+
+  // ==========================================================================
+  // 11. GARAGE TUNING TELEMETRY & SANCTUARY WAR ROOM ADVISOR PLAYABILITY (M117)
+  // ==========================================================================
+  describe('Garage Tuning Progress Telemetry & Sanctuary War Room Advisor Playability (M117)', () => {
+    it('verifies GarageController live tuning upgrades (onBuyUpgrade / renderMetaUpgrades) update #meta-upgrade-list and #garage-overlay telemetry attributes from 0 ranks (0%) up to 19 maxed ranks (100%, MAXED)', () => {
+      document.body.innerHTML = `
+        <div id="garage-overlay">
+          <canvas id="bike-canvas" width="300" height="190"></canvas>
+          <div id="slots-left"></div>
+          <div id="slots-right"></div>
+          <div id="eq-totals"></div>
+          <div id="stash-list"></div>
+          <div id="unlock-list"></div>
+          <div id="meta-upgrade-list"></div>
+        </div>
+      `;
+
+      const meta: MetaSaveState = createDefaultMetaSave();
+      meta.scrap = 0;
+      meta.ranks = { dmg: 0, fireRate: 0, speed: 0, maxHp: 0 };
+
+      const overlayEl = document.getElementById('garage-overlay')!;
+      const listEl = document.getElementById('meta-upgrade-list')!;
+
+      const callbacks: GarageCallbacks = {
+        onEquipItem: vi.fn(),
+        onUnequipSlot: vi.fn(),
+        onSellItem: vi.fn(),
+        onUnlockWeapon: vi.fn(),
+        onEquipWeapon: vi.fn(),
+        onBuyUpgrade: vi.fn((upId: MetaUpgradeId) => {
+          const currentRank = meta.ranks[upId] || 0;
+          const upDef = META_UPGRADES[upId];
+          if (currentRank < upDef.maxRank) {
+            const cost = calcUpgradeCost(upDef, currentRank);
+            if (meta.scrap >= cost) {
+              meta.scrap -= cost;
+              meta.ranks[upId] = currentRank + 1;
+              garage.renderMetaUpgrades(meta);
+            }
+          }
+        }),
+        onResumeRun: vi.fn(),
+        onNewRun: vi.fn(),
+        onResetSave: vi.fn()
+      };
+
+      const garage = new GarageController(callbacks);
+      garage.open(false, 1, meta, player);
+
+      // Phase 1: 0 Ranks, 0% completion, cannot afford next upgrade (0 scrap vs cheapest 20)
+      expect(listEl.getAttribute('data-tuning-total-ranks')).toBe('0');
+      expect(listEl.getAttribute('data-tuning-completion-pct')).toBe('0');
+      expect(listEl.getAttribute('data-tuning-next-upgrade')).toBe('speed');
+      expect(listEl.getAttribute('data-tuning-can-afford-next')).toBe('false');
+      expect(listEl.getAttribute('data-tuning-summary')).toContain('0/19 RANKS (0%)');
+      expect(listEl.getAttribute('data-tuning-summary')).toContain('NEXT: TWIN-CAM ENGINE TUNE (20 SCRAP)');
+
+      expect(overlayEl.getAttribute('data-tuning-total-ranks')).toBe('0');
+      expect(overlayEl.getAttribute('data-tuning-completion-pct')).toBe('0');
+      expect(overlayEl.getAttribute('data-tuning-next-upgrade')).toBe('speed');
+      expect(overlayEl.getAttribute('data-tuning-can-afford-next')).toBe('false');
+      expect(overlayEl.getAttribute('data-tuning-summary')).toContain('0/19 RANKS (0%)');
+
+      // Grant sufficient scrap to afford upgrades
+      meta.scrap = 50000;
+      garage.renderMetaUpgrades(meta);
+
+      expect(listEl.getAttribute('data-tuning-can-afford-next')).toBe('true');
+      expect(overlayEl.getAttribute('data-tuning-can-afford-next')).toBe('true');
+
+      // Phase 2: Live click of upgrade button for speed (lowest base cost: 20 scrap)
+      const upgradeButtons = Array.from(listEl.querySelectorAll<HTMLButtonElement>('.gx-upgrade-btn'));
+      expect(upgradeButtons.length).toBe(4);
+
+      const speedBtn = upgradeButtons[2];
+      expect(speedBtn.getAttribute('aria-label')).toContain('Twin-Cam Engine Tune');
+      speedBtn.click();
+
+      expect(callbacks.onBuyUpgrade).toHaveBeenCalledWith('speed');
+      expect(meta.ranks.speed).toBe(1);
+      expect(listEl.getAttribute('data-tuning-total-ranks')).toBe('1');
+      expect(listEl.getAttribute('data-tuning-completion-pct')).toBe('5');
+      expect(overlayEl.getAttribute('data-tuning-total-ranks')).toBe('1');
+      expect(overlayEl.getAttribute('data-tuning-completion-pct')).toBe('5');
+
+      // Phase 3: Incrementally purchase remaining ranks across all 4 upgrades up to 19 maxed ranks
+      const upgradeOrder: MetaUpgradeId[] = ['speed', 'dmg', 'fireRate', 'maxHp'];
+      for (const upId of upgradeOrder) {
+        const def = META_UPGRADES[upId];
+        while ((meta.ranks[upId] || 0) < def.maxRank) {
+          callbacks.onBuyUpgrade(upId);
+        }
+      }
+
+      // Verify all 4 upgrades reached maxRank (dmg: 5, fireRate: 5, speed: 5, maxHp: 4 -> 19 total)
+      expect(meta.ranks.dmg).toBe(5);
+      expect(meta.ranks.fireRate).toBe(5);
+      expect(meta.ranks.speed).toBe(5);
+      expect(meta.ranks.maxHp).toBe(4);
+
+      // Phase 4: Telemetry verification at 19 maxed ranks (100%, MAXED)
+      expect(listEl.getAttribute('data-tuning-total-ranks')).toBe('19');
+      expect(listEl.getAttribute('data-tuning-completion-pct')).toBe('100');
+      expect(listEl.getAttribute('data-tuning-next-upgrade')).toBe('MAXED');
+      expect(listEl.getAttribute('data-tuning-can-afford-next')).toBe('false');
+      expect(listEl.getAttribute('data-tuning-summary')).toBe('TUNING: 19/19 RANKS (100%) · ALL SYSTEMS MAXED');
+
+      expect(overlayEl.getAttribute('data-tuning-total-ranks')).toBe('19');
+      expect(overlayEl.getAttribute('data-tuning-completion-pct')).toBe('100');
+      expect(overlayEl.getAttribute('data-tuning-next-upgrade')).toBe('MAXED');
+      expect(overlayEl.getAttribute('data-tuning-can-afford-next')).toBe('false');
+      expect(overlayEl.getAttribute('data-tuning-summary')).toBe('TUNING: 19/19 RANKS (100%) · ALL SYSTEMS MAXED');
+
+      const finalButtons = Array.from(listEl.querySelectorAll<HTMLButtonElement>('.gx-upgrade-btn'));
+      expect(finalButtons.length).toBe(4);
+      finalButtons.forEach(btn => {
+        expect(btn.textContent).toBe('MAXED');
+        expect(btn.disabled).toBe(true);
+      });
+
+      garage.close();
+    });
+
+    it('verifies HubStationModalController opened at bounty station populates data-war-room-heat, data-war-room-rec-heat, and data-war-room-advisor on #hub-station-overlay and updates dynamically when clicking #btn-hub-claim-cache and .hub-heat-btn', () => {
+      document.body.innerHTML = `
+        <button id="outside-focus-btn" type="button">outside</button>
+        <button type="button" id="hub-interact-banner" class="hub-interact-banner" hidden>
+          <span class="hub-interact-key">[PRESS E]</span>
+          <div class="hub-interact-copy">
+            <strong id="hub-interact-title"></strong>
+            <span id="hub-interact-desc"></span>
+          </div>
+        </button>
+        <div id="hub-station-overlay" aria-hidden="true">
+          <div class="hub-station-card" role="dialog" aria-modal="true" aria-labelledby="hub-station-title">
+            <header class="hub-station-header">
+              <div class="hub-station-title-wrap">
+                <span class="hub-station-kicker" id="hub-station-kicker"></span>
+                <h2 class="hub-station-title" id="hub-station-title"></h2>
+              </div>
+              <div class="hub-station-speaker-pill" id="hub-station-speaker"></div>
+            </header>
+            <blockquote class="hub-station-quote" id="hub-station-quote"></blockquote>
+            <div class="hub-station-purpose" id="hub-station-purpose"></div>
+            <div class="hub-station-body" id="hub-station-body"></div>
+            <div class="hub-station-feedback" id="hub-station-feedback" hidden></div>
+            <footer class="hub-station-actions" id="hub-station-actions">
+              <button type="button" class="portal-btn portal-btn--primary" id="btn-hub-station-primary"><kbd>E</kbd> ACTIVATE</button>
+              <button type="button" class="portal-btn portal-btn--secondary" id="btn-hub-station-secondary">CYCLE HEAT</button>
+              <button type="button" class="portal-btn portal-btn--secondary" id="btn-hub-station-close"><kbd>ESC</kbd> CLOSE</button>
+            </footer>
+          </div>
+        </div>
+      `;
+
+      const modal = new HubStationModalController();
+      const overlayEl = document.getElementById('hub-station-overlay')!;
+
+      const metaSave: { heatLevel: number; equipped: Record<string, any>; ranks: Record<string, number> } = {
+        heatLevel: 0,
+        equipped: {},
+        ranks: {}
+      };
+      let bountyClaimedState = false;
+
+      const onClaimBountyCache = vi.fn(() => {
+        bountyClaimedState = true;
+        return { ok: true, message: 'Free War Room Cache Claimed! (+15 Coins & +1 Max Hull)' };
+      });
+
+      const onSelectHeat = vi.fn((heat: number) => {
+        metaSave.heatLevel = heat;
+      });
+
+      modal.open({
+        npcId: 'bounty',
+        metaSave,
+        player,
+        scannerClaimed: false,
+        bountyClaimed: bountyClaimedState,
+        onReforge: vi.fn(() => ({ ok: true, message: '' })),
+        onClaimScanner: vi.fn(() => ({ ok: true, message: '' })),
+        onClaimBountyCache,
+        onSelectHeat,
+        onLaunchRun: vi.fn(),
+        onClose: vi.fn()
+      });
+
+      // 1. Initial War Room advisor telemetry attributes
+      expect(overlayEl.getAttribute('data-war-room-heat')).toBe('0');
+      expect(overlayEl.getAttribute('data-war-room-rec-heat')).toBe('0');
+      const initialAdvisor = overlayEl.getAttribute('data-war-room-advisor');
+      expect(initialAdvisor).toContain('CACHE: ⚡ FREE DROP READY (+15 🪙 / +1 ❤️)');
+      expect(initialAdvisor).toContain('// HEAT 0 (+0% SCRAP)');
+      expect(initialAdvisor).toContain('// REC HEAT: <= 0');
+
+      // 2. Click #btn-hub-claim-cache to claim free pre-run supply cache
+      const cacheBtn = document.getElementById('btn-hub-claim-cache') as HTMLButtonElement;
+      expect(cacheBtn).not.toBeNull();
+      expect(cacheBtn.textContent).toContain('CLAIM FREE SUPPLY CACHE');
+      expect(cacheBtn.disabled).toBe(false);
+
+      cacheBtn.click();
+
+      expect(onClaimBountyCache).toHaveBeenCalledTimes(1);
+      const postClaimAdvisor = overlayEl.getAttribute('data-war-room-advisor');
+      expect(postClaimAdvisor).toContain('CACHE: ✓ CLAIMED (+15 🪙 / +1 ❤️)');
+      expect(postClaimAdvisor).toContain('// HEAT 0 (+0% SCRAP)');
+      const postClaimCacheBtn = document.getElementById('btn-hub-claim-cache') as HTMLButtonElement;
+      expect(postClaimCacheBtn.disabled).toBe(true);
+      expect(postClaimCacheBtn.classList.contains('is-claimed')).toBe(true);
+
+      // 3. Click .hub-heat-btn for HEAT 3 to dial threat to maximum (+75% Scrap)
+      const heat3Btn = document.querySelector<HTMLButtonElement>('.hub-heat-btn[data-heat="3"]');
+      expect(heat3Btn).not.toBeNull();
+
+      heat3Btn!.click();
+
+      expect(onSelectHeat).toHaveBeenCalledWith(3);
+      expect(metaSave.heatLevel).toBe(3);
+      expect(overlayEl.getAttribute('data-war-room-heat')).toBe('3');
+      expect(overlayEl.getAttribute('data-war-room-rec-heat')).toBe('0');
+
+      const finalAdvisor = overlayEl.getAttribute('data-war-room-advisor');
+      expect(finalAdvisor).toContain('CACHE: ✓ CLAIMED (+15 🪙 / +1 ❤️)');
+      expect(finalAdvisor).toContain('// HEAT 3 (+75% SCRAP)');
+      expect(finalAdvisor).toContain('// REC HEAT: <= 0');
+
+      const activeHeatBtn = document.querySelector<HTMLButtonElement>('.hub-heat-btn.active');
+      expect(activeHeatBtn?.getAttribute('data-heat')).toBe('3');
+
+      modal.close();
+    });
+
+    it('verifies getWarRoomStationAdvisor recommended max heat scales from 0 (stock bike) -> 1 -> 2 -> 3 as the player equips 6 pieces of armor and purchases tuning ranks in MotoRogueApp', () => {
+      document.body.innerHTML = `
+        <div id="app-layout">
+          <aside class="sidebar-col" id="left-sidebar">
+            <div id="hud-left"></div>
+            <span id="hp-text">6 / 6</span>
+            <canvas id="fuel-gauge" width="240" height="120"></canvas>
+            <div id="nos-fill"></div>
+            <strong id="coin-count">0 🪙</strong>
+            <strong id="scrap-count">0 ⚙️</strong>
+            <strong id="floor-num">1</strong>
+            <canvas id="minimap-canvas" width="240" height="150"></canvas>
+            <div id="save-status">Autosave: local storage</div>
+            <button id="btn-open-garage">[G] Garage &amp; Tuning</button>
+            <button id="btn-toggle-sound">🔊 [M]</button>
+          </aside>
+          <div id="game-wrapper">
+            <canvas id="canvas" width="720" height="720"></canvas>
+            <button type="button" id="hub-interact-banner" class="hub-interact-banner" hidden>
+              <span class="hub-interact-key">[PRESS E]</span>
+              <div class="hub-interact-copy">
+                <strong id="hub-interact-title">STATION</strong>
+                <span id="hub-interact-desc">Interact</span>
+              </div>
+            </button>
+            <div id="hub-station-overlay" aria-hidden="true">
+              <div class="hub-station-card">
+                <span id="hub-station-kicker">SANCTUARY</span>
+                <h2 id="hub-station-title">STATION</h2>
+                <div id="hub-station-speaker">NPC</div>
+                <blockquote id="hub-station-quote"></blockquote>
+                <div id="hub-station-purpose"></div>
+                <div id="hub-station-body"></div>
+                <div id="hub-station-feedback" hidden></div>
+                <button type="button" id="btn-hub-station-primary">[E] ACTIVATE</button>
+                <button type="button" id="btn-hub-station-secondary">CYCLE HEAT</button>
+                <button type="button" id="btn-hub-station-close">[ESC] CLOSE</button>
+              </div>
+            </div>
+            <div id="portal-confirm-overlay" aria-hidden="true">
+              <div class="portal-card">
+                <h2 id="portal-floor-label" class="portal-headline"></h2>
+                <p id="portal-warning" class="portal-warning"></p>
+                <div class="portal-actions">
+                  <button id="btn-portal-confirm" type="button" class="portal-btn"></button>
+                  <button id="btn-portal-cancel" type="button" class="portal-btn"></button>
+                </div>
+              </div>
+            </div>
+            <div id="shop-confirm-overlay">
+              <div class="shop-item-name" id="shop-modal-name">Item Name</div>
+              <div class="shop-item-desc" id="shop-modal-desc">Item Description</div>
+              <div class="shop-item-cost" id="shop-modal-cost">Cost: 15 Coins</div>
+              <button id="btn-confirm-buy">[E] Confirm Purchase</button>
+              <button id="btn-cancel-buy">[ESC] Cancel</button>
+            </div>
+            <div id="garage-overlay">
+              <h1 id="modal-title">MOTO-GARAGE</h1>
+              <p id="modal-subtitle">Sub</p>
+              <span id="modal-scrap">0</span>
+              <canvas id="bike-canvas" width="300" height="190"></canvas>
+              <div id="slots-left"></div>
+              <div id="slots-right"></div>
+              <div id="eq-totals"></div>
+              <div id="stash-list"></div>
+              <div id="unlock-list"></div>
+              <div id="meta-upgrade-list"></div>
+              <button id="btn-resume">Resume Run</button>
+              <button id="btn-new-run">Start Fresh Run</button>
+              <button id="btn-reset-save">Full Save Reset</button>
+            </div>
+          </div>
+          <aside class="sidebar-col" id="right-sidebar">
+            <div id="weapon-bar"></div>
+            <div id="stats-grid"></div>
+            <div id="items-list"></div>
+            <div id="hud-synergy-list"></div>
+            <div id="synergy-list"></div>
+          </aside>
+        </div>
+        <div id="tooltip"></div>
+      `;
+
+      const app = new MotoRogueApp();
+      app.enterHomeBase();
+
+      const meta = app.stateManager.metaSave;
+      meta.equipped = {};
+      meta.ranks = { dmg: 0, fireRate: 0, speed: 0, maxHp: 0 };
+
+      // Step 1: Stock bike (0 equipped pieces, 0 tuning ranks -> readinessScore 0 -> rec heat 0)
+      let advisor = getWarRoomStationAdvisor(meta, false);
+      expect(advisor.recommendedMaxHeat).toBe(0);
+      expect(advisor.summaryLine).toContain('REC HEAT: <= 0');
+
+      // Step 2: Equip 2 pieces of armor (equippedCount = 2 -> readinessScore = 2*2 + 0 = 4 -> rec heat 1)
+      meta.equipped.tires = {
+        slot: 'tires',
+        rarity: 1,
+        name: 'Street Slicks',
+        stats: { speed: 10 }
+      };
+      meta.equipped.engine = {
+        slot: 'engine',
+        rarity: 1,
+        name: 'Twin Cylinder Engine',
+        stats: { speed: 15 }
+      };
+
+      advisor = getWarRoomStationAdvisor(meta, false);
+      expect(advisor.recommendedMaxHeat).toBe(1);
+      expect(advisor.summaryLine).toContain('REC HEAT: <= 1');
+
+      // Step 3: Equip all remaining 4 pieces (total 6 pieces equipped -> readinessScore = 6*2 + 0 = 12 -> rec heat 2)
+      meta.equipped.handlebars = {
+        slot: 'handlebars',
+        rarity: 1,
+        name: 'Apex Clip-Ons',
+        stats: { speed: 10 }
+      };
+      meta.equipped.exhaust = {
+        slot: 'exhaust',
+        rarity: 1,
+        name: 'Slash-Cut Exhaust',
+        stats: { dmg: 5 }
+      };
+      meta.equipped.frame = {
+        slot: 'frame',
+        rarity: 1,
+        name: 'Reinforced Steel Frame',
+        stats: { hp: 10 }
+      };
+      meta.equipped.tank = {
+        slot: 'tank',
+        rarity: 1,
+        name: 'High-Capacity Fuel Cell',
+        stats: { hp: 20 }
+      };
+
+      advisor = getWarRoomStationAdvisor(meta, false);
+      expect(advisor.recommendedMaxHeat).toBe(2);
+      expect(advisor.summaryLine).toContain('REC HEAT: <= 2');
+
+      // Step 4: Purchase permanent tuning ranks in MotoRogueApp via onBuyUpgrade
+      // (6 ranks purchased: 3 dmg + 3 fireRate -> readinessScore = 6*2 + 6 = 18 -> rec heat 3)
+      meta.scrap = 50000;
+      const garageCallbacks = (app as any).garage.callbacks;
+      garageCallbacks.onBuyUpgrade('dmg');
+      garageCallbacks.onBuyUpgrade('dmg');
+      garageCallbacks.onBuyUpgrade('dmg');
+      garageCallbacks.onBuyUpgrade('fireRate');
+      garageCallbacks.onBuyUpgrade('fireRate');
+      garageCallbacks.onBuyUpgrade('fireRate');
+
+      expect(meta.ranks.dmg).toBe(3);
+      expect(meta.ranks.fireRate).toBe(3);
+
+      advisor = getWarRoomStationAdvisor(meta, false);
+      expect(advisor.recommendedMaxHeat).toBe(3);
+      expect(advisor.summaryLine).toContain('REC HEAT: <= 3');
+
+      // Step 5: Verify that when interacting with the Bounty War Room station, the overlay reflects recommended max heat 3
+      const hubRoom = app.getCurrentRoom()!;
+      const bountyNpc = hubRoom.pickups.find(p => (p as any).npcId === 'bounty')!;
+      expect(bountyNpc).toBeDefined();
+
+      app.stateManager.player.x = bountyNpc.x;
+      app.stateManager.player.y = bountyNpc.y;
+      app.update(0.016);
+
+      // Trigger interaction
+      (app as any).handleHubInteract();
+
+      const overlayEl = document.getElementById('hub-station-overlay')!;
+      expect(overlayEl.classList.contains('visible')).toBe(true);
+      expect(overlayEl.getAttribute('data-war-room-rec-heat')).toBe('3');
+      expect(overlayEl.getAttribute('data-war-room-advisor')).toContain('REC HEAT: <= 3');
+    });
+
+    it('verifies HUDController live Floor Bounty Telemetry (data-bounty-contract-title, data-bounty-style-met, data-bounty-summary) during simulated gameplay across Floors 1–3 in MotoRogueApp', () => {
+      document.body.innerHTML = `
+        <div id="app-layout">
+          <aside class="sidebar-col" id="left-sidebar">
+            <div id="hud-left"></div>
+            <span id="hp-text">6 / 6</span>
+            <canvas id="fuel-gauge" width="240" height="120"></canvas>
+            <div id="nos-fill"></div>
+            <strong id="coin-count">0 🪙</strong>
+            <strong id="scrap-count">0 ⚙️</strong>
+            <strong id="floor-num">1</strong>
+            <canvas id="minimap-canvas" width="240" height="150"></canvas>
+            <div id="save-status">Autosave: local storage</div>
+            <button id="btn-open-garage">[G] Garage &amp; Tuning</button>
+            <button id="btn-toggle-sound">🔊 [M]</button>
+          </aside>
+          <div id="game-wrapper">
+            <canvas id="canvas" width="720" height="720"></canvas>
+            <div id="hub-station-overlay" aria-hidden="true"></div>
+            <div id="portal-confirm-overlay" aria-hidden="true"></div>
+            <div id="shop-confirm-overlay"></div>
+            <div id="garage-overlay">
+              <div id="meta-upgrade-list"></div>
+            </div>
+          </div>
+          <aside class="sidebar-col" id="right-sidebar">
+            <div id="weapon-bar"></div>
+            <div id="stats-grid"></div>
+            <div id="items-list"></div>
+            <div id="hud-synergy-list"></div>
+            <div id="synergy-list"></div>
+          </aside>
+        </div>
+        <div id="tooltip"></div>
+      `;
+
+      const app = new MotoRogueApp();
+      app.startNewRun(false);
+
+      const synList = document.getElementById('hud-synergy-list')!;
+      const altSynList = document.getElementById('synergy-list')!;
+      expect(synList).not.toBeNull();
+      expect(altSynList).not.toBeNull();
+
+      // ========================================================================
+      // FLOOR 1: "NEON DAREDEVIL" (Graze 3 projectiles or clear Floor 1 Boss)
+      // ========================================================================
+      expect(app.stateManager.floorNum).toBe(1);
+      app.stateManager.player.styleScore = 15;
+      app.stateManager.player.styleRank = 'D';
+      app.updateHUD();
+
+      const f1Status = getFloorBountyContractStatus(1, app.stateManager.player);
+      expect(f1Status.contractTitle).toBe('NEON DAREDEVIL');
+      expect(f1Status.isStyleMilestoneMet).toBe(false);
+
+      expect(synList.getAttribute('data-bounty-contract-title')).toBe('NEON DAREDEVIL');
+      expect(synList.getAttribute('data-bounty-style-met')).toBe('false');
+      expect(synList.getAttribute('data-bounty-summary')).toBe(f1Status.summaryLine);
+
+      expect(altSynList.getAttribute('data-bounty-contract-title')).toBe('NEON DAREDEVIL');
+      expect(altSynList.getAttribute('data-bounty-style-met')).toBe('false');
+      expect(altSynList.getAttribute('data-bounty-summary')).toBe(f1Status.summaryLine);
+
+      // Simulate gameplay on Floor 1: player performs high-speed drifts/grazes and raises style score to 60 (Rank S)
+      app.stateManager.player.styleScore = 60;
+      app.stateManager.player.styleRank = 'S';
+      app.updateHUD();
+
+      expect(synList.getAttribute('data-bounty-contract-title')).toBe('NEON DAREDEVIL');
+      expect(synList.getAttribute('data-bounty-style-met')).toBe('true');
+      expect(altSynList.getAttribute('data-bounty-style-met')).toBe('true');
+
+      // ========================================================================
+      // FLOOR 2: "DRIFT EXECUTIONER" (Trigger 2 Drift Shockwaves or clear Boss)
+      // ========================================================================
+      app.nextFloor();
+      expect(app.stateManager.floorNum).toBe(2);
+
+      // Reset style for fresh floor entry
+      app.stateManager.player.styleScore = 20;
+      app.stateManager.player.styleRank = 'C';
+      app.updateHUD();
+
+      const f2Status = getFloorBountyContractStatus(2, app.stateManager.player);
+      expect(f2Status.contractTitle).toBe('DRIFT EXECUTIONER');
+      expect(f2Status.isStyleMilestoneMet).toBe(false);
+
+      expect(synList.getAttribute('data-bounty-contract-title')).toBe('DRIFT EXECUTIONER');
+      expect(synList.getAttribute('data-bounty-style-met')).toBe('false');
+      expect(synList.getAttribute('data-bounty-summary')).toBe(f2Status.summaryLine);
+
+      // Simulate gameplay on Floor 2: reaching Rank A (styleScore >= 52)
+      app.stateManager.player.styleScore = 55;
+      app.stateManager.player.styleRank = 'A';
+      app.updateHUD();
+
+      expect(synList.getAttribute('data-bounty-contract-title')).toBe('DRIFT EXECUTIONER');
+      expect(synList.getAttribute('data-bounty-style-met')).toBe('true');
+      expect(altSynList.getAttribute('data-bounty-style-met')).toBe('true');
+
+      // ========================================================================
+      // FLOOR 3: "THERMAL HUNTER" (Reach Style Rank A or clear Floor 3 Boss)
+      // ========================================================================
+      app.nextFloor();
+      expect(app.stateManager.floorNum).toBe(3);
+
+      // Fresh floor entry
+      app.stateManager.player.styleScore = 18;
+      app.stateManager.player.styleRank = 'D';
+      app.updateHUD();
+
+      const f3Status = getFloorBountyContractStatus(3, app.stateManager.player);
+      expect(f3Status.contractTitle).toBe('THERMAL HUNTER');
+      expect(f3Status.isStyleMilestoneMet).toBe(false);
+
+      expect(synList.getAttribute('data-bounty-contract-title')).toBe('THERMAL HUNTER');
+      expect(synList.getAttribute('data-bounty-style-met')).toBe('false');
+      expect(synList.getAttribute('data-bounty-summary')).toBe(f3Status.summaryLine);
+
+      // Simulate gameplay on Floor 3: reaching Rank SS (styleScore = 82)
+      app.stateManager.player.styleScore = 82;
+      app.stateManager.player.styleRank = 'SS';
+      app.updateHUD();
+
+      expect(synList.getAttribute('data-bounty-contract-title')).toBe('THERMAL HUNTER');
+      expect(synList.getAttribute('data-bounty-style-met')).toBe('true');
+      expect(altSynList.getAttribute('data-bounty-style-met')).toBe('true');
     });
   });
 });

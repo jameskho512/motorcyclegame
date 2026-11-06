@@ -32,13 +32,16 @@ import {
   ALL_RUN_MOD_POOL,
   DUO_SYNERGIES,
   getActiveDuoSynergies,
+  getPotentialDuoSynergies,
   getPotentialDuoSynergiesForItem,
   DROP_ITEMS,
   DROP_ITEM_IDS,
   calcUpgradeCost,
   ModPlayerTarget,
   MetaTuningSummary,
-  getMetaTuningSummary
+  getMetaTuningSummary,
+  RunModDeckSummary,
+  getRunModDeckSummary
 } from '@/data/upgrades';
 import {
   EQUIP_SLOTS,
@@ -1329,6 +1332,197 @@ describe('Tooltip: formatHubNpcTooltip', () => {
       expect(withExtraKeys.totalRanks).toBe(1);
       expect(withExtraKeys.cheapestNextUpgradeId).toBe('speed');
       expect(withExtraKeys.cheapestNextCost).toBe(20);
+    });
+  });
+
+  describe('Active Run Mod Deck & Duo Synergy Summary (M116: getRunModDeckSummary)', () => {
+    it('handles null, undefined, and empty player with 0 picks and 0/3 MAX STACK', () => {
+      const expectedEmpty: RunModDeckSummary = {
+        totalModPicks: 0,
+        uniqueModsCount: 0,
+        maxStackCount: 0,
+        evoStackReady: false,
+        activeDuoCount: 0,
+        potentialDuoCount: 0,
+        summaryLine: 'MODS: 0 PICKS (0 UNIQUE) // 0/3 MAX STACK // DUOS: 0 ACTIVE, 0 NEAR'
+      };
+
+      expect(getRunModDeckSummary(null)).toEqual(expectedEmpty);
+      expect(getRunModDeckSummary(undefined)).toEqual(expectedEmpty);
+      expect(getRunModDeckSummary({})).toEqual(expectedEmpty);
+      expect(getRunModDeckSummary({ modStacks: null })).toEqual(expectedEmpty);
+      expect(getRunModDeckSummary({ modStacks: {} })).toEqual(expectedEmpty);
+    });
+
+    it('handles single mod with 1/3 MAX STACK badge', () => {
+      const summary = getRunModDeckSummary({
+        modStacks: {
+          hollow_point: 1
+        }
+      });
+
+      expect(summary.totalModPicks).toBe(1);
+      expect(summary.uniqueModsCount).toBe(1);
+      expect(summary.maxStackCount).toBe(1);
+      expect(summary.evoStackReady).toBe(false);
+      expect(summary.activeDuoCount).toBe(0);
+      expect(summary.potentialDuoCount).toBe(0);
+      expect(summary.summaryLine).toBe(
+        'MODS: 1 PICKS (1 UNIQUE) // 1/3 MAX STACK // DUOS: 0 ACTIVE, 0 NEAR'
+      );
+    });
+
+    it('handles 2/3 STACK NEAR EVO when highest stack reaches 2', () => {
+      const nearEvo = getRunModDeckSummary({
+        modStacks: {
+          hollow_point: 2,
+          hair_trigger: 1
+        }
+      });
+
+      expect(nearEvo.totalModPicks).toBe(3);
+      expect(nearEvo.uniqueModsCount).toBe(2);
+      expect(nearEvo.maxStackCount).toBe(2);
+      expect(nearEvo.evoStackReady).toBe(false);
+      expect(nearEvo.activeDuoCount).toBe(0);
+      expect(nearEvo.potentialDuoCount).toBe(0);
+      expect(nearEvo.summaryLine).toBe(
+        'MODS: 3 PICKS (2 UNIQUE) // 2/3 STACK NEAR EVO // DUOS: 0 ACTIVE, 0 NEAR'
+      );
+    });
+
+    it('handles 3+ STACK EVO READY when any single mod reaches 3 or higher', () => {
+      const evoReady3 = getRunModDeckSummary({
+        modStacks: {
+          piercing_core: 3,
+          armor_plate: 1
+        }
+      });
+
+      expect(evoReady3.totalModPicks).toBe(4);
+      expect(evoReady3.uniqueModsCount).toBe(2);
+      expect(evoReady3.maxStackCount).toBe(3);
+      expect(evoReady3.evoStackReady).toBe(true);
+      expect(evoReady3.summaryLine).toBe(
+        'MODS: 4 PICKS (2 UNIQUE) // 3+ STACK EVO READY // DUOS: 0 ACTIVE, 0 NEAR'
+      );
+
+      const evoReady5 = getRunModDeckSummary({
+        modStacks: {
+          split_chamber: 5
+        }
+      });
+
+      expect(evoReady5.totalModPicks).toBe(5);
+      expect(evoReady5.uniqueModsCount).toBe(1);
+      expect(evoReady5.maxStackCount).toBe(5);
+      expect(evoReady5.evoStackReady).toBe(true);
+      expect(evoReady5.summaryLine).toBe(
+        'MODS: 5 PICKS (1 UNIQUE) // 3+ STACK EVO READY // DUOS: 0 ACTIVE, 0 NEAR'
+      );
+    });
+
+    it('evaluates active Duo Synergies and potential Duo Synergies accurately', () => {
+      // 1 component -> 0 active, 2 potential (Cryo enables thermal_shock & superconductor)
+      const oneComp = getRunModDeckSummary({
+        modStacks: {
+          cryo_rounds: 1
+        }
+      });
+      expect(oneComp.activeDuoCount).toBe(0);
+      expect(oneComp.potentialDuoCount).toBe(2);
+      expect(oneComp.summaryLine).toBe(
+        'MODS: 1 PICKS (1 UNIQUE) // 1/3 MAX STACK // DUOS: 0 ACTIVE, 2 NEAR'
+      );
+
+      // 2 matching components in modStacks -> 1 active (thermal_shock), 2 potential (superconductor, void_vortex)
+      const activeAndPotential = getRunModDeckSummary({
+        modStacks: {
+          cryo_rounds: 2,
+          high_explosive: 2
+        }
+      });
+      expect(activeAndPotential.totalModPicks).toBe(4);
+      expect(activeAndPotential.uniqueModsCount).toBe(2);
+      expect(activeAndPotential.maxStackCount).toBe(2);
+      expect(activeAndPotential.evoStackReady).toBe(false);
+      expect(activeAndPotential.activeDuoCount).toBe(1);
+      expect(activeAndPotential.potentialDuoCount).toBe(2);
+      expect(activeAndPotential.summaryLine).toBe(
+        'MODS: 4 PICKS (2 UNIQUE) // 2/3 STACK NEAR EVO // DUOS: 1 ACTIVE, 2 NEAR'
+      );
+
+      // Weapon + Mod synergy: Flamethrower + 3 stacks Cryo Rounds -> 1 active, 1 potential
+      const weaponSynergy = getRunModDeckSummary({
+        weapon: 'flamethrower',
+        modStacks: {
+          cryo_rounds: 3
+        }
+      });
+      expect(weaponSynergy.totalModPicks).toBe(3);
+      expect(weaponSynergy.uniqueModsCount).toBe(1);
+      expect(weaponSynergy.maxStackCount).toBe(3);
+      expect(weaponSynergy.evoStackReady).toBe(true);
+      expect(weaponSynergy.activeDuoCount).toBe(1);
+      expect(weaponSynergy.potentialDuoCount).toBe(1);
+      expect(weaponSynergy.summaryLine).toBe(
+        'MODS: 3 PICKS (1 UNIQUE) // 3+ STACK EVO READY // DUOS: 1 ACTIVE, 1 NEAR'
+      );
+
+      // turbo_charger activates juggernaut_overdrive potential
+      const turboNear = getRunModDeckSummary({
+        modStacks: {
+          turbo_charger: 1
+        }
+      });
+      expect(turboNear.activeDuoCount).toBe(0);
+      expect(turboNear.potentialDuoCount).toBe(1);
+      expect(turboNear.summaryLine).toBe(
+        'MODS: 1 PICKS (1 UNIQUE) // 1/3 MAX STACK // DUOS: 0 ACTIVE, 1 NEAR'
+      );
+    });
+
+    it('sanitizes and clamps malformed, NaN, negative, non-finite, and unknown mod keys', () => {
+      const boundarySummary = getRunModDeckSummary({
+        modStacks: {
+          hollow_point: -5,
+          hair_trigger: NaN,
+          turbo_charger: 0,
+          armor_plate: 2.7,
+          unknown_pedestal: 10,
+          invalidKey: Infinity
+        } as any
+      });
+
+      expect(boundarySummary.totalModPicks).toBe(2); // armor_plate floored to 2
+      expect(boundarySummary.uniqueModsCount).toBe(1);
+      expect(boundarySummary.maxStackCount).toBe(2);
+      expect(boundarySummary.evoStackReady).toBe(false);
+      expect(boundarySummary.activeDuoCount).toBe(0);
+      expect(boundarySummary.potentialDuoCount).toBe(0);
+      expect(boundarySummary.summaryLine).toBe(
+        'MODS: 2 PICKS (1 UNIQUE) // 2/3 STACK NEAR EVO // DUOS: 0 ACTIVE, 0 NEAR'
+      );
+    });
+
+    it('evaluates getPotentialDuoSynergies pure function directly', () => {
+      expect(getPotentialDuoSynergies(null as any)).toEqual([]);
+      expect(getPotentialDuoSynergies(undefined as any)).toEqual([]);
+      expect(getPotentialDuoSynergies({})).toEqual([]);
+
+      const arcPotentials = getPotentialDuoSynergies({ weapon: 'arc_coil' });
+      expect(arcPotentials.map(s => s.id)).toContain('superconductor');
+
+      const nosPotentials = getPotentialDuoSynergies({ modStacks: { turbo_charger: 1 } });
+      expect(nosPotentials.map(s => s.id)).toContain('juggernaut_overdrive');
+
+      // Synergy already active should NOT appear in potential
+      const alreadyActive = getPotentialDuoSynergies({
+        weapon: 'flamethrower',
+        modStacks: { cryo_rounds: 1 }
+      });
+      expect(alreadyActive.map(s => s.id)).not.toContain('thermal_shock');
+      expect(alreadyActive.map(s => s.id)).toContain('superconductor');
     });
   });
 });

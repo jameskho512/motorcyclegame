@@ -593,6 +593,7 @@ export interface DuoSynergyPlayerSnapshot {
   weapon?: string;
   items?: string[];
   itemStacks?: Record<string, number>;
+  modStacks?: Partial<Record<string, number>> | null;
 }
 
 export interface DuoSynergyDef {
@@ -605,9 +606,13 @@ export interface DuoSynergyDef {
 }
 
 function hasItemOrMod(p: DuoSynergyPlayerSnapshot, key: string): boolean {
+  if (!p) return false;
   if (p.weapon === key) return true;
   if (p.items?.includes(key)) return true;
-  if (p.itemStacks && (p.itemStacks[key] ?? 0) > 0) return true;
+  const itemVal = p.itemStacks?.[key];
+  if (typeof itemVal === 'number' && Number.isFinite(itemVal) && itemVal > 0) return true;
+  const modVal = (p.modStacks as Record<string, number> | null | undefined)?.[key];
+  if (typeof modVal === 'number' && Number.isFinite(modVal) && modVal > 0) return true;
   return false;
 }
 
@@ -704,6 +709,34 @@ export function getActiveDuoSynergies(
   return DUO_SYNERGIES.filter(syn => syn.isActive(player));
 }
 
+export function getPotentialDuoSynergies(
+  player: DuoSynergyPlayerSnapshot
+): DuoSynergyDef[] {
+  if (!player) return [];
+  const active = getActiveDuoSynergies(player);
+  const activeIds = new Set(active.map(s => s.id));
+
+  return DUO_SYNERGIES.filter(syn => {
+    if (activeIds.has(syn.id)) return false;
+    return syn.components.some(comp => {
+      const isWeaponComp = comp === 'flamethrower' || comp === 'grenade_launcher' || comp === 'arc_coil';
+      const simulated: DuoSynergyPlayerSnapshot = {
+        weapon: player.weapon ?? (isWeaponComp ? comp : undefined),
+        items: [...(player.items ?? []), comp],
+        itemStacks: {
+          ...(player.itemStacks ?? {}),
+          [comp]: ((player.itemStacks ?? {})[comp] ?? 0) + 1
+        },
+        modStacks: {
+          ...((player.modStacks as Record<string, number>) ?? {}),
+          [comp]: (((player.modStacks as Record<string, number>) ?? {})[comp] ?? 0) + 1
+        }
+      };
+      return syn.isActive(simulated);
+    });
+  });
+}
+
 export function getPotentialDuoSynergiesForItem(
   itemIdOrName: string,
   player: DuoSynergyPlayerSnapshot
@@ -714,10 +747,15 @@ export function getPotentialDuoSynergiesForItem(
     ...(player.itemStacks ?? {}),
     [itemIdOrName]: ((player.itemStacks ?? {})[itemIdOrName] ?? 0) + 1
   };
+  const simulatedModStacks: Record<string, number> = {
+    ...((player.modStacks as Record<string, number>) ?? {}),
+    [itemIdOrName]: (((player.modStacks as Record<string, number>) ?? {})[itemIdOrName] ?? 0) + 1
+  };
   const simulated: DuoSynergyPlayerSnapshot = {
     weapon: player.weapon,
     items: simulatedItems,
-    itemStacks: simulatedStacks
+    itemStacks: simulatedStacks,
+    modStacks: simulatedModStacks
   };
   return DUO_SYNERGIES.filter(
     syn => syn.components.includes(itemIdOrName) && syn.isActive(simulated)
@@ -792,6 +830,75 @@ export function getMetaTuningSummary(
     completionPct,
     cheapestNextUpgradeId,
     cheapestNextCost,
+    summaryLine
+  };
+}
+
+// ============================================================================
+// ACTIVE RUN MOD DECK & DUO SYNERGY SUMMARY (M116)
+// ============================================================================
+
+export interface RunModDeckSummary {
+  totalModPicks: number;
+  uniqueModsCount: number;
+  maxStackCount: number;
+  evoStackReady: boolean;
+  activeDuoCount: number;
+  potentialDuoCount: number;
+  summaryLine: string;
+}
+
+/**
+ * Pure function computing in-run temporary mod progression, stack counts,
+ * 3-stack weapon evolution readiness, and active/potential Duo synergy counts.
+ */
+export function getRunModDeckSummary(
+  player?: ({ modStacks?: Partial<Record<string, number>> | null } & Partial<DuoSynergyPlayerSnapshot>) | null
+): RunModDeckSummary {
+  let totalModPicks = 0;
+  let uniqueModsCount = 0;
+  let maxStackCount = 0;
+
+  const validModIds = new Set<string>(ALL_RUN_MOD_POOL.map(m => m.id));
+
+  if (player?.modStacks && typeof player.modStacks === 'object') {
+    for (const [key, raw] of Object.entries(player.modStacks)) {
+      if (!validModIds.has(key)) continue;
+      const stack =
+        typeof raw === 'number' && Number.isFinite(raw) && raw > 0
+          ? Math.floor(raw)
+          : 0;
+      if (stack > 0) {
+        totalModPicks += stack;
+        uniqueModsCount += 1;
+        if (stack > maxStackCount) {
+          maxStackCount = stack;
+        }
+      }
+    }
+  }
+
+  const evoStackReady = maxStackCount >= 3;
+  const activeDuos = getActiveDuoSynergies(player as any);
+  const potentialDuos = getPotentialDuoSynergies(player as any);
+  const activeDuoCount = activeDuos.length;
+  const potentialDuoCount = potentialDuos.length;
+
+  const evoTag = evoStackReady
+    ? '3+ STACK EVO READY'
+    : maxStackCount === 2
+      ? '2/3 STACK NEAR EVO'
+      : `${maxStackCount}/3 MAX STACK`;
+
+  const summaryLine = `MODS: ${totalModPicks} PICKS (${uniqueModsCount} UNIQUE) // ${evoTag} // DUOS: ${activeDuoCount} ACTIVE, ${potentialDuoCount} NEAR`;
+
+  return {
+    totalModPicks,
+    uniqueModsCount,
+    maxStackCount,
+    evoStackReady,
+    activeDuoCount,
+    potentialDuoCount,
     summaryLine
   };
 }
