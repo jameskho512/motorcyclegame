@@ -847,3 +847,130 @@ describe('Systems: Combat — BUG-02, BUG-03, BUG-04, Weapon Scaling & Duo Syner
     expect((farTarget as any).slowTimer).toBeCloseTo(1.5, 4);
   });
 });
+
+describe('Systems: Combat — Elite Affix Death Payoffs', () => {
+  it('triggers fiery orange shockwave particle and floating banner on volatile elite death', () => {
+    const room = createMockRoom();
+    const player = createMockPlayer();
+    const state = createCombatState();
+    const enemy = createMockEnemy({
+      x: 250,
+      y: 200,
+      isElite: true
+    });
+    (enemy as any).eliteAffix = 'volatile';
+    room.enemies = [enemy];
+
+    handleEnemyDeath({
+      room,
+      enemy,
+      index: 0,
+      player,
+      state
+    });
+
+    // Check fiery orange shockwave particle
+    const shockwave = state.particles.find(
+      p => p.x === 250 && p.y === 200 && p.shockwaveMax === 52 && p.color === '#ff9f1c'
+    );
+    expect(shockwave).toBeDefined();
+    expect(shockwave?.radius).toBe(6);
+    expect(shockwave?.life).toBe(0.25);
+    expect(shockwave?.maxLife).toBe(0.25);
+
+    // Check floating text '💥 VOLATILE ELITE!' (#ff9f1c)
+    const textEntry = state.damageNumbers.find(d => d.text === '💥 VOLATILE ELITE!');
+    expect(textEntry).toBeDefined();
+    expect(textEntry?.color).toBe('#ff9f1c');
+  });
+
+  it('restores +1 fuel and displays siphon banner on vampiric elite death when player is injured', () => {
+    const room = createMockRoom();
+    const player = createMockPlayer({ hp: 4, maxHp: 6 });
+    const state = createCombatState();
+    const enemy = createMockEnemy({
+      x: 300,
+      y: 300,
+      isElite: true
+    });
+    (enemy as any).eliteAffix = 'vampiric';
+    room.enemies = [enemy];
+
+    handleEnemyDeath({
+      room,
+      enemy,
+      index: 0,
+      player,
+      state
+    });
+
+    expect(player.hp).toBe(5);
+    const textEntry = state.damageNumbers.find(d => d.text === '🩸 ELITE SIPHON +1 FUEL!');
+    expect(textEntry).toBeDefined();
+    expect(textEntry?.color).toBe('#06d6a0');
+  });
+
+  it('does not overheal or display siphon banner on vampiric elite death when player is at maxHp', () => {
+    const room = createMockRoom();
+    const player = createMockPlayer({ hp: 6, maxHp: 6 });
+    const state = createCombatState();
+    const enemy = createMockEnemy({
+      isElite: true
+    });
+    (enemy as any).eliteAffix = 'vampiric';
+    room.enemies = [enemy];
+
+    handleEnemyDeath({
+      room,
+      enemy,
+      index: 0,
+      player,
+      state
+    });
+
+    expect(player.hp).toBe(6);
+    const textEntry = state.damageNumbers.find(d => d.text === '🩸 ELITE SIPHON +1 FUEL!');
+    expect(textEntry).toBeUndefined();
+  });
+
+  it('refills +20 NOS (capped at nosMax) and displays banner on overclocked elite death', () => {
+    const room = createMockRoom();
+    const player = createMockPlayer({ nos: 40, nosMax: 100 });
+    const state = createCombatState();
+    const enemy = createMockEnemy({
+      isElite: true
+    });
+    (enemy as any).eliteAffix = 'overclocked';
+    room.enemies = [enemy];
+
+    handleEnemyDeath({
+      room,
+      enemy,
+      index: 0,
+      player,
+      state
+    });
+
+    expect(player.nos).toBe(60);
+    const textEntry = state.damageNumbers.find(d => d.text === '⚡ OVERCLOCKED +20 NOS!');
+    expect(textEntry).toBeDefined();
+    expect(textEntry?.color).toBe('#00f5d4');
+
+    // Test capping at nosMax
+    player.nos = 95;
+    const enemy2 = createMockEnemy({ isElite: true });
+    (enemy2 as any).eliteAffix = 'overclocked';
+    room.enemies = [enemy2];
+
+    handleEnemyDeath({
+      room,
+      enemy: enemy2,
+      index: 0,
+      player,
+      state
+    });
+
+    expect(player.nos).toBe(100);
+  });
+});
+

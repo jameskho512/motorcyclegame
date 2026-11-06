@@ -165,6 +165,11 @@ export function createEnemy(
     color: cfg.color
   };
 
+  if (isElite) {
+    const affixes = ['volatile', 'overclocked', 'vampiric'] as const;
+    (enemy as any).eliteAffix = affixes[(enemy.id + floor) % 3];
+  }
+
   if (type === 'charger') {
     enemy.dashVx = 0;
     enemy.dashVy = 0;
@@ -697,6 +702,10 @@ export function updateEnemyAI(ctx: AIContext): void {
     }
   } else {
     en.angle = targetAngle;
+  }
+
+  if (en.isElite && (en as any).eliteAffix === 'overclocked' && en.aiTimer > 0.35) {
+    en.aiTimer -= dt * 0.15;
   }
 
   switch (en.type) {

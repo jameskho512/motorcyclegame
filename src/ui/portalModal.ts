@@ -46,6 +46,51 @@ export interface PortalModalInfo {
   floorNum: number;
 }
 
+export interface SectorBriefing {
+  nextFloor: number;
+  biomeName: string;
+  bossName: string;
+  threatMult: string;
+}
+
+/**
+ * Pure helper calculating the upcoming sector, upcoming boss encounter, and threat multiplier.
+ * Threat scale is computed as 1.55^(nextFloor - 1).
+ */
+export function getNextSectorBriefing(currentFloor: number): SectorBriefing {
+  const nextFloor = currentFloor + 1;
+  let biomeName = 'ENDLESS VALHALLA OVERDRIVE';
+  let bossName = 'OMEGA VALHALLA';
+
+  if (nextFloor <= 2) {
+    biomeName = 'SMELTER FOUNDRY';
+    bossName = 'SIEGE BEHEMOTH';
+  } else if (nextFloor === 3) {
+    biomeName = 'NEON CYBER-FREEWAY';
+    bossName = 'OVERLORD HELION';
+  } else if (nextFloor === 4) {
+    biomeName = 'SUB-ZERO CRYO LAB';
+    bossName = 'CRYO VALKYRIE';
+  } else if (nextFloor === 5) {
+    biomeName = 'MAGMA CORE';
+    bossName = 'INFERNO COLOSSUS';
+  } else if (nextFloor === 6) {
+    biomeName = 'CHROME CITADEL';
+    bossName = 'OMEGA VALHALLA';
+  }
+
+  const exponent = Math.max(0, nextFloor - 1);
+  const mult = Math.pow(1.55, exponent);
+  const threatMult = `${mult.toFixed(2)}x`;
+
+  return {
+    nextFloor,
+    biomeName,
+    bossName,
+    threatMult
+  };
+}
+
 const CONFIRM_KEYS = new Set(['enter', 'e', ' ', 'spacebar']);
 
 export class PortalModalController {
@@ -87,9 +132,19 @@ export class PortalModalController {
     return this.visible;
   }
 
+  public static getNextSectorBriefing(currentFloor: number): SectorBriefing {
+    return getNextSectorBriefing(currentFloor);
+  }
+
+  public getNextSectorBriefing(currentFloor: number): SectorBriefing {
+    return getNextSectorBriefing(currentFloor);
+  }
+
   public open(info: PortalModalInfo, onConfirm: () => void, onCancel?: () => void): void {
     this.pendingConfirm = onConfirm;
     this.pendingCancel = onCancel || null;
+
+    const briefing = getNextSectorBriefing(info.floorNum);
 
     if (info.floorNum === 6) {
       if (this.floorLabelEl) {
@@ -121,6 +176,26 @@ export class PortalModalController {
         const preview = biomePreviews[nextFloor] ? `${biomePreviews[nextFloor]} ` : '';
         this.warningEl.textContent = `${preview}Unexplored rooms and unbought items on this floor will be lost.`;
       }
+    }
+
+    if (this.floorLabelEl) {
+      this.floorLabelEl.setAttribute('title', `Sector: ${briefing.biomeName} | Boss: ${briefing.bossName} | Threat: ${briefing.threatMult}`);
+      this.floorLabelEl.setAttribute('data-subtitle', `Sector: ${briefing.biomeName} // Threat: ${briefing.threatMult} // Boss: ${briefing.bossName}`);
+      this.floorLabelEl.setAttribute('data-next-biome', briefing.biomeName);
+      this.floorLabelEl.setAttribute('data-next-boss', briefing.bossName);
+      this.floorLabelEl.setAttribute('data-threat-mult', briefing.threatMult);
+    }
+
+    if (this.overlay) {
+      this.overlay.setAttribute('data-next-sector', briefing.biomeName);
+      this.overlay.setAttribute('data-next-boss', briefing.bossName);
+      this.overlay.setAttribute('data-threat-mult', briefing.threatMult);
+      this.overlay.setAttribute('title', `Next: ${briefing.biomeName} (Boss: ${briefing.bossName}, Threat: ${briefing.threatMult})`);
+    }
+
+    if (this.warningEl) {
+      this.warningEl.setAttribute('data-boss-warning', `BOSS DETECTED: ${briefing.bossName} [Threat: ${briefing.threatMult}]`);
+      this.warningEl.setAttribute('title', `Boss: ${briefing.bossName} (${briefing.threatMult})`);
     }
 
     if (!this.visible && typeof document !== 'undefined') {

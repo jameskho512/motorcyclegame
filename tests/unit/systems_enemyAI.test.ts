@@ -855,3 +855,103 @@ describe('Systems: EnemyAI — The 3 Boss Variants', () => {
     expect(bullets2).toHaveLength(17);
   });
 });
+
+describe('Systems: EnemyAI — Elite Affixes & Overclocked Cycling', () => {
+  it('assigns deterministic eliteAffix to elite enemies without consuming extra RNG calls', () => {
+    let rngCallCount = 0;
+    const countingRng = () => {
+      rngCallCount++;
+      return 0.5;
+    };
+
+    // Non-elite enemies do not have an eliteAffix
+    const normalEnemy = createEnemy('turret', 100, 100, 1, false, 1000, countingRng);
+    expect((normalEnemy as any).eliteAffix).toBeUndefined();
+    const callsForNormal = rngCallCount;
+
+    // Reset counter and create elite enemy
+    rngCallCount = 0;
+    const eliteEnemy = createEnemy('turret', 100, 100, 1, true, 1000, countingRng);
+    expect(rngCallCount).toBe(callsForNormal); // Exactly 0 extra RNG calls!
+
+    // Verify deterministic affix formula: affixes[(id + floor) % 3]
+    // affixes = ['volatile', 'overclocked', 'vampiric']
+    // (1000 + 1) % 3 = 2 -> 'vampiric'
+    expect((eliteEnemy as any).eliteAffix).toBe('vampiric');
+
+    const eliteVolatile = createEnemy('swarmer', 100, 100, 1, true, 1001, () => 0.5);
+    // (1001 + 1) % 3 = 0 -> 'volatile'
+    expect((eliteVolatile as any).eliteAffix).toBe('volatile');
+
+    const eliteOverclocked = createEnemy('swarmer', 100, 100, 1, true, 1002, () => 0.5);
+    // (1002 + 1) % 3 = 1 -> 'overclocked'
+    expect((eliteOverclocked as any).eliteAffix).toBe('overclocked');
+
+    const eliteVampiric = createEnemy('swarmer', 100, 100, 1, true, 1003, () => 0.5);
+    // (1003 + 1) % 3 = 2 -> 'vampiric'
+    expect((eliteVampiric as any).eliteAffix).toBe('vampiric');
+
+    // Floor variation: floor 2
+    const eliteFloor2 = createEnemy('swarmer', 100, 100, 2, true, 1001, () => 0.5);
+    // (1001 + 2) % 3 = 1 -> 'overclocked'
+    expect((eliteFloor2 as any).eliteAffix).toBe('overclocked');
+
+    const eliteFloor2Volatile = createEnemy('swarmer', 100, 100, 2, true, 1003, () => 0.5);
+    // (1003 + 2) % 3 = 0 -> 'volatile'
+    expect((eliteFloor2Volatile as any).eliteAffix).toBe('volatile');
+  });
+
+  it('reduces aiTimer by extra dt * 0.15 for overclocked elites while aiTimer > 0.35', () => {
+    const room = createMockRoom();
+    const player = createMockPlayer({ x: 360, y: 360 });
+
+    const overclockedTurret = createEnemy('turret', 100, 100, 1, true, 1002); // 1002 + 1 % 3 = 1 -> overclocked
+    expect((overclockedTurret as any).eliteAffix).toBe('overclocked');
+    overclockedTurret.aiTimer = 1.0;
+
+    // Normal non-overclocked turret for comparison
+    const volatileTurret = createEnemy('turret', 100, 100, 1, true, 1001); // 1001 + 1 % 3 = 0 -> volatile
+    expect((volatileTurret as any).eliteAffix).toBe('volatile');
+    volatileTurret.aiTimer = 1.0;
+
+    const dt = 0.1;
+    updateEnemyAI({
+      room,
+      enemy: volatileTurret,
+      dt,
+      player,
+      projScale: 1,
+      enemyBullets: [],
+      enemyBombs: []
+    });
+    // volatileTurret should reduce only by dt: 1.0 - 0.1 = 0.9
+    expect(volatileTurret.aiTimer).toBeCloseTo(0.9, 4);
+
+    updateEnemyAI({
+      room,
+      enemy: overclockedTurret,
+      dt,
+      player,
+      projScale: 1,
+      enemyBullets: [],
+      enemyBombs: []
+    });
+    // overclockedTurret should reduce by dt + dt * 0.15 = 0.115 -> 1.0 - 0.115 = 0.885
+    expect(overclockedTurret.aiTimer).toBeCloseTo(0.885, 4);
+
+    // When aiTimer <= 0.35, overclocked turret should NOT subtract the extra dt * 0.15
+    overclockedTurret.aiTimer = 0.30;
+    updateEnemyAI({
+      room,
+      enemy: overclockedTurret,
+      dt: 0.05,
+      player,
+      projScale: 1,
+      enemyBullets: [],
+      enemyBombs: []
+    });
+    // Reduces only by dt: 0.30 - 0.05 = 0.25
+    expect(overclockedTurret.aiTimer).toBeCloseTo(0.25, 4);
+  });
+});
+

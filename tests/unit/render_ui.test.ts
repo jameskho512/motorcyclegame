@@ -23,7 +23,7 @@ import { parseColor, drawObstacle } from '../../src/render/vectorArt';
 import { TooltipManager } from '../../src/ui/tooltip';
 import { ShopModalController } from '../../src/ui/shopModal';
 import { FilterManager } from '../../src/render/shaders';
-import { StageManager, getFloorMoteColor } from '../../src/render/stage';
+import { StageManager, getFloorMoteColor, getEliteAffixColor } from '../../src/render/stage';
 import { Pickup, MetaSaveState, PlayerState, Obstacle } from '../../src/types/game';
 import { GarageController } from '../../src/ui/garage';
 
@@ -733,6 +733,106 @@ describe('Render & UI Subsystems', () => {
       stage.renderObstacles(g, dummyRoom.obstacles);
       const cryoFills = fillSpy.mock.calls.filter(c => (c[0] as any)?.color === 0x00bbf9);
       expect(cryoFills.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  describe('Elite Halo & Biome Zone VFX Polish', () => {
+    it('maps elite affixes to specified color hex values', () => {
+      expect(getEliteAffixColor('volatile')).toBe(0xff9f1c);
+      expect(getEliteAffixColor('overclocked')).toBe(0x00f5d4);
+      expect(getEliteAffixColor('vampiric')).toBe(0xff1f4b);
+      expect(getEliteAffixColor(undefined)).toBe(0xffd60a);
+      expect(getEliteAffixColor('unknown')).toBe(0xffd60a);
+    });
+
+    it('renders color-coded outer affix halo ring for elite enemies in renderEnemies', () => {
+      const stage = new StageManager();
+      const g = (stage as any).entityGraphics;
+      const circleSpy = vi.spyOn(g, 'circle');
+      const strokeSpy = vi.spyOn(g, 'stroke');
+
+      const enemies: any[] = [
+        {
+          x: 120,
+          y: 140,
+          radius: 20,
+          type: 'rusher',
+          isElite: true,
+          eliteAffix: 'overclocked',
+          hp: 50,
+          maxHp: 50,
+          angle: 0,
+          burnTimer: 0
+        },
+        {
+          x: 220,
+          y: 240,
+          radius: 18,
+          type: 'swarmer',
+          isElite: false,
+          hp: 20,
+          maxHp: 20,
+          angle: 0,
+          burnTimer: 0
+        }
+      ];
+
+      (stage as any).renderEnemies(g, enemies, 1000);
+
+      // Verify circle at (120, 140) with radius 20 + 5 = 25 was called
+      expect(circleSpy).toHaveBeenCalledWith(120, 140, 25);
+
+      // Verify stroke with overclocked color (0x00f5d4), width 2.2, alpha 0.85
+      const haloStrokeCall = strokeSpy.mock.calls.find(c => {
+        const opts = c[0] as any;
+        return opts && opts.color === 0x00f5d4 && opts.width === 2.2 && opts.alpha === 0.85;
+      });
+      expect(haloStrokeCall).toBeDefined();
+
+      // Verify non-elite enemy at (220, 240) does NOT get outer halo at radius 18 + 5 = 23
+      expect(circleSpy).not.toHaveBeenCalledWith(220, 240, 23);
+    });
+
+    it('renders extra inner glowing chevron ring for boost_strip and specular ring for ice_patch', () => {
+      const stage = new StageManager();
+      const g = (stage as any).floorGraphics;
+      const circleSpy = vi.spyOn(g, 'circle');
+      const strokeSpy = vi.spyOn(g, 'stroke');
+
+      const roomWithZones: any = {
+        x: 0,
+        y: 0,
+        type: 'combat',
+        cleared: false,
+        doors: {},
+        obstacles: [],
+        hazards: [],
+        skids: [],
+        pickups: [],
+        enemies: [],
+        biomeZones: [
+          { type: 'boost_strip', x: 250, y: 300, radius: 40 },
+          { type: 'ice_patch', x: 450, y: 350, radius: 50 }
+        ]
+      };
+
+      stage.renderFloor(g, roomWithZones, 1, 1000);
+
+      // For boost_strip: inner chevron ring at radius * 0.55 = 40 * 0.55 = 22
+      expect(circleSpy).toHaveBeenCalledWith(250, 300, 22);
+      const boostStroke = strokeSpy.mock.calls.find(c => {
+        const opts = c[0] as any;
+        return opts && opts.color === 0xffffff && opts.width === 2 && opts.alpha === 0.75;
+      });
+      expect(boostStroke).toBeDefined();
+
+      // For ice_patch: inner specular ring at radius * 0.6 = 50 * 0.6 = 30
+      expect(circleSpy).toHaveBeenCalledWith(450, 350, 30);
+      const iceStroke = strokeSpy.mock.calls.find(c => {
+        const opts = c[0] as any;
+        return opts && opts.color === 0xffffff && opts.width === 1.5 && opts.alpha === 0.65;
+      });
+      expect(iceStroke).toBeDefined();
     });
   });
 });

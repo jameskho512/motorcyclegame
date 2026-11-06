@@ -145,7 +145,7 @@ export function updateBikeKinematics(
 
   if (room?.biomeZones) {
     for (const z of room.biomeZones) {
-      if (Math.hypot(player.x - z.x, player.y - z.y) < z.radius + pRadius) {
+      if (Math.hypot(player.x - z.x, player.y - z.y) <= z.radius + pRadius) {
         if (z.type === 'boost_strip') isBoostStrip = true;
         if (z.type === 'ice_patch') isIcePatch = true;
         if (z.type === 'oil_slick') isOilSlick = true;
@@ -153,12 +153,21 @@ export function updateBikeKinematics(
     }
   }
 
+  (player as any).onBoostStrip = isBoostStrip;
   if (isBoostStrip) {
     effSpeed *= 1.35;
-    player.nos = Math.min(player.nosMax, player.nos + 25 * dt);
+    if (typeof player.nos === 'number' && typeof player.nosMax === 'number') {
+      player.nos = Math.min(player.nosMax, player.nos + dt * 14);
+    }
   }
   if (isIcePatch) {
     effSpeed *= 1.15;
+    if (player.nosDelay > 0) {
+      player.nosDelay = Math.max(0, player.nosDelay - dt);
+    }
+    if (player.nos >= 25) {
+      player.nosLock = false;
+    }
   }
 
   const activePowerslide = !!(player as any).spacePowerslide && (ix !== 0 || iy !== 0);
@@ -214,6 +223,11 @@ export function updateBikeKinematics(
     player.driftCharge = Math.min(1.0, (player.driftCharge || 0) + dt * 1.35);
   } else {
     player.driftCharge = Math.max(0, (player.driftCharge || 0) - dt * (highSpeed ? 0.35 : 0.55));
+  }
+
+  const isMoving = moved || Math.hypot(player.vx, player.vy) > 10;
+  if (isOilSlick && isMoving) {
+    player.driftCharge = Math.min(1, (player.driftCharge || 0) + dt * 0.65);
   }
 
   return { moved, skidCreated, diff };

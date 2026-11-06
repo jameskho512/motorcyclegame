@@ -828,6 +828,34 @@ export function handleEnemyDeath({
     addFloatingText(state, player.x, player.y - 18, '+1 HP (SIPHON)', '#ff4d6d');
   }
 
+  // Elite Affix Death Payoffs
+  if (en.isElite && (en as any).eliteAffix) {
+    const affix = (en as any).eliteAffix;
+    if (affix === 'volatile') {
+      state.particles.push({
+        x: en.x,
+        y: en.y,
+        vx: 0,
+        vy: 0,
+        radius: 6,
+        shockwaveMax: 52,
+        color: '#ff9f1c',
+        life: 0.25,
+        maxLife: 0.25
+      });
+      addFloatingText(state, en.x, en.y - 18, '💥 VOLATILE ELITE!', '#ff9f1c');
+    } else if (affix === 'vampiric') {
+      if (player.hp < player.maxHp) {
+        player.hp = Math.min(player.maxHp, player.hp + 1);
+        addFloatingText(state, player.x, player.y - 18, '🩸 ELITE SIPHON +1 FUEL!', '#06d6a0');
+      }
+    } else if (affix === 'overclocked') {
+      const maxNos = player.nosMax !== undefined ? player.nosMax : 100;
+      player.nos = Math.min(maxNos, (player.nos || 0) + 20);
+      addFloatingText(state, player.x, player.y - 18, '⚡ OVERCLOCKED +20 NOS!', '#00f5d4');
+    }
+  }
+
   // Currency & reward drops
   if (en.type === 'boss') {
     const rawBossScrap = 7 + floorNum * 2;

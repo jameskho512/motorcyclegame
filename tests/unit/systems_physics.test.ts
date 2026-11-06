@@ -34,7 +34,8 @@ import {
   MAX_SKIDS_PER_ROOM,
   type PlayerState,
   type Room,
-  type Obstacle
+  type Obstacle,
+  type BiomeZone
 } from '@/types/game';
 
 function createMockPlayer(overrides: Partial<PlayerState> = {}): PlayerState {
@@ -445,6 +446,160 @@ describe('Physics Module: Kinematics, NOS, and Collisions (src/systems/physics.t
       expect(Math.abs(diff)).toBeGreaterThan(0.28);
       expect(Math.abs(diff)).toBeLessThan(SKID_MARK_THRESHOLD);
       expect(player.driftCharge).toBeCloseTo(0.2 + dt * 1.45, 4);
+    });
+  });
+
+  describe('Biome Zone Physics & Player Interactions', () => {
+    it('regenerates +14 NOS/s and sets onBoostStrip = true when overlapping boost_strip', () => {
+      player.x = 300;
+      player.y = 300;
+      player.nos = 40;
+      player.nosMax = 100;
+      (player as any).onBoostStrip = false;
+
+      const boostZone: BiomeZone = {
+        x: 300,
+        y: 330,
+        radius: 30, // dist = 30 <= 30 + 17 = 47
+        type: 'boost_strip'
+      };
+      room.biomeZones = [boostZone];
+
+      const dt = 0.5;
+      updateBikeKinematics(player, 1, 0, false, dt, room);
+
+      expect((player as any).onBoostStrip).toBe(true);
+      // 40 + 0.5 * 14 = 47
+      expect(player.nos).toBeCloseTo(47, 4);
+    });
+
+    it('clamps NOS regeneration to nosMax on boost_strip', () => {
+      player.x = 300;
+      player.y = 300;
+      player.nos = 98;
+      player.nosMax = 100;
+
+      room.biomeZones = [
+        { x: 300, y: 300, radius: 40, type: 'boost_strip' }
+      ];
+
+      updateBikeKinematics(player, 1, 0, false, 0.5, room);
+      expect(player.nos).toBe(100);
+    });
+
+    it('resets onBoostStrip = false when moving outside boost_strip zone', () => {
+      player.x = 300;
+      player.y = 300;
+      (player as any).onBoostStrip = true;
+
+      // Far away zone: dist = 200 > 30 + 17
+      room.biomeZones = [
+        { x: 500, y: 300, radius: 30, type: 'boost_strip' }
+      ];
+
+      updateBikeKinematics(player, 1, 0, false, 0.1, room);
+      expect((player as any).onBoostStrip).toBe(false);
+    });
+
+    it('resets onBoostStrip = false when room has no biome zones', () => {
+      (player as any).onBoostStrip = true;
+      room.biomeZones = undefined;
+
+      updateBikeKinematics(player, 1, 0, false, 0.1, room);
+      expect((player as any).onBoostStrip).toBe(false);
+    });
+
+    it('boosts driftCharge accumulation by extra +dt * 0.65 when moving on oil_slick', () => {
+      player.x = 250;
+      player.y = 250;
+      player.bikeAngle = 0;
+      player.driftCharge = 0.2;
+
+      room.biomeZones = [
+        { x: 250, y: 250, radius: 50, type: 'oil_slick' }
+      ];
+
+      const dt = 0.1;
+      // Moving straight East (diff = 0) at high speed (> 220 px/s): decays by dt * 0.35 = 0.035
+      // With oil slick: receives extra +dt * 0.65 = 0.065 -> 0.2 - 0.035 + 0.065 = 0.230
+      updateBikeKinematics(player, 1, 0, false, dt, room);
+
+      expect(player.driftCharge).toBeCloseTo(0.2 - dt * 0.35 + dt * 0.65, 4);
+    });
+
+    it('does NOT boost driftCharge on oil_slick if stationary', () => {
+      player.x = 250;
+      player.y = 250;
+      player.vx = 0;
+      player.vy = 0;
+      player.driftCharge = 0.2;
+
+      room.biomeZones = [
+        { x: 250, y: 250, radius: 50, type: 'oil_slick' }
+      ];
+
+      const dt = 0.1;
+      updateBikeKinematics(player, 0, 0, false, dt, room);
+
+      // Stationary decays by 0.55 * dt and does not get extra oil bonus
+      expect(player.driftCharge).toBeCloseTo(0.2 - dt * 0.55, 4);
+    });
+
+    it('cools down active nosDelay 2x faster when on ice_patch', () => {
+      player.x = 200;
+      player.y = 200;
+      player.nosDelay = 0.6;
+
+      room.biomeZones = [
+        { x: 200, y: 200, radius: 45, type: 'ice_patch' }
+      ];
+
+      const dt = 0.2;
+      updateBikeKinematics(player, 0, 0, false, dt, room);
+
+      // Extra cooling in updateBikeKinematics: Math.max(0, nosDelay - dt) = 0.6 - 0.2 = 0.4
+      expect(player.nosDelay).toBeCloseTo(0.4, 4);
+    });
+
+    it('clamps nosDelay at 0 when cooling down on ice_patch', () => {
+      player.x = 200;
+      player.y = 200;
+      player.nosDelay = 0.05;
+
+      room.biomeZones = [
+        { x: 200, y: 200, radius: 45, type: 'ice_patch' }
+      ];
+
+      updateBikeKinematics(player, 0, 0, false, 0.1, room);
+      expect(player.nosDelay).toBe(0);
+    });
+
+    it('clears nosLock on ice_patch if nos >= 25', () => {
+      player.x = 200;
+      player.y = 200;
+      player.nos = 30;
+      player.nosLock = true;
+
+      room.biomeZones = [
+        { x: 200, y: 200, radius: 45, type: 'ice_patch' }
+      ];
+
+      updateBikeKinematics(player, 0, 0, false, 0.05, room);
+      expect(player.nosLock).toBe(false);
+    });
+
+    it('preserves nosLock on ice_patch if nos < 25', () => {
+      player.x = 200;
+      player.y = 200;
+      player.nos = 15;
+      player.nosLock = true;
+
+      room.biomeZones = [
+        { x: 200, y: 200, radius: 45, type: 'ice_patch' }
+      ];
+
+      updateBikeKinematics(player, 0, 0, false, 0.05, room);
+      expect(player.nosLock).toBe(true);
     });
   });
 });

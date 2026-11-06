@@ -16,6 +16,7 @@ import {
   PortalModalController,
   shouldPromptPortal,
   isClearOfPortal,
+  getNextSectorBriefing,
   PORTAL_X,
   PORTAL_Y,
   PORTAL_RADIUS,
@@ -224,5 +225,105 @@ describe('PortalModalController', () => {
     headless.confirm();
     expect(onConfirm).toHaveBeenCalledTimes(1);
     expect(headless.isOpen()).toBe(false);
+  });
+
+  it('sets sector briefing attributes and tooltips on modal elements without altering text content', () => {
+    modal.open({ floorNum: 1 }, vi.fn());
+    const label = document.getElementById('portal-floor-label')!;
+    expect(label.textContent).toBe('DESCEND TO FLOOR 2?');
+    expect(label.getAttribute('data-next-biome')).toBe('SMELTER FOUNDRY');
+    expect(label.getAttribute('data-next-boss')).toBe('SIEGE BEHEMOTH');
+    expect(label.getAttribute('data-threat-mult')).toBe('1.55x');
+    expect(label.getAttribute('title')).toContain('SMELTER FOUNDRY');
+    expect(label.getAttribute('title')).toContain('SIEGE BEHEMOTH');
+    expect(overlay.getAttribute('data-next-sector')).toBe('SMELTER FOUNDRY');
+    expect(overlay.getAttribute('data-next-boss')).toBe('SIEGE BEHEMOTH');
+    expect(overlay.getAttribute('data-threat-mult')).toBe('1.55x');
+  });
+});
+
+describe('getNextSectorBriefing pure helper', () => {
+  it('returns accurate sector 2 briefing when on floor 1', () => {
+    const briefing = getNextSectorBriefing(1);
+    expect(briefing).toEqual({
+      nextFloor: 2,
+      biomeName: 'SMELTER FOUNDRY',
+      bossName: 'SIEGE BEHEMOTH',
+      threatMult: '1.55x'
+    });
+  });
+
+  it('returns accurate sector 3 briefing when on floor 2', () => {
+    const briefing = getNextSectorBriefing(2);
+    expect(briefing).toEqual({
+      nextFloor: 3,
+      biomeName: 'NEON CYBER-FREEWAY',
+      bossName: 'OVERLORD HELION',
+      threatMult: '2.40x'
+    });
+  });
+
+  it('returns accurate sector 4 briefing when on floor 3', () => {
+    const briefing = getNextSectorBriefing(3);
+    expect(briefing).toEqual({
+      nextFloor: 4,
+      biomeName: 'SUB-ZERO CRYO LAB',
+      bossName: 'CRYO VALKYRIE',
+      threatMult: '3.72x'
+    });
+  });
+
+  it('returns accurate sector 5 briefing when on floor 4', () => {
+    const briefing = getNextSectorBriefing(4);
+    expect(briefing).toEqual({
+      nextFloor: 5,
+      biomeName: 'MAGMA CORE',
+      bossName: 'INFERNO COLOSSUS',
+      threatMult: '5.77x'
+    });
+  });
+
+  it('returns accurate sector 6 briefing when on floor 5', () => {
+    const briefing = getNextSectorBriefing(5);
+    expect(briefing).toEqual({
+      nextFloor: 6,
+      biomeName: 'CHROME CITADEL',
+      bossName: 'OMEGA VALHALLA',
+      threatMult: '8.95x'
+    });
+  });
+
+  it('returns accurate overdrive sector 7 briefing when on floor 6', () => {
+    const briefing = getNextSectorBriefing(6);
+    expect(briefing).toEqual({
+      nextFloor: 7,
+      biomeName: 'ENDLESS VALHALLA OVERDRIVE',
+      bossName: 'OMEGA VALHALLA',
+      threatMult: '13.87x'
+    });
+  });
+
+  it('returns accurate endless overdrive scaling for floor 7 and beyond (7+)', () => {
+    const briefing7 = getNextSectorBriefing(7);
+    expect(briefing7).toEqual({
+      nextFloor: 8,
+      biomeName: 'ENDLESS VALHALLA OVERDRIVE',
+      bossName: 'OMEGA VALHALLA',
+      threatMult: '21.49x'
+    });
+
+    const briefing8 = getNextSectorBriefing(8);
+    expect(briefing8).toEqual({
+      nextFloor: 9,
+      biomeName: 'ENDLESS VALHALLA OVERDRIVE',
+      bossName: 'OMEGA VALHALLA',
+      threatMult: '33.32x'
+    });
+  });
+
+  it('is accessible via PortalModalController static and instance methods', () => {
+    expect(PortalModalController.getNextSectorBriefing(1)).toEqual(getNextSectorBriefing(1));
+    const controller = new PortalModalController();
+    expect(controller.getNextSectorBriefing(2)).toEqual(getNextSectorBriefing(2));
   });
 });

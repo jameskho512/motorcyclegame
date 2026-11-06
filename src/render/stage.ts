@@ -66,6 +66,20 @@ export function getFloorMoteColor(floorNum: number): number {
   return 0xffd60a; // Floor 6+
 }
 
+/**
+ * Maps elite enemy affix name to outer halo ring color:
+ * - 'volatile': 0xff9f1c (fiery amber-orange)
+ * - 'overclocked': 0x00f5d4 (electric cyan)
+ * - 'vampiric': 0xff1f4b (crimson siphon)
+ * - default: 0xffd60a (gold)
+ */
+export function getEliteAffixColor(affix?: string): number {
+  if (affix === 'volatile') return 0xff9f1c;
+  if (affix === 'overclocked') return 0x00f5d4;
+  if (affix === 'vampiric') return 0xff1f4b;
+  return 0xffd60a;
+}
+
 export class StageManager {
   public app: Application;
   public vfx: VFXManager;
@@ -400,6 +414,10 @@ export class StageManager {
             .fill({ color: 0x0d1b2a, alpha: 0.85 })
             .stroke({ color: 0x00f5d4, width: 2.5, alpha: 0.9 });
 
+          // Extra inner glowing cyan-gold speed chevron ring
+          g.circle(z.x, z.y, z.radius * 0.55)
+            .stroke({ color: 0xffffff, width: 2, alpha: 0.75 });
+
           const chevSpacing = padW / 4;
           for (let c = -1; c <= 1; c++) {
             const chX = z.x + c * chevSpacing;
@@ -418,6 +436,11 @@ export class StageManager {
           g.circle(z.x, z.y, z.radius)
             .fill({ color: 0x90e0ef, alpha: 0.28 })
             .stroke({ color: 0x72efdd, width: 2, alpha: 0.7 });
+
+          // Inner crystalline specular ring
+          g.circle(z.x, z.y, z.radius * 0.6)
+            .stroke({ color: 0xffffff, width: 1.5, alpha: 0.65 });
+
           const rIce = z.radius * 0.68;
           g.moveTo(z.x - rIce, z.y - rIce * 0.4)
             .lineTo(z.x + rIce * 0.8, z.y + rIce * 0.3)
@@ -953,6 +976,12 @@ export class StageManager {
           .stroke({ color: 0xff1f4b, width: 3.5, alpha: enragePulse });
         g.circle(en.x, en.y, en.radius + 6)
           .stroke({ color: 0xffd60a, width: 2.2, alpha: 0.9 });
+      }
+
+      // Elite affix color-coded outer double halo ring
+      if (en.isElite) {
+        g.circle(en.x, en.y, en.radius + 5)
+          .stroke({ color: getEliteAffixColor((en as any).eliteAffix), width: 2.2, alpha: 0.85 });
       }
 
       drawEnemy(g, en, timestampMs);
