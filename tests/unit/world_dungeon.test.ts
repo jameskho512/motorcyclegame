@@ -18,7 +18,9 @@ import {
   getFloorBountyContract,
   type FloorBountyContract,
   getHubNpcGreeting,
-  type HubNpcGreeting
+  type HubNpcGreeting,
+  getRoomHazardSummary,
+  type RoomHazardSummary
 } from '../../src/world/dungeon';
 import {
   ARENA_WIDTH,
@@ -702,6 +704,233 @@ describe('World Module: Procedural Dungeon Generation (src/world/dungeon.ts)', (
 
       const bNeg = getHubNpcGreeting('bounty', -5, -2);
       expect(bNeg.quote).toBe('Raise the Bounty Heat for massive Scrap payouts, outlaw!');
+    });
+  });
+
+  describe('getRoomHazardSummary (M64: Biome Room Tactical Hazard Summary Helper)', () => {
+    it('returns default values and standard traction hint for empty room or room without hazards', () => {
+      const emptyRoom: Room = {
+        x: 0,
+        y: 0,
+        type: 'start',
+        cleared: true,
+        visited: true,
+        doors: { N: false, S: false, E: false, W: false },
+        obstacles: [],
+        enemies: [],
+        pickups: [],
+        hazards: [],
+        skids: [],
+        trapdoor: false
+      };
+
+      const summary: RoomHazardSummary = getRoomHazardSummary(emptyRoom);
+      expect(summary.explosiveCount).toBe(0);
+      expect(summary.toxicCount).toBe(0);
+      expect(summary.cryoCount).toBe(0);
+      expect(summary.zoneTypes).toEqual([]);
+      expect(summary.tacticalHint).toBe('Clear asphalt sector — standard traction.');
+    });
+
+    it('returns default summary safely for null or undefined room', () => {
+      const nullSummary = getRoomHazardSummary(null);
+      expect(nullSummary.explosiveCount).toBe(0);
+      expect(nullSummary.tacticalHint).toBe('Clear asphalt sector — standard traction.');
+
+      const undefSummary = getRoomHazardSummary(undefined);
+      expect(undefSummary.explosiveCount).toBe(0);
+      expect(undefSummary.tacticalHint).toBe('Clear asphalt sector — standard traction.');
+    });
+
+    it('ignores rock obstacles and counts only barrel hazards', () => {
+      const rockRoom: Room = {
+        x: 0,
+        y: 0,
+        type: 'combat',
+        cleared: false,
+        visited: true,
+        doors: { N: false, S: false, E: false, W: false },
+        obstacles: [
+          { x: 100, y: 100, size: 42, type: 'rock', hp: 99999 },
+          { x: 200, y: 200, size: 42, type: 'rock', hp: 99999 }
+        ],
+        enemies: [],
+        pickups: [],
+        hazards: [],
+        skids: [],
+        trapdoor: false
+      };
+
+      const summary = getRoomHazardSummary(rockRoom);
+      expect(summary.explosiveCount).toBe(0);
+      expect(summary.toxicCount).toBe(0);
+      expect(summary.cryoCount).toBe(0);
+      expect(summary.tacticalHint).toBe('Clear asphalt sector — standard traction.');
+    });
+
+    it('correctly counts explosive barrels and generates explosive barrel advisory', () => {
+      const room: Room = {
+        x: 0,
+        y: 0,
+        type: 'combat',
+        cleared: false,
+        visited: true,
+        doors: { N: false, S: false, E: false, W: false },
+        obstacles: [
+          { x: 100, y: 100, size: 42, type: 'barrel', variant: 'explosive', hp: 30 },
+          { x: 200, y: 200, size: 42, type: 'barrel', hp: 30 }
+        ],
+        enemies: [],
+        pickups: [],
+        hazards: [],
+        skids: [],
+        trapdoor: false
+      };
+
+      const summary = getRoomHazardSummary(room);
+      expect(summary.explosiveCount).toBe(2);
+      expect(summary.toxicCount).toBe(0);
+      expect(summary.cryoCount).toBe(0);
+      expect(summary.tacticalHint).toContain('Explosive barrels detected (2)');
+    });
+
+    it('correctly counts toxic barrels and generates corrosive pools advisory', () => {
+      const room: any = {
+        x: 0,
+        y: 0,
+        type: 'combat',
+        cleared: false,
+        visited: true,
+        doors: { N: false, S: false, E: false, W: false },
+        obstacles: [
+          { x: 100, y: 100, size: 42, type: 'toxic_barrel', hp: 25 },
+          { x: 200, y: 200, size: 42, type: 'barrel', variant: 'toxic_barrel', hp: 25 },
+          { x: 300, y: 300, size: 42, type: 'barrel', variant: 'toxic', hp: 25 }
+        ],
+        enemies: [],
+        pickups: [],
+        hazards: [],
+        skids: [],
+        trapdoor: false
+      };
+
+      const summary = getRoomHazardSummary(room);
+      expect(summary.toxicCount).toBe(3);
+      expect(summary.explosiveCount).toBe(0);
+      expect(summary.cryoCount).toBe(0);
+      expect(summary.tacticalHint).toContain('corrosive pools');
+      expect(summary.tacticalHint).toContain('Toxic barrels detected (3)');
+    });
+
+    it('correctly counts cryo barrels and generates cryo freeze blast advisory', () => {
+      const room: Room = {
+        x: 0,
+        y: 0,
+        type: 'combat',
+        cleared: false,
+        visited: true,
+        doors: { N: false, S: false, E: false, W: false },
+        obstacles: [
+          { x: 100, y: 100, size: 42, type: 'barrel', variant: 'cryo_barrel', hp: 25 },
+          { x: 200, y: 200, size: 42, type: 'cryo_barrel' as any, hp: 25 }
+        ],
+        enemies: [],
+        pickups: [],
+        hazards: [],
+        skids: [],
+        trapdoor: false
+      };
+
+      const summary = getRoomHazardSummary(room);
+      expect(summary.cryoCount).toBe(2);
+      expect(summary.explosiveCount).toBe(0);
+      expect(summary.toxicCount).toBe(0);
+      expect(summary.tacticalHint).toContain('cryo freeze blasts');
+      expect(summary.tacticalHint).toContain('Cryo barrels detected (2)');
+    });
+
+    it('collects unique zone types from room.zones or room.biomeZones and mentions surface modifiers', () => {
+      const roomWithZones: any = {
+        x: 0,
+        y: 0,
+        type: 'combat',
+        cleared: false,
+        visited: true,
+        doors: { N: false, S: false, E: false, W: false },
+        obstacles: [],
+        zones: [
+          { type: 'oil_slick' },
+          { type: 'boost_strip' },
+          { type: 'oil_slick' }
+        ],
+        biomeZones: [
+          { type: 'ice_patch' },
+          { type: 'boost_strip' }
+        ],
+        enemies: [],
+        pickups: [],
+        hazards: [],
+        skids: [],
+        trapdoor: false
+      };
+
+      const summary = getRoomHazardSummary(roomWithZones);
+      expect(summary.zoneTypes).toEqual(['oil_slick', 'boost_strip', 'ice_patch']);
+      expect(summary.tacticalHint).toContain('Surface modifiers detected');
+      expect(summary.tacticalHint).toContain('oil slick');
+      expect(summary.tacticalHint).toContain('boost strip');
+      expect(summary.tacticalHint).toContain('ice patch');
+    });
+
+    it('combines multiple barrel hazards and surface modifiers into a comprehensive advisory', () => {
+      const comboRoom: any = {
+        x: 0,
+        y: 0,
+        type: 'combat',
+        cleared: false,
+        visited: true,
+        doors: { N: false, S: false, E: false, W: false },
+        obstacles: [
+          { x: 100, y: 100, size: 42, type: 'barrel', variant: 'cryo_barrel', hp: 25 },
+          { x: 200, y: 200, size: 42, type: 'toxic_barrel', hp: 25 },
+          { x: 300, y: 300, size: 42, type: 'barrel', variant: 'explosive', hp: 25 },
+          { x: 400, y: 400, size: 42, type: 'rock', hp: 99999 }
+        ],
+        zones: [{ type: 'oil_slick' }],
+        enemies: [],
+        pickups: [],
+        hazards: [],
+        skids: [],
+        trapdoor: false
+      };
+
+      const summary = getRoomHazardSummary(comboRoom);
+      expect(summary.cryoCount).toBe(1);
+      expect(summary.toxicCount).toBe(1);
+      expect(summary.explosiveCount).toBe(1);
+      expect(summary.zoneTypes).toEqual(['oil_slick']);
+      expect(summary.tacticalHint).toContain('cryo freeze blasts');
+      expect(summary.tacticalHint).toContain('corrosive pools');
+      expect(summary.tacticalHint).toContain('Explosive barrels detected');
+      expect(summary.tacticalHint).toContain('Surface modifiers detected');
+    });
+
+    it('works on real procedurally generated rooms from generateDungeon', () => {
+      const dungeon = generateDungeon(4);
+      let checkedAny = false;
+      for (const room of Object.values(dungeon.rooms)) {
+        const summary = getRoomHazardSummary(room);
+        expect(typeof summary.explosiveCount).toBe('number');
+        expect(typeof summary.toxicCount).toBe('number');
+        expect(typeof summary.cryoCount).toBe('number');
+        expect(Array.isArray(summary.zoneTypes)).toBe(true);
+        expect(typeof summary.tacticalHint).toBe('string');
+        if (summary.cryoCount > 0) {
+          expect(summary.tacticalHint).toContain('cryo freeze blasts');
+          checkedAny = true;
+        }
+      }
+      expect(checkedAny).toBe(true);
     });
   });
 });

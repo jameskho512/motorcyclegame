@@ -88,7 +88,9 @@ export const SOUND_CHANNEL_MAP: Readonly<Record<string, VolumeChannel>> = Object
   phaseEnrage: 'ui',
   killStreak: 'ui',
   choiceLock: 'ui',
-  masteryUp: 'ui'
+  masteryUp: 'ui',
+  stationOpen: 'ui',
+  heatToggle: 'ui'
 });
 
 function clampUnit(v: number): number {
@@ -851,9 +853,41 @@ export class SoundSynthesizer implements AudioService {
       this.playTone('ui', freq * 2, freq * 2, dur * 0.85, 'sine', 0.14, delay);
     });
   }
+
+  /**
+   * Plays a crisp 2-tone hydraulic latch + neon terminal chime (440Hz -> 660Hz triangle/sine)
+   * when opening a Sanctuary [E] station interface.
+   */
+  public stationOpen(): void {
+    if (this.muted || this.getEffectiveVolume('ui') <= 0 || !this.init() || !this.actx) return;
+
+    // Tone 1: Hydraulic latch / first tone (440Hz triangle + sine) + soft mechanical latch noise
+    this.playTone('ui', 440, 440, 0.09, 'triangle', 0.22, 0.0);
+    this.playTone('ui', 440, 440, 0.09, 'sine', 0.16, 0.0);
+    this.playNoise('ui', 0.035, 2400, 'bandpass', 0.08, 1.5);
+
+    // Tone 2: Neon terminal chime (660Hz triangle + sine)
+    this.playTone('ui', 660, 660, 0.16, 'triangle', 0.24, 0.08);
+    this.playTone('ui', 660, 660, 0.16, 'sine', 0.16, 0.08);
+  }
+
+  /**
+   * Plays a pitch-scaled warning synth blip (300 + clampedHeat * 110 Hz sawtooth/square)
+   * when cycling Pact of Heat (0..3).
+   */
+  public heatToggle(heatLevel: number): void {
+    if (this.muted || this.getEffectiveVolume('ui') <= 0 || !this.init() || !this.actx) return;
+
+    const clampedHeat = Number.isFinite(heatLevel) ? Math.max(0, Math.min(3, Math.round(heatLevel))) : 0;
+    const freq = 300 + clampedHeat * 110;
+
+    this.playTone('ui', freq, freq * 0.95, 0.08, 'sawtooth', 0.22, 0.0);
+    this.playTone('ui', freq, freq, 0.08, 'square', 0.14, 0.0);
+  }
 }
 
 /**
  * Default global singleton AudioService instance.
  */
 export const SFX: AudioService = new SoundSynthesizer();
+export { SoundSynthesizer as SoundManager };

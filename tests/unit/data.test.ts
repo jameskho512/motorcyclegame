@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { formatWeaponMasteryHint, formatHubNpcTooltip, HubNpcTooltipInfo } from '@/ui/tooltip';
+import { formatWeaponMasteryHint, formatHubNpcTooltip, HubNpcTooltipInfo, formatStyleRankTooltip } from '@/ui/tooltip';
 import {
   WEAPONS,
   UNLOCKABLE_IDS,
@@ -615,5 +615,68 @@ describe('Tooltip: formatHubNpcTooltip', () => {
     expect(pFull.evolved).toBe(true);
     expect(pFull.progressPct).toBe(100);
     expect(pFull.statusText).toContain('OVERCLOCK EVOLVED');
+  });
+
+  describe('Style Rank Tooltip Formatter (formatStyleRankTooltip - M62)', () => {
+    const rankTiers: Array<{ grade: string; score: number; driftPct: number }> = [
+      { grade: 'D', score: 12, driftPct: 0 },
+      { grade: 'C', score: 28, driftPct: 20 },
+      { grade: 'B', score: 45, driftPct: 40 },
+      { grade: 'A', score: 58, driftPct: 60 },
+      { grade: 'S', score: 72, driftPct: 80 },
+      { grade: 'SS', score: 85, driftPct: 90 },
+      { grade: 'SSS', score: 96, driftPct: 100 }
+    ];
+
+    it('formats default tooltip with score 12 and rank D', () => {
+      const html = formatStyleRankTooltip();
+      expect(html).toContain('OUTLAW STYLE RANK (D — 12%)');
+      expect(html).toContain('HOW TO IMPROVE:');
+      expect(html).toContain('RANK REWARDS:');
+    });
+
+    it('formats style rank tooltip across all 7 rank tiers (D, C, B, A, S, SS, SSS)', () => {
+      for (const { grade, score, driftPct } of rankTiers) {
+        const html = formatStyleRankTooltip(score, grade);
+
+        // 1. Current rank header & score
+        expect(html).toContain(`OUTLAW STYLE RANK (${grade} — ${score}%)`);
+
+        // 2. Active combat bonus description
+        expect(html).toContain('Higher Style Ranks grant live combat buffs');
+        expect(html).toContain('Fire Rate, Bike Speed, Loot Luck, and passive NOS Regeneration');
+
+        // 3. How to build style: [SPACE], drift, graze, kills
+        expect(html).toContain('HOW TO IMPROVE:');
+        expect(html).toContain('[SPACE]');
+        expect(html).toContain('Powerslide Drift');
+        expect(html).toContain('Graze');
+        expect(html).toContain('Chain Enemy Kills');
+
+        // 4. All 7 rank tiers & reward thresholds
+        expect(html).toContain('RANK REWARDS:');
+        expect(html).toContain('C (24%): +3% Spd/Rate');
+        expect(html).toContain('B (38%): +6% Spd/Rate');
+        expect(html).toContain('A (52%): +10% Spd/Rate');
+        expect(html).toContain('S (66%): +15% Spd/Rate +1.5 NOS/s');
+        expect(html).toContain('SS (80%): +20% Spd/Rate +2.5 NOS/s');
+        expect(html).toContain('SSS (92%): +25% Spd/Rate +4 NOS/s');
+
+        // Also check robustness when called with driftPct parameter
+        const htmlWithDrift = formatStyleRankTooltip(score, String(driftPct));
+        expect(htmlWithDrift).toContain(`OUTLAW STYLE RANK (${driftPct} — ${score}%)`);
+        expect(htmlWithDrift).toContain('[SPACE]');
+        expect(htmlWithDrift).toContain('Graze');
+        expect(htmlWithDrift).toContain('Chain Enemy Kills');
+      }
+    });
+
+    it('rounds floating-point style scores correctly', () => {
+      const html = formatStyleRankTooltip(79.6, 'SS');
+      expect(html).toContain('OUTLAW STYLE RANK (SS — 80%)');
+
+      const htmlLow = formatStyleRankTooltip(23.4, 'C');
+      expect(htmlLow).toContain('OUTLAW STYLE RANK (C — 23%)');
+    });
   });
 });

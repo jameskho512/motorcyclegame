@@ -1540,4 +1540,180 @@ describe('Render & UI Subsystems', () => {
       expect(chips[2].classList.contains('custom-chip')).toBe(true);
     });
   });
+
+  describe('Left HUD Clarity & Style Rank Tooltip (M62)', () => {
+    let hud: HUDController;
+    let player: PlayerState;
+
+    beforeEach(() => {
+      // Ensure HUDController has update alias if tests call hud.update
+      if (typeof (HUDController.prototype as any).update !== 'function') {
+        (HUDController.prototype as any).update = function (...args: any[]) {
+          return (this as any).updateSidebar(...args);
+        };
+      }
+
+      document.body.innerHTML = `
+        <div id="game-wrapper">
+          <div id="weapon-bar"></div>
+          <div id="hud-synergy-list"></div>
+          <div id="synergy-list"></div>
+          <div id="hp-text"></div>
+          <div id="hull-bar"></div>
+          <div id="hull-meter"></div>
+          <div id="nos-fill"></div>
+          <div id="nos-meter"></div>
+          <div id="nos-text"></div>
+          <div id="hud-lv-badge"></div>
+          <div id="coin-count"></div>
+          <div id="scrap-count"></div>
+          <div id="floor-num"></div>
+          <div id="stats-grid"></div>
+          <div id="mod-list"></div>
+          <div id="items-list"></div>
+          <div id="style-rank-card">
+            <div id="style-rank-grade"></div>
+            <div id="style-rank-title"></div>
+            <div id="style-rank-fill"></div>
+            <div id="style-rank-sub"></div>
+            <div id="style-rank-howto"></div>
+          </div>
+          <div id="synergy-tracker-card"></div>
+        </div>
+      `;
+
+      hud = new HUDController();
+      player = {
+        x: 0,
+        y: 0,
+        vx: 0,
+        vy: 0,
+        radius: 17,
+        bikeAngle: 0,
+        aimAngle: 0,
+        baseSpeed: 265,
+        hp: 6,
+        maxHp: 6,
+        coins: 10,
+        invuln: 0,
+        stunTimer: 0,
+        weapon: 'pistol',
+        runWeapons: {},
+        fireTimer: 0,
+        dmgMult: 1,
+        fireRateMult: 1,
+        speedMult: 1,
+        projSpeedMult: 1,
+        blastMult: 1,
+        pierce: 0,
+        bounce: 0,
+        multiShot: 1,
+        vampChance: 0,
+        items: [],
+        itemStacks: {},
+        killCount: 0,
+        nos: 100,
+        nosMax: 100,
+        nosLock: false,
+        nosDelay: 0,
+        livery: 'crimson_kaneda',
+        heatLevel: 0,
+        styleScore: 12,
+        driftCharge: 0
+      };
+    });
+
+    it('populates #style-rank-sub with BUFF: (BUFF: None at Rank D, ACTIVE BUFF: at higher ranks)', () => {
+      // 1. Rank D case
+      player.styleScore = 12;
+      (hud as any).update(player, 1);
+
+      const subEl = document.getElementById('style-rank-sub');
+      expect(subEl).not.toBeNull();
+      expect(subEl?.textContent).toContain('BUFF:');
+      expect(subEl?.textContent).toBe('BUFF: None (Reach Rank C at 24% for +3% Fire Rate & Speed)');
+
+      // 2. Rank S case
+      player.styleScore = 70;
+      (hud as any).update(player, 1);
+      expect(subEl?.textContent).toContain('BUFF:');
+      expect(subEl?.textContent).toContain('ACTIVE BUFF: +15% SPD/RATE · +35% LUCK · +1.5 NOS/s');
+
+      // 3. Rank SSS case
+      player.styleScore = 95;
+      (hud as any).update(player, 1);
+      expect(subEl?.textContent).toContain('BUFF:');
+      expect(subEl?.textContent).toContain('ACTIVE BUFF: +25% SPD/RATE · +55% LUCK · +4 NOS/s');
+    });
+
+    it('populates #style-rank-howto with HOW TO RAISE: and live drift percentage', () => {
+      player.driftCharge = 0.45;
+      (hud as any).update(player, 1);
+
+      const howtoEl = document.getElementById('style-rank-howto');
+      expect(howtoEl).not.toBeNull();
+      expect(howtoEl?.textContent).toContain('HOW TO RAISE:');
+      expect(howtoEl?.textContent).toContain('Hold [SPACE] Drift (45%)');
+      expect(howtoEl?.textContent).toContain('Graze Bullets');
+      expect(howtoEl?.textContent).toContain('Kill Hostiles');
+    });
+
+    it('creates #style-rank-howto dynamically if not already present in DOM', () => {
+      const existing = document.getElementById('style-rank-howto');
+      if (existing) existing.remove();
+
+      expect(document.getElementById('style-rank-howto')).toBeNull();
+      (hud as any).update(player, 1);
+
+      const created = document.getElementById('style-rank-howto');
+      expect(created).not.toBeNull();
+      expect(created?.textContent).toContain('HOW TO RAISE:');
+    });
+
+    it('populates #synergy-list with sub-elements containing Effect: and Task:', () => {
+      (hud as any).update(player, 1);
+
+      const synList = document.getElementById('synergy-list')!;
+      expect(synList).not.toBeNull();
+
+      // Check for sub-elements containing "Effect:" (Weapon Evolution) and "Task:" (Floor Bounty)
+      const subRows = synList.querySelectorAll('.synergy-pill-desc, .synergy-row-sub');
+      expect(subRows.length).toBeGreaterThanOrEqual(2);
+
+      const effectRow = Array.from(subRows).find(el => el.textContent?.includes('Effect:'));
+      expect(effectRow).toBeDefined();
+      expect(effectRow?.textContent).toContain('Effect:');
+
+      const taskRow = Array.from(subRows).find(el => el.textContent?.includes('Task:'));
+      expect(taskRow).toBeDefined();
+      expect(taskRow?.textContent).toContain('Task:');
+    });
+
+    it('maintains Effect: in #synergy-list when weapon is evolved', () => {
+      // Evolve pistol via signature mod
+      player.weapon = 'pistol';
+      player.items = ['Rubberized Casings'];
+      (hud as any).update(player, 1);
+
+      const synList = document.getElementById('synergy-list')!;
+      const subRows = synList.querySelectorAll('.synergy-pill-desc, .synergy-row-sub');
+
+      const effectRow = Array.from(subRows).find(el => el.textContent?.includes('Effect:'));
+      expect(effectRow).toBeDefined();
+      expect(effectRow?.textContent).toContain('Effect:');
+      expect(synList.innerHTML).toContain('★ EVOLVED');
+    });
+
+    it('sets rich style rank tooltip on #style-rank-card via update', () => {
+      player.styleScore = 55; // Rank A
+      (hud as any).update(player, 1);
+
+      const card = document.getElementById('style-rank-card')!;
+      const tip = card.getAttribute('data-tip') || '';
+      expect(tip).toContain('OUTLAW STYLE RANK (A — 55%)');
+      expect(tip).toContain('HOW TO IMPROVE:');
+      expect(tip).toContain('[SPACE]');
+      expect(tip).toContain('RANK REWARDS:');
+    });
+  });
 });

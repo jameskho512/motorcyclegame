@@ -969,4 +969,91 @@ export function getHubNpcGreeting(
   }
 }
 
+// ============================================================================
+// BIOME ROOM TACTICAL HAZARD SUMMARY HELPER (M64)
+// ============================================================================
+
+export interface RoomHazardSummary {
+  explosiveCount: number;
+  toxicCount: number;
+  cryoCount: number;
+  zoneTypes: string[];
+  tacticalHint: string;
+}
+
+/**
+ * Evaluates tactical hazard telemetry for a room, counting active barrel hazard types,
+ * collecting unique environmental surface zone modifiers, and generating combat advisory text.
+ */
+export function getRoomHazardSummary(room?: Room | null): RoomHazardSummary {
+  if (!room) {
+    return {
+      explosiveCount: 0,
+      toxicCount: 0,
+      cryoCount: 0,
+      zoneTypes: [],
+      tacticalHint: 'Clear asphalt sector — standard traction.'
+    };
+  }
+
+  let explosiveCount = 0;
+  let toxicCount = 0;
+  let cryoCount = 0;
+
+  const obstacles = Array.isArray(room.obstacles) ? room.obstacles : [];
+  for (const ob of obstacles) {
+    if (!ob) continue;
+    const obType = ob.type as string | undefined;
+    const obVariant = (ob as any).variant as string | undefined;
+
+    if (obType === 'cryo_barrel' || obVariant === 'cryo_barrel' || obVariant === 'cryo') {
+      cryoCount++;
+    } else if (obType === 'toxic_barrel' || obVariant === 'toxic_barrel' || obVariant === 'toxic') {
+      toxicCount++;
+    } else if (obType === 'barrel' || obType === 'explosive_barrel' || obVariant === 'explosive') {
+      explosiveCount++;
+    }
+  }
+
+  const rawZones: any[] = [
+    ...(((room as any).zones as any[]) || []),
+    ...(((room as any).biomeZones as any[]) || [])
+  ];
+
+  const zoneTypes: string[] = [];
+  for (const z of rawZones) {
+    const typeStr = typeof z === 'string' ? z : (z && typeof z.type === 'string' ? z.type : undefined);
+    if (typeStr && typeStr.trim().length > 0 && !zoneTypes.includes(typeStr)) {
+      zoneTypes.push(typeStr);
+    }
+  }
+
+  const hintParts: string[] = [];
+  if (cryoCount > 0) {
+    hintParts.push(`Cryo barrels detected (${cryoCount}) — beware of sub-zero cryo freeze blasts.`);
+  }
+  if (toxicCount > 0) {
+    hintParts.push(`Toxic barrels detected (${toxicCount}) — steer clear of lingering corrosive pools.`);
+  }
+  if (explosiveCount > 0) {
+    hintParts.push(`Explosive barrels detected (${explosiveCount}) — trigger detonations from long range.`);
+  }
+  if (zoneTypes.length > 0) {
+    const zoneList = zoneTypes.map((z) => z.replace(/_/g, ' ')).join(', ');
+    hintParts.push(`Surface modifiers detected (${zoneList}) — maintain stability across zone hazards.`);
+  }
+
+  const tacticalHint = hintParts.length > 0
+    ? hintParts.join(' ')
+    : 'Clear asphalt sector — standard traction.';
+
+  return {
+    explosiveCount,
+    toxicCount,
+    cryoCount,
+    zoneTypes,
+    tacticalHint
+  };
+}
+
 

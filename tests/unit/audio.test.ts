@@ -5,6 +5,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   SoundSynthesizer,
+  SoundManager,
   calculateEngineParams,
   SFX,
   sanitizeVolumeSettings,
@@ -480,7 +481,8 @@ describe('Web Audio Procedural Synthesizer', () => {
         'updateEngine', 'updateEngineHum', 'shoot', 'arcChain', 'explosion', 'hit', 'enemyKill',
         'playerHurt', 'gameOverSound', 'pickupFuel', 'pickupItem', 'pickupLoot', 'shopBuy',
         'shopError', 'roomClear', 'doorTransition', 'nextFloor', 'uiClick',
-        'graze', 'driftBoost', 'phaseEnrage', 'killStreak', 'choiceLock', 'masteryUp'
+        'graze', 'driftBoost', 'phaseEnrage', 'killStreak', 'choiceLock', 'masteryUp',
+        'stationOpen', 'heatToggle'
       ];
       for (const m of methods) {
         expect(VOLUME_CHANNELS).toContain(SOUND_CHANNEL_MAP[m]);
@@ -493,6 +495,8 @@ describe('Web Audio Procedural Synthesizer', () => {
       expect(SOUND_CHANNEL_MAP.phaseEnrage).toBe('ui');
       expect(SOUND_CHANNEL_MAP.killStreak).toBe('ui');
       expect(SOUND_CHANNEL_MAP.choiceLock).toBe('ui');
+      expect(SOUND_CHANNEL_MAP.stationOpen).toBe('ui');
+      expect(SOUND_CHANNEL_MAP.heatToggle).toBe('ui');
       expect(SOUND_CHANNEL_MAP.shopBuy).toBe('pickups');
       expect(SOUND_CHANNEL_MAP.doorTransition).toBe('ui');
       expect(SOUND_CHANNEL_MAP.updateEngine).toBe('engine');
@@ -760,6 +764,241 @@ describe('Web Audio Procedural Synthesizer', () => {
       expect(typeof extSFX.setMusicIntensity).toBe('function');
       expect(typeof extSFX.masteryUp).toBe('function');
       expect(() => extSFX.masteryUp()).not.toThrow();
+    });
+  });
+
+  describe('Sanctuary Station & Heat Audio Cues (M63)', () => {
+    it('executes stationOpen and heatToggle safely without error when uninitialized', () => {
+      const sfx = new SoundSynthesizer(mockStorage);
+      expect(() => sfx.stationOpen()).not.toThrow();
+      expect(() => sfx.heatToggle(0)).not.toThrow();
+      expect(() => sfx.heatToggle(1)).not.toThrow();
+      expect(() => sfx.heatToggle(2)).not.toThrow();
+      expect(() => sfx.heatToggle(3)).not.toThrow();
+      expect(() => sfx.heatToggle(-1)).not.toThrow();
+      expect(() => sfx.heatToggle(99)).not.toThrow();
+      expect(() => sfx.heatToggle(NaN)).not.toThrow();
+    });
+
+    it('stationOpen generates 2-tone hydraulic latch + neon terminal chime (440Hz and 660Hz triangle/sine)', () => {
+      interface FakeParam {
+        value: number;
+        setTargetAtTime: ReturnType<typeof vi.fn>;
+        setValueAtTime: ReturnType<typeof vi.fn>;
+        exponentialRampToValueAtTime: ReturnType<typeof vi.fn>;
+      }
+      interface FakeNode {
+        type?: string;
+        frequency?: FakeParam;
+        gain?: FakeParam;
+        connect: ReturnType<typeof vi.fn>;
+        start?: ReturnType<typeof vi.fn>;
+        stop?: ReturnType<typeof vi.fn>;
+      }
+
+      const param = (): FakeParam => ({
+        value: 0,
+        setTargetAtTime: vi.fn(),
+        setValueAtTime: vi.fn(),
+        exponentialRampToValueAtTime: vi.fn()
+      });
+
+      const oscillators: FakeNode[] = [];
+      const gains: FakeNode[] = [];
+
+      class MockAC {
+        state = 'running';
+        currentTime = 10.0;
+        sampleRate = 44100;
+        destination = { name: 'dest' };
+        createGain = vi.fn(() => {
+          const n: FakeNode = { gain: param(), connect: vi.fn() };
+          gains.push(n);
+          return n;
+        });
+        createOscillator = vi.fn(() => {
+          const n: FakeNode = {
+            type: 'sine',
+            frequency: param(),
+            connect: vi.fn(),
+            start: vi.fn(),
+            stop: vi.fn()
+          };
+          oscillators.push(n);
+          return n;
+        });
+        createBiquadFilter = vi.fn(() => ({
+          type: 'lowpass',
+          frequency: param(),
+          Q: { value: 1 },
+          connect: vi.fn()
+        }));
+        createBuffer = vi.fn(() => ({ getChannelData: () => new Float32Array(150) }));
+        createBufferSource = vi.fn(() => ({ buffer: null, connect: vi.fn(), start: vi.fn() }));
+        resume = vi.fn().mockResolvedValue(undefined);
+      }
+
+      const g = globalThis as unknown as { AudioContext?: unknown };
+      const originalAC = g.AudioContext;
+      g.AudioContext = MockAC;
+
+      try {
+        const sfx = new SoundSynthesizer(mockStorage);
+        expect(sfx.init()).toBe(true);
+
+        const oscBefore = oscillators.length;
+        sfx.stationOpen();
+        const stationOscs = oscillators.slice(oscBefore);
+
+        // Expect 4 tone oscillators (2 for 440Hz triangle/sine + 2 for 660Hz triangle/sine)
+        expect(stationOscs.length).toBe(4);
+
+        const hasTriangle = stationOscs.some(o => o.type === 'triangle');
+        const hasSine = stationOscs.some(o => o.type === 'sine');
+        expect(hasTriangle).toBe(true);
+        expect(hasSine).toBe(true);
+
+        // Verify starting frequencies at 440 Hz and 660 Hz
+        const frequencies = stationOscs.map(o => o.frequency?.setValueAtTime.mock.calls[0]?.[0]);
+        expect(frequencies).toContain(440);
+        expect(frequencies).toContain(660);
+
+        // Mute verification
+        sfx.setMuted(true);
+        const oscMuted = oscillators.length;
+        sfx.stationOpen();
+        expect(oscillators.length).toBe(oscMuted);
+
+        // Zero UI volume verification
+        sfx.setMuted(false);
+        sfx.setVolume('ui', 0);
+        const oscZeroVol = oscillators.length;
+        sfx.stationOpen();
+        expect(oscillators.length).toBe(oscZeroVol);
+      } finally {
+        g.AudioContext = originalAC;
+      }
+    });
+
+    it('heatToggle plays pitch-scaled warning synth blip (300 + clampedHeat * 110 Hz sawtooth/square) for 0..3', () => {
+      interface FakeParam {
+        value: number;
+        setTargetAtTime: ReturnType<typeof vi.fn>;
+        setValueAtTime: ReturnType<typeof vi.fn>;
+        exponentialRampToValueAtTime: ReturnType<typeof vi.fn>;
+      }
+      interface FakeNode {
+        type?: string;
+        frequency?: FakeParam;
+        gain?: FakeParam;
+        connect: ReturnType<typeof vi.fn>;
+        start?: ReturnType<typeof vi.fn>;
+        stop?: ReturnType<typeof vi.fn>;
+      }
+
+      const param = (): FakeParam => ({
+        value: 0,
+        setTargetAtTime: vi.fn(),
+        setValueAtTime: vi.fn(),
+        exponentialRampToValueAtTime: vi.fn()
+      });
+
+      const oscillators: FakeNode[] = [];
+
+      class MockAC {
+        state = 'running';
+        currentTime = 5.0;
+        sampleRate = 44100;
+        destination = {};
+        createGain = vi.fn(() => ({ gain: param(), connect: vi.fn() }));
+        createOscillator = vi.fn(() => {
+          const n: FakeNode = {
+            type: 'sine',
+            frequency: param(),
+            connect: vi.fn(),
+            start: vi.fn(),
+            stop: vi.fn()
+          };
+          oscillators.push(n);
+          return n;
+        });
+        createBiquadFilter = vi.fn(() => ({
+          type: 'lowpass',
+          frequency: param(),
+          Q: { value: 1 },
+          connect: vi.fn()
+        }));
+        createBuffer = vi.fn(() => ({ getChannelData: () => new Float32Array(150) }));
+        createBufferSource = vi.fn(() => ({ buffer: null, connect: vi.fn(), start: vi.fn() }));
+        resume = vi.fn().mockResolvedValue(undefined);
+      }
+
+      const g = globalThis as unknown as { AudioContext?: unknown };
+      const originalAC = g.AudioContext;
+      g.AudioContext = MockAC;
+
+      try {
+        const sfx = new SoundSynthesizer(mockStorage);
+        sfx.init();
+
+        const testLevels = [
+          { heat: 0, expectedFreq: 300 },
+          { heat: 1, expectedFreq: 410 },
+          { heat: 2, expectedFreq: 520 },
+          { heat: 3, expectedFreq: 630 },
+          { heat: -5, expectedFreq: 300 }, // Clamped to 0
+          { heat: 10, expectedFreq: 630 }  // Clamped to 3
+        ];
+
+        for (const { heat, expectedFreq } of testLevels) {
+          const before = oscillators.length;
+          sfx.heatToggle(heat);
+          const heatOscs = oscillators.slice(before);
+
+          // Expect 2 oscillators (sawtooth + square)
+          expect(heatOscs.length).toBe(2);
+          const types = heatOscs.map(o => o.type).sort();
+          expect(types).toEqual(['sawtooth', 'square']);
+
+          for (const osc of heatOscs) {
+            expect(osc.frequency?.setValueAtTime).toHaveBeenCalledWith(
+              expect.closeTo(expectedFreq, 0.01),
+              expect.any(Number)
+            );
+          }
+        }
+
+        // Mute verification
+        sfx.setMuted(true);
+        const oscMuted = oscillators.length;
+        sfx.heatToggle(2);
+        expect(oscillators.length).toBe(oscMuted);
+
+        // Zero UI volume verification
+        sfx.setMuted(false);
+        sfx.setVolume('ui', 0);
+        const oscZeroVol = oscillators.length;
+        sfx.heatToggle(2);
+        expect(oscillators.length).toBe(oscZeroVol);
+      } finally {
+        g.AudioContext = originalAC;
+      }
+    });
+
+    it('SoundManager alias and SFX singleton expose stationOpen and heatToggle', () => {
+      expect(SoundManager).toBe(SoundSynthesizer);
+      const manager = new SoundManager(mockStorage);
+      expect(typeof manager.stationOpen).toBe('function');
+      expect(typeof manager.heatToggle).toBe('function');
+
+      const extSFX = SFX as unknown as {
+        stationOpen: () => void;
+        heatToggle: (heatLevel: number) => void;
+      };
+      expect(typeof extSFX.stationOpen).toBe('function');
+      expect(typeof extSFX.heatToggle).toBe('function');
+      expect(() => extSFX.stationOpen()).not.toThrow();
+      expect(() => extSFX.heatToggle(2)).not.toThrow();
     });
   });
 });

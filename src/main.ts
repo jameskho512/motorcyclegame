@@ -1344,7 +1344,11 @@ export class MotoRogueApp {
       this.stateManager.metaSave.bestFloor || 1,
       this.stateManager.metaSave.heatLevel || 0
     );
-    this.audio.uiClick();
+    if (this.audio.stationOpen) {
+      this.audio.stationOpen();
+    } else {
+      this.audio.uiClick();
+    }
     this.inputManager.reset();
     this.tooltip.hide();
     this.hubStationModal.hideBanner();
@@ -1433,7 +1437,11 @@ export class MotoRogueApp {
         meta.heatLevel = heat;
         player.heatLevel = heat;
         this.stateManager.saveMeta();
-        this.audio.uiClick();
+        if (this.audio.heatToggle) {
+          this.audio.heatToggle(heat);
+        } else {
+          this.audio.uiClick();
+        }
         this.updateHUD();
       },
       onLaunchRun: () => {

@@ -29,6 +29,11 @@ import {
   getShopItemAppraisal,
   ShopItemAppraisal
 } from '../../src/ui/shopModal';
+import {
+  HubStationModalController,
+  getHubStationPromptInfo,
+  HubStationOpenOptions
+} from '../../src/ui/hubStationModal';
 import { ARENA_WIDTH, ARENA_HEIGHT, Pickup } from '../../src/types/game';
 
 const MARKUP = `
@@ -619,3 +624,606 @@ describe('ShopModalController appraisal DOM attributes & pills', () => {
     expect(pill?.textContent).toBe('⚡ HIGH-GRADE ORDNANCE · AFFORDABLE');
   });
 });
+
+describe('HubStationModalController & getHubStationPromptInfo (Wave 14-15)', () => {
+  const HUB_MARKUP = `
+    <button id="outside-focus-btn" type="button">outside</button>
+    <button type="button" id="hub-interact-banner" class="hub-interact-banner" hidden>
+      <span class="hub-interact-key">[PRESS E]</span>
+      <div class="hub-interact-copy">
+        <strong id="hub-interact-title"></strong>
+        <span id="hub-interact-desc"></span>
+      </div>
+    </button>
+    <div id="hub-station-overlay" aria-hidden="true">
+      <div class="hub-station-card" role="dialog" aria-modal="true" aria-labelledby="hub-station-title">
+        <header class="hub-station-header">
+          <div class="hub-station-title-wrap">
+            <span class="hub-station-kicker" id="hub-station-kicker"></span>
+            <h2 class="hub-station-title" id="hub-station-title"></h2>
+          </div>
+          <div class="hub-station-speaker-pill" id="hub-station-speaker"></div>
+        </header>
+        <blockquote class="hub-station-quote" id="hub-station-quote"></blockquote>
+        <div class="hub-station-purpose" id="hub-station-purpose"></div>
+        <div class="hub-station-body" id="hub-station-body"></div>
+        <div class="hub-station-feedback" id="hub-station-feedback" hidden></div>
+        <footer class="hub-station-actions" id="hub-station-actions">
+          <button type="button" class="portal-btn portal-btn--primary" id="btn-hub-station-primary"><kbd>E</kbd> ACTIVATE</button>
+          <button type="button" class="portal-btn portal-btn--secondary" id="btn-hub-station-secondary">CYCLE HEAT</button>
+          <button type="button" class="portal-btn portal-btn--secondary" id="btn-hub-station-close"><kbd>ESC</kbd> CLOSE</button>
+        </footer>
+      </div>
+    </div>
+  `;
+
+  function createHubOptions(overrides: Partial<HubStationOpenOptions> = {}): HubStationOpenOptions {
+    return {
+      npcId: 'garage',
+      metaSave: {
+        scrap: 25,
+        heatLevel: 0,
+        bestFloor: 3,
+        totalKills: 142,
+        bossesSlain: 2,
+        totalRuns: 5,
+        stash: [{ id: 'part-1' }],
+        equipped: {
+          engine: { slot: 'engine', name: 'Twin Turbo', rarity: 1 }
+        }
+      },
+      player: {
+        weapon: 'shotgun',
+        hp: 5,
+        maxHp: 6
+      },
+      scannerClaimed: false,
+      bountyClaimed: false,
+      onReforge: vi.fn(() => ({ ok: true, message: 'Reforged successfully!' })),
+      onClaimScanner: vi.fn(() => ({ ok: true, message: 'Scanner calibrated!' })),
+      onClaimBountyCache: vi.fn(() => ({ ok: true, message: 'Supply cache secured!' })),
+      onSelectHeat: vi.fn(),
+      onLaunchRun: vi.fn(),
+      onClose: vi.fn(),
+      ...overrides
+    };
+  }
+
+  describe('getHubStationPromptInfo pure helper', () => {
+    it('returns contextual prompt info for garage station', () => {
+      const info = getHubStationPromptInfo('garage');
+      expect(info).toEqual({
+        title: '🔧 GARAGE & ARMORY BAY',
+        summary: 'Equip & salvage Stash parts, upgrade permanent Bike stats, and unlock new Weapons',
+        actionLabel: 'OPEN GARAGE [E]',
+        accentColor: '#ffd60a'
+      });
+    });
+
+    it('returns contextual prompt info for blacksmith station', () => {
+      const info = getHubStationPromptInfo('blacksmith');
+      expect(info).toEqual({
+        title: '⚒️ THE SCRAP FORGE',
+        summary: "Spend 12 Scrap ⚙️ to upgrade an equipped item's Rarity (+25% stats) or craft new Gear",
+        actionLabel: 'OPEN FORGE [E]',
+        accentColor: '#2ee6ff'
+      });
+    });
+
+    it('returns contextual prompt info for codex station with scannerClaimed variations', () => {
+      const unclaimed = getHubStationPromptInfo('codex', undefined, undefined, { scannerClaimed: false });
+      expect(unclaimed.title).toBe('📡 TACTICAL INTEL & SCANNER LAB');
+      expect(unclaimed.summary).toContain('Claim FREE +8–20% Weapon DMG & +15% Bullet Speed Buff');
+      expect(unclaimed.actionLabel).toBe('OPEN INTEL LAB [E]');
+      expect(unclaimed.accentColor).toBe('#9d4edd');
+
+      const claimed = getHubStationPromptInfo('codex', undefined, undefined, { scannerClaimed: true });
+      expect(claimed.summary).toContain('Tactical Scanner +DMG/+SPD Buff Active!');
+
+      const undefinedBuffs = getHubStationPromptInfo('codex');
+      expect(undefinedBuffs.summary).toContain('Claim FREE +8–20% Weapon DMG & +15% Bullet Speed Buff');
+    });
+
+    it('returns contextual prompt info for bounty station across claimed states and Heat levels 0..3', () => {
+      for (let heat = 0; heat <= 3; heat++) {
+        const meta = { heatLevel: heat };
+
+        const unclaimed = getHubStationPromptInfo('bounty', meta, undefined, { bountyClaimed: false });
+        expect(unclaimed.title).toBe('🎖️ OUTLAW WAR ROOM & BOUNTIES');
+        expect(unclaimed.summary).toContain('Claim FREE +15 Coins 🪙 & +1 Max Hull ❤️ Cache');
+        expect(unclaimed.actionLabel).toBe('OPEN WAR ROOM [E]');
+        expect(unclaimed.accentColor).toBe('#06d6a0');
+
+        const claimed = getHubStationPromptInfo('bounty', meta, undefined, { bountyClaimed: true });
+        expect(claimed.summary).toContain('Configure Threat Heat Level (0–3) for up to +75% Bonus Scrap');
+
+        const noBuffs = getHubStationPromptInfo('bounty', meta);
+        expect(noBuffs.summary).toContain('Claim FREE +15 Coins 🪙 & +1 Max Hull ❤️ Cache');
+      }
+    });
+
+    it('returns contextual prompt info for launch station', () => {
+      const info = getHubStationPromptInfo('launch');
+      expect(info).toEqual({
+        title: '🚀 SECTOR 1 HIGHWAY LAUNCH GATE',
+        summary: 'Review Pre-Run Readiness Checklist & Deploy into Sector 1 (Rust Belt Outskirts)',
+        actionLabel: 'OPEN LAUNCH GATE [E]',
+        accentColor: '#e5203a'
+      });
+    });
+
+    it('returns fallback prompt info for unknown station id', () => {
+      const info = getHubStationPromptInfo('unknown_station');
+      expect(info).toEqual({
+        title: 'STATION // INTERACT',
+        summary: 'Press [E] to interact with this hideout station',
+        actionLabel: 'INTERACT [E]',
+        accentColor: '#ffd60a'
+      });
+    });
+  });
+
+  describe('HubStationModalController DOM & Proximity Banner lifecycle', () => {
+    let modal: HubStationModalController;
+    let overlay: HTMLElement;
+    let banner: HTMLButtonElement;
+
+    beforeEach(() => {
+      document.body.innerHTML = HUB_MARKUP;
+      overlay = document.getElementById('hub-station-overlay')!;
+      banner = document.getElementById('hub-interact-banner') as HTMLButtonElement;
+      modal = new HubStationModalController();
+    });
+
+    afterEach(() => {
+      modal.close();
+      document.body.innerHTML = '';
+    });
+
+    it('initializes in closed state and provides card element access', () => {
+      expect(modal.isOpen()).toBe(false);
+      expect(modal.getCard()).toBe(overlay.querySelector('.hub-station-card'));
+    });
+
+    it('displays and configures proximity interaction banner on showBanner', () => {
+      const onInteract = vi.fn();
+      modal.showBanner('blacksmith', { scrap: 10 }, null, { scannerClaimed: false, bountyClaimed: false }, onInteract);
+
+      expect(banner.hasAttribute('hidden')).toBe(false);
+      expect(banner.getAttribute('data-station')).toBe('blacksmith');
+      expect(banner.style.getPropertyValue('--banner-accent')).toBe('#2ee6ff');
+      expect(document.getElementById('hub-interact-title')?.textContent).toBe('⚒️ THE SCRAP FORGE');
+      expect(document.getElementById('hub-interact-desc')?.textContent).toContain('Spend 12 Scrap');
+
+      banner.click();
+      expect(onInteract).toHaveBeenCalledTimes(1);
+    });
+
+    it('replaces click listener without duplicate callbacks when showBanner is called repeatedly', () => {
+      const onFirst = vi.fn();
+      const onSecond = vi.fn();
+
+      modal.showBanner('codex', null, null, { scannerClaimed: false, bountyClaimed: false }, onFirst);
+      modal.showBanner('launch', null, null, { scannerClaimed: false, bountyClaimed: false }, onSecond);
+
+      banner.click();
+      expect(onFirst).not.toHaveBeenCalled();
+      expect(onSecond).toHaveBeenCalledTimes(1);
+    });
+
+    it('hides proximity banner via hideBanner', () => {
+      const onInteract = vi.fn();
+      modal.showBanner('garage', null, null, { scannerClaimed: false, bountyClaimed: false }, onInteract);
+      expect(banner.hasAttribute('hidden')).toBe(false);
+
+      modal.hideBanner();
+      expect(banner.hasAttribute('hidden')).toBe(true);
+
+      banner.click();
+      expect(onInteract).not.toHaveBeenCalled();
+    });
+
+    it('automatically hides proximity banner when showBanner is called while modal is open', () => {
+      modal.open(createHubOptions({ npcId: 'blacksmith' }));
+      expect(modal.isOpen()).toBe(true);
+
+      const onInteract = vi.fn();
+      modal.showBanner('blacksmith', null, null, { scannerClaimed: false, bountyClaimed: false }, onInteract);
+      expect(banner.hasAttribute('hidden')).toBe(true);
+    });
+
+    it('opens modal, hides proximity banner, and sets aria and visibility attributes', () => {
+      modal.showBanner('garage', null, null, { scannerClaimed: false, bountyClaimed: false }, vi.fn());
+      expect(banner.hasAttribute('hidden')).toBe(false);
+
+      const options = createHubOptions({ npcId: 'garage' });
+      modal.open(options);
+
+      expect(modal.isOpen()).toBe(true);
+      expect(banner.hasAttribute('hidden')).toBe(true);
+      expect(overlay.classList.contains('visible')).toBe(true);
+      expect(overlay.getAttribute('aria-hidden')).toBe('false');
+      expect(document.getElementById('hub-station-title')?.textContent).toBe('🔧 GARAGE & ARMORY BAY');
+    });
+
+    it('closes modal, resets aria attributes, and fires onClose callback', () => {
+      const onClose = vi.fn();
+      const options = createHubOptions({ npcId: 'garage', onClose });
+      modal.open(options);
+
+      modal.close();
+      expect(modal.isOpen()).toBe(false);
+      expect(overlay.classList.contains('visible')).toBe(false);
+      expect(overlay.getAttribute('aria-hidden')).toBe('true');
+      expect(onClose).toHaveBeenCalledTimes(1);
+
+      // Subsequent close calls are idempotent and do not refire onClose
+      modal.close();
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('clicking close button (#btn-hub-station-close) closes the modal', () => {
+      const onClose = vi.fn();
+      modal.open(createHubOptions({ npcId: 'garage', onClose }));
+
+      const closeBtn = document.getElementById('btn-hub-station-close') as HTMLButtonElement;
+      closeBtn.click();
+
+      expect(modal.isOpen()).toBe(false);
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('restores focus to previous active element on close', () => {
+      const outsideBtn = document.getElementById('outside-focus-btn') as HTMLButtonElement;
+      outsideBtn.focus();
+      expect(document.activeElement).toBe(outsideBtn);
+
+      modal.open(createHubOptions({ npcId: 'garage' }));
+      expect(document.activeElement?.id).toBe('btn-hub-station-primary');
+
+      modal.close();
+      expect(document.activeElement).toBe(outsideBtn);
+    });
+
+    it('handles Escape key by closing modal and swallowing keyboard event', () => {
+      const onClose = vi.fn();
+      const bubbleSpy = vi.fn();
+      window.addEventListener('keydown', bubbleSpy);
+
+      modal.open(createHubOptions({ npcId: 'garage', onClose }));
+      const ev = key('Escape');
+
+      window.removeEventListener('keydown', bubbleSpy);
+      expect(modal.isOpen()).toBe(false);
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(ev.defaultPrevented).toBe(true);
+      expect(bubbleSpy).not.toHaveBeenCalled();
+    });
+
+    it.each(['Enter', 'e', 'E'])('key %j triggers primary button and is swallowed', (k) => {
+      const onReforge = vi.fn(() => ({ ok: true, message: 'Forged!' }));
+      const bubbleSpy = vi.fn();
+      window.addEventListener('keydown', bubbleSpy);
+
+      modal.open(createHubOptions({ npcId: 'blacksmith', onReforge }));
+      const ev = key(k);
+
+      window.removeEventListener('keydown', bubbleSpy);
+      expect(onReforge).toHaveBeenCalledTimes(1);
+      expect(ev.defaultPrevented).toBe(true);
+      expect(bubbleSpy).not.toHaveBeenCalled();
+    });
+
+    it('unhandled keys pass through without modal interception while open', () => {
+      const bubbleSpy = vi.fn();
+      window.addEventListener('keydown', bubbleSpy);
+
+      modal.open(createHubOptions({ npcId: 'garage' }));
+      key('w');
+
+      window.removeEventListener('keydown', bubbleSpy);
+      expect(bubbleSpy).toHaveBeenCalledTimes(1);
+      expect(modal.isOpen()).toBe(true);
+    });
+
+    it('traps Tab navigation between focusable elements within the overlay', () => {
+      modal.open(createHubOptions({ npcId: 'garage' }));
+      const primaryBtn = document.getElementById('btn-hub-station-primary') as HTMLButtonElement;
+      const closeBtn = document.getElementById('btn-hub-station-close') as HTMLButtonElement;
+
+      // Tab backwards from first focusable element
+      primaryBtn.focus();
+      const shiftTab = key('Tab', { shiftKey: true });
+      expect(shiftTab.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(closeBtn);
+
+      // Tab forwards from last focusable element
+      closeBtn.focus();
+      const forwardTab = key('Tab', { shiftKey: false });
+      expect(forwardTab.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(primaryBtn);
+    });
+
+    it('operates safely in headless mode when DOM elements are absent', () => {
+      document.body.innerHTML = '';
+      const headless = new HubStationModalController();
+      expect(headless.isOpen()).toBe(false);
+      expect(headless.getCard()).toBeNull();
+
+      expect(() => {
+        headless.showBanner('garage', null, null, { scannerClaimed: false, bountyClaimed: false }, vi.fn());
+        headless.hideBanner();
+        headless.open(createHubOptions({ npcId: 'garage' }));
+        expect(headless.isOpen()).toBe(true);
+        headless.close();
+        expect(headless.isOpen()).toBe(false);
+      }).not.toThrow();
+    });
+  });
+
+  describe('Station-specific modal dialog features', () => {
+    let modal: HubStationModalController;
+
+    beforeEach(() => {
+      document.body.innerHTML = HUB_MARKUP;
+      modal = new HubStationModalController();
+    });
+
+    afterEach(() => {
+      modal.close();
+      document.body.innerHTML = '';
+    });
+
+    it('renders blacksmith station with upgradeable gear and processes reforge', () => {
+      const onReforge = vi.fn(() => ({ ok: true, message: 'Chassis forged to Superior!' }));
+      const options = createHubOptions({
+        npcId: 'blacksmith',
+        metaSave: {
+          scrap: 36,
+          equipped: {
+            chassis: { slot: 'chassis', name: 'Reinforced Steel Frame', rarity: 1 }
+          }
+        },
+        onReforge
+      });
+      modal.open(options);
+
+      expect(document.getElementById('hub-station-title')?.textContent).toBe('⚒️ THE SCRAP FORGE');
+      expect(document.getElementById('hub-station-speaker')?.textContent).toBe('IRONSMITH KORR');
+      expect(document.querySelector('.hub-stat-val.hub-gold')?.textContent).toContain('36 SCRAP');
+      expect(document.querySelector('.hub-stat-val.hub-cyan')?.textContent).toContain('12 ⚙️ SCRAP');
+      expect(document.querySelector('.hub-forge-name')?.textContent).toBe('Reinforced Steel Frame');
+      expect(document.querySelector('.hub-tier-badge')?.textContent).toContain('MAGIC');
+      expect(document.querySelector('.hub-tier-badge.next')?.textContent).toContain('RARE (+25% Stats)');
+
+      const primaryBtn = document.getElementById('btn-hub-station-primary') as HTMLButtonElement;
+      expect(primaryBtn.textContent).toContain('REFORGE GEAR (12 ⚙️)');
+      primaryBtn.click();
+
+      expect(onReforge).toHaveBeenCalledTimes(1);
+      const feedback = document.getElementById('hub-station-feedback');
+      expect(feedback?.textContent).toBe('Chassis forged to Superior!');
+      expect(feedback?.classList.contains('is-success')).toBe(true);
+      expect(feedback?.hasAttribute('hidden')).toBe(false);
+    });
+
+    it('renders blacksmith station in optimal state when all equipped slots are Legendary', () => {
+      const options = createHubOptions({
+        npcId: 'blacksmith',
+        metaSave: {
+          scrap: 60,
+          equipped: {
+            weapon: { slot: 'weapon', name: 'Plasma Cannon', rarity: 3 }
+          }
+        }
+      });
+      modal.open(options);
+
+      expect(document.querySelector('.hub-legendary-title')?.textContent).toContain('ALL SLOTS LEGENDARY / OPTIMAL');
+      expect(document.querySelector('.hub-forge-desc')?.textContent).toContain('craft a brand-new high-grade part');
+    });
+
+    it('renders codex station with career telemetry and claims tactical scanner buff', () => {
+      const onClaimScanner = vi.fn(() => ({ ok: true, message: 'Tactical Scanner locked: +15% Speed, +12% DMG' }));
+      const options = createHubOptions({
+        npcId: 'codex',
+        metaSave: {
+          bestFloor: 5,
+          totalKills: 489,
+          bossesSlain: 4,
+          totalRuns: 16
+        },
+        scannerClaimed: false,
+        onClaimScanner
+      });
+      modal.open(options);
+
+      expect(document.getElementById('hub-station-title')?.textContent).toBe('📡 TACTICAL INTEL & SCANNER LAB');
+      expect(document.getElementById('hub-station-speaker')?.textContent).toBe('CHIEF TACTICIAN DOC');
+      expect(document.body.innerHTML).toContain('Floor 5');
+      expect(document.body.innerHTML).toContain('489');
+      expect(document.body.innerHTML).toContain('4');
+      expect(document.body.innerHTML).toContain('16');
+      expect(document.querySelector('.hub-scanner-status-pill')?.textContent).toBe('⚡ READY TO CALIBRATE');
+
+      const primaryBtn = document.getElementById('btn-hub-station-primary') as HTMLButtonElement;
+      expect(primaryBtn.textContent).toContain('CALIBRATE TACTICAL SCANNER (FREE)');
+      primaryBtn.click();
+
+      expect(onClaimScanner).toHaveBeenCalledTimes(1);
+      expect(options.scannerClaimed).toBe(true);
+      expect(document.getElementById('hub-station-feedback')?.textContent).toContain('Tactical Scanner locked');
+      expect(document.querySelector('.hub-scanner-status-pill')?.textContent).toBe('✓ ACTIVE');
+      expect(primaryBtn.textContent).toContain('SCANNER CALIBRATED & ACTIVE');
+
+      // Clicking again when active closes the dialog
+      primaryBtn.click();
+      expect(modal.isOpen()).toBe(false);
+    });
+
+    it('renders bounty station, claims supply cache, and selects Heat levels 0..3', () => {
+      const onClaimBountyCache = vi.fn(() => ({ ok: true, message: 'Free Cache Claimed: +15 Coins & +1 Max Hull' }));
+      const onSelectHeat = vi.fn();
+      const options = createHubOptions({
+        npcId: 'bounty',
+        metaSave: { heatLevel: 0 },
+        bountyClaimed: false,
+        onClaimBountyCache,
+        onSelectHeat
+      });
+      modal.open(options);
+
+      expect(document.getElementById('hub-station-title')?.textContent).toBe('🎖️ OUTLAW WAR ROOM & BOUNTIES');
+      expect(document.getElementById('hub-station-speaker')?.textContent).toBe('VALKYRIE VEX');
+
+      // 1. Claim supply cache
+      const cacheBtn = document.getElementById('btn-hub-claim-cache') as HTMLButtonElement;
+      expect(cacheBtn).not.toBeNull();
+      expect(cacheBtn.disabled).toBe(false);
+      cacheBtn.click();
+
+      expect(onClaimBountyCache).toHaveBeenCalledTimes(1);
+      expect(options.bountyClaimed).toBe(true);
+      expect(document.getElementById('hub-station-feedback')?.textContent).toContain('Free Cache Claimed');
+      expect((document.getElementById('btn-hub-claim-cache') as HTMLButtonElement).disabled).toBe(true);
+
+      // 2. Select Heat levels 0..3 via heat buttons
+      const heatButtons = document.querySelectorAll<HTMLButtonElement>('.hub-heat-btn');
+      expect(heatButtons.length).toBe(4);
+
+      heatButtons[1].click();
+      expect(onSelectHeat).toHaveBeenCalledWith(1);
+      expect(options.metaSave.heatLevel).toBe(1);
+      expect(document.querySelector('.hub-heat-current')?.textContent).toBe('CURRENT: HEAT 1');
+
+      heatButtons[2].click();
+      expect(onSelectHeat).toHaveBeenCalledWith(2);
+      expect(options.metaSave.heatLevel).toBe(2);
+      expect(document.querySelector('.hub-heat-current')?.textContent).toBe('CURRENT: HEAT 2');
+
+      heatButtons[3].click();
+      expect(onSelectHeat).toHaveBeenCalledWith(3);
+      expect(options.metaSave.heatLevel).toBe(3);
+      expect(document.querySelector('.hub-heat-current')?.textContent).toBe('CURRENT: HEAT 3');
+
+      heatButtons[0].click();
+      expect(onSelectHeat).toHaveBeenCalledWith(0);
+      expect(options.metaSave.heatLevel).toBe(0);
+      expect(document.querySelector('.hub-heat-current')?.textContent).toBe('CURRENT: HEAT 0');
+
+      // Primary button confirms setup and closes modal
+      const primaryBtn = document.getElementById('btn-hub-station-primary') as HTMLButtonElement;
+      expect(primaryBtn.textContent).toContain('CONFIRM WAR ROOM SETUP');
+      primaryBtn.click();
+      expect(modal.isOpen()).toBe(false);
+    });
+
+    it('cycles Heat level (0..3) via heat selector buttons and secondary action button #btn-hub-station-secondary', () => {
+      const onSelectHeat = vi.fn();
+      const metaSave = { heatLevel: 0 };
+      const options = createHubOptions({
+        npcId: 'bounty',
+        metaSave,
+        onSelectHeat
+      });
+      modal.open(options);
+
+      const secondaryBtn = document.getElementById('btn-hub-station-secondary') as HTMLButtonElement;
+      expect(secondaryBtn).not.toBeNull();
+
+      // Attach secondary button cycling behavior to cycle heat 0 -> 1 -> 2 -> 3 -> 0
+      secondaryBtn.addEventListener('click', () => {
+        const nextHeat = ((metaSave.heatLevel ?? 0) + 1) % 4;
+        options.onSelectHeat(nextHeat);
+        metaSave.heatLevel = nextHeat;
+        modal.open({ ...options });
+      });
+
+      // 0 -> 1
+      secondaryBtn.click();
+      expect(onSelectHeat).toHaveBeenCalledWith(1);
+      expect(metaSave.heatLevel).toBe(1);
+      expect(document.querySelector('.hub-heat-current')?.textContent).toBe('CURRENT: HEAT 1');
+
+      // 1 -> 2
+      secondaryBtn.click();
+      expect(onSelectHeat).toHaveBeenCalledWith(2);
+      expect(metaSave.heatLevel).toBe(2);
+      expect(document.querySelector('.hub-heat-current')?.textContent).toBe('CURRENT: HEAT 2');
+
+      // 2 -> 3
+      secondaryBtn.click();
+      expect(onSelectHeat).toHaveBeenCalledWith(3);
+      expect(metaSave.heatLevel).toBe(3);
+      expect(document.querySelector('.hub-heat-current')?.textContent).toBe('CURRENT: HEAT 3');
+
+      // 3 -> 0
+      secondaryBtn.click();
+      expect(onSelectHeat).toHaveBeenCalledWith(0);
+      expect(metaSave.heatLevel).toBe(0);
+      expect(document.querySelector('.hub-heat-current')?.textContent).toBe('CURRENT: HEAT 0');
+    });
+
+    it('renders launch station checklist and auto-claims unclaimed buffs before deployment', () => {
+      const onClaimScanner = vi.fn(() => ({ ok: true, message: 'Scanner locked!' }));
+      const onClaimBountyCache = vi.fn(() => ({ ok: true, message: 'Cache secured!' }));
+      const onLaunchRun = vi.fn();
+      const options = createHubOptions({
+        npcId: 'launch',
+        player: { weapon: 'shotgun' },
+        metaSave: { heatLevel: 2 },
+        scannerClaimed: false,
+        bountyClaimed: false,
+        onClaimScanner,
+        onClaimBountyCache,
+        onLaunchRun
+      });
+      modal.open(options);
+
+      expect(document.getElementById('hub-station-title')?.textContent).toBe('🚀 SECTOR 1 HIGHWAY LAUNCH GATE');
+      expect(document.getElementById('hub-station-speaker')?.textContent).toBe('DISPATCH OPERATOR');
+      expect(document.body.innerHTML).toContain('SHOTGUN');
+      expect(document.body.innerHTML).toContain('HEAT 2 (+50% Bonus Scrap)');
+
+      const autoClaimBtn = document.getElementById('btn-hub-autoclaim') as HTMLButtonElement;
+      expect(autoClaimBtn).not.toBeNull();
+      autoClaimBtn.click();
+
+      expect(onClaimScanner).toHaveBeenCalledTimes(1);
+      expect(onClaimBountyCache).toHaveBeenCalledTimes(1);
+      expect(options.scannerClaimed).toBe(true);
+      expect(options.bountyClaimed).toBe(true);
+      expect(document.querySelector('.hub-ready-banner')?.textContent).toContain('All free pre-run systems calibrated');
+
+      // Click primary button to deploy into Sector 1
+      const primaryBtn = document.getElementById('btn-hub-station-primary') as HTMLButtonElement;
+      expect(primaryBtn.textContent).toContain('DEPLOY TO SECTOR 1 ►');
+      primaryBtn.click();
+
+      expect(modal.isOpen()).toBe(false);
+      expect(onLaunchRun).toHaveBeenCalledTimes(1);
+    });
+
+    it('renders garage station summary and closes upon primary action click', () => {
+      const options = createHubOptions({
+        npcId: 'garage',
+        metaSave: {
+          scrap: 45,
+          stash: [{ id: 'p1' }, { id: 'p2' }]
+        }
+      });
+      modal.open(options);
+
+      expect(document.getElementById('hub-station-title')?.textContent).toBe('🔧 GARAGE & ARMORY BAY');
+      expect(document.querySelector('.hub-stat-val.hub-gold')?.textContent).toContain('45 SCRAP');
+      expect(document.querySelector('.hub-stat-val.hub-cyan')?.textContent).toContain('2 PARTS STORED');
+
+      const primaryBtn = document.getElementById('btn-hub-station-primary') as HTMLButtonElement;
+      expect(primaryBtn.textContent).toContain('OPEN FULL GARAGE');
+      primaryBtn.click();
+
+      expect(modal.isOpen()).toBe(false);
+    });
+  });
+});
+
