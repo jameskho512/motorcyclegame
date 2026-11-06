@@ -315,6 +315,7 @@ export class MotoRogueApp {
         life: 1.0,
         maxLife: 1.0
       });
+      this.hud.showToast('TACTICAL WARP', '⚡ TELEPORTED TO CLEARED SECTOR', '#2ee6ff', 1600);
       this.updateHUD();
     };
 
@@ -768,6 +769,9 @@ export class MotoRogueApp {
       room.cleared = true;
       if (room.type === 'boss') {
         room.trapdoor = true;
+        this.hud.showToast('APEX TARGET ELIMINATED', '☠ DIMENSIONAL RIFT UNLOCKED!', '#ffd60a', 2400);
+      } else {
+        this.hud.showToast('SECTOR SECURED', '★ DOORS & MINIMAP WARP UNLOCKED', '#00f5d4', 1900);
       }
       this.audio.roomClear();
       this.updateHUD();
@@ -1090,6 +1094,7 @@ export class MotoRogueApp {
       life: 2.2,
       maxLife: 2.2
     });
+    this.hud.showToast('OUTLAW SANCTUARY', '🛠️ 5 UPGRADE STATIONS & TARGET RANGE ACTIVE', '#ffd60a', 2500);
     this.updateHUD();
   }
 

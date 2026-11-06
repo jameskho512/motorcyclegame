@@ -222,6 +222,7 @@ export class HUDController {
   private bossIntroActive = false;
   private bossIntroTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private bossIntroDismissHandler: ((e: Event) => void) | null = null;
+  private toastTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
   public bossHudEl: HTMLElement | null = null;
   public bossSubEl: HTMLElement | null = null;
@@ -907,6 +908,31 @@ export class HUDController {
    */
   public isBossIntroActive(): boolean {
     return this.bossIntroActive;
+  }
+
+  /**
+   * Displays a top-center anime cut-in toast banner (#hud-toast) for 2.0s.
+   */
+  public showToast(kicker: string, title: string, accent: string = '#00f5d4', durationMs: number = 2000): void {
+    if (typeof document === 'undefined') return;
+    const toast = document.getElementById('hud-toast');
+    if (!toast) return;
+    const kickerEl = document.getElementById('hud-toast-kicker');
+    const titleEl = document.getElementById('hud-toast-title');
+    if (kickerEl) kickerEl.textContent = kicker;
+    if (titleEl) titleEl.textContent = title;
+    toast.style.setProperty('--toast-accent', accent);
+    toast.classList.add('is-visible');
+    toast.setAttribute('aria-hidden', 'false');
+
+    if (this.toastTimeoutId !== null) {
+      clearTimeout(this.toastTimeoutId);
+    }
+    this.toastTimeoutId = setTimeout(() => {
+      toast.classList.remove('is-visible');
+      toast.setAttribute('aria-hidden', 'true');
+      this.toastTimeoutId = null;
+    }, durationMs);
   }
 
   /**

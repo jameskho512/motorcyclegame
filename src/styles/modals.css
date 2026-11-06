@@ -223,12 +223,12 @@
   align-items: center;
 }
 
-/* Angled comic badge preview beside the item title and description */
+/* Angled comic badge preview beside the item title */
 .shop-item-art {
   grid-column: 1;
-  grid-row: 1 / span 2;
-  width: clamp(68px, 12cqmin, 114px);
-  height: clamp(68px, 12cqmin, 114px);
+  grid-row: 1;
+  width: clamp(64px, 11cqmin, 98px);
+  height: clamp(64px, 11cqmin, 98px);
   padding: 8px;
   box-sizing: border-box;
   display: flex;
@@ -246,7 +246,7 @@
 }
 
 .shop-item-art[data-kind='weapon'] {
-  width: clamp(82px, 14.5cqmin, 136px);
+  width: clamp(78px, 13.5cqmin, 120px);
 }
 
 .shop-item-art svg {
@@ -279,39 +279,35 @@
 
 #shop-confirm-overlay .shop-item-name {
   grid-column: 2;
+  grid-row: 1;
   min-width: 0;
   margin: 0;
   font-family: var(--font-display);
-  font-size: clamp(28px, 5.8cqmin, 64px);
+  font-size: clamp(22px, 4.1cqmin, 42px);
   font-style: italic;
   font-weight: 900;
-  line-height: 0.95;
-  letter-spacing: 0.5px;
+  line-height: 1.02;
+  letter-spacing: 1.2px;
   text-transform: uppercase;
   color: var(--ink);
-  text-shadow:
-    -1px -1px 0 var(--ink),
-    1px -1px 0 var(--ink),
-    -1px 1px 0 var(--ink),
-    1px 1px 0 var(--ink),
-    4px 4px 0 rgba(229, 32, 58, 0.45);
-  overflow-wrap: anywhere;
+  text-shadow: 3px 3px 0 rgba(229, 32, 58, 0.36);
+  overflow-wrap: normal;
+  word-break: normal;
   text-wrap: balance;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
 }
 
 /* ---- Description + gold price badge row ---- */
 .shop-info-row {
-  grid-column: 2;
+  grid-column: 1 / -1;
+  grid-row: 2;
   min-width: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1.5cqmin;
+  gap: 2cqmin;
   position: relative;
+  padding-top: 0.6cqmin;
+  border-top: 2px dashed rgba(10, 11, 16, 0.22);
 }
 
 #shop-confirm-overlay .shop-item-desc {
@@ -324,15 +320,14 @@
   box-shadow: none;
   transform: none;
   font-family: var(--font-display);
-  font-size: clamp(16px, 2.8cqmin, 28px);
+  font-size: clamp(14px, 2.35cqmin, 22px);
   font-weight: 700;
-  line-height: 1.15;
-  letter-spacing: 0.4px;
+  line-height: 1.22;
+  letter-spacing: 0.6px;
   text-transform: uppercase;
   color: var(--ink);
-  overflow-wrap: anywhere;
-  max-height: 7.2em;
-  overflow: hidden;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .shop-price-badge {

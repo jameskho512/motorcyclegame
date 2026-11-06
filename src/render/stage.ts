@@ -341,8 +341,12 @@ export class StageManager {
       g.poly(octPts)
         .fill({ color: 0x16151d, alpha: 0.45 })
         .stroke({ color: 0x0a0b10, width: 3, alpha: 0.7 });
+      const statusRingColor = room.cleared ? 0x00f5d4 : 0xff9f1c;
+      const statusRingAlpha = room.cleared ? 0.34 : 0.24 + 0.12 * Math.sin(timestampMs / 180);
       g.circle(cx, cy, 82)
-        .stroke({ color: palette.accent, width: 1.5, alpha: 0.22 });
+        .stroke({ color: statusRingColor, width: 2.2, alpha: statusRingAlpha });
+      g.circle(cx, cy, 32)
+        .stroke({ color: palette.accent, width: 1.5, alpha: 0.25 });
       // Diagonal structural floor seams
       g.moveTo(cx - 65, cy - 65).lineTo(cx - 28, cy - 28).stroke({ color: palette.accent, width: 2, alpha: 0.25 });
       g.moveTo(cx + 65, cy - 65).lineTo(cx + 28, cy - 28).stroke({ color: palette.accent, width: 2, alpha: 0.25 });

@@ -183,7 +183,7 @@
         <canvas id="minimap-canvas" width="340" height="215" aria-label="Floor minimap"></canvas>
         <div class="hud-map-floor">FLOOR <strong id="floor-num">1</strong></div>
         <div class="hud-map-legend" aria-label="Map legend">
-          <span class="lg-mod">★ MOD</span><span class="lg-shop">$ SHOP</span><span class="lg-boss">☠ BOSS</span>
+          <span class="lg-mod">★ MOD</span><span class="lg-shop">$ SHOP</span><span class="lg-boss">☠ BOSS</span><span class="lg-warp" title="Click any visited room when cleared to fast-travel">⚡ CLICK TO WARP</span>
         </div>
       </div>
     </div>
@@ -229,6 +229,12 @@
   <!-- Center Square Room Playfield Canvas (Always fits 100% of vertical height!) -->
   <div id="game-wrapper">
     <canvas id="canvas" width="720" height="720"></canvas>
+
+    <!-- Tactical Anime Cut-In Toast Banner (Sector Clear / Evolution / Warp) -->
+    <div id="hud-toast" class="hud-toast" aria-live="polite" aria-hidden="true">
+      <span class="hud-toast-kicker" id="hud-toast-kicker">SECTOR SECURED</span>
+      <strong class="hud-toast-title" id="hud-toast-title">★ DOORS &amp; MINIMAP WARP UNLOCKED</strong>
+    </div>
 
     <!-- Boss Room Entry Intro Splash Banner (Guilty Gear / Persona 5 VS Cut-In) -->
     <div id="boss-intro-banner" aria-hidden="true">
@@ -334,10 +340,24 @@
           </div>
         </div>
         <div class="shop-main-panel shop-name-panel">
-          <span class="shop-type-tag" id="shop-modal-type">MOD</span>
-          <div class="shop-item-name" id="shop-modal-name">Item Name</div>
+          <span class="shop-type-tag" id="shop-modal-type">REPAIR</span>
+          <div class="shop-item-art" data-kind="repair" style="--shop-art-accent: #ff4d6d" aria-hidden="true">
+            <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+              <rect x="10" y="13" width="30" height="31" rx="4" fill="#0a0b10" transform="translate(2.5, 2.5)"/>
+              <path d="M11 6h8l-1.5 7h-7z" fill="#ffd166" stroke="#0a0b10" stroke-width="2.6" stroke-linejoin="round"/>
+              <rect x="9.5" y="4" width="10" height="3" rx="1" fill="#ffbe0b" stroke="#0a0b10" stroke-width="2.2"/>
+              <path d="M21 7h15v6H21z" fill="#adb5bd" stroke="#0a0b10" stroke-width="2.6" stroke-linejoin="round"/>
+              <rect x="24" y="9" width="9" height="2.2" rx="1" fill="#1b1d26"/>
+              <rect x="9" y="12" width="30" height="30" rx="4" fill="#e5203a" stroke="#0a0b10" stroke-width="3" stroke-linejoin="round"/>
+              <path d="M12 14.5h24v4H12z" fill="#ff758f"/>
+              <path d="M11 36h26v4H11z" fill="#9e0e22"/>
+              <path d="M21 19h6v5h5v6h-5v5h-6v-5h-5v-6h5z" fill="#ffffff" stroke="#0a0b10" stroke-width="2.6" stroke-linejoin="round"/>
+              <path d="M22.5 20.5h3v5h5v3h-5v5h-3v-5h-5v-3h5z" fill="#ffd60a"/>
+            </svg>
+          </div>
+          <div class="shop-item-name" id="shop-modal-name">HULL REPAIR</div>
           <div class="shop-info-row">
-            <div class="shop-item-desc" id="shop-modal-desc">Item Description</div>
+            <div class="shop-item-desc" id="shop-modal-desc">Restores +2 Hull Fuel Integrity.</div>
             <div class="shop-price-badge">
               <span class="shop-coin-ring" aria-hidden="true"></span>
               <span class="shop-item-cost" id="shop-modal-cost">15</span>
