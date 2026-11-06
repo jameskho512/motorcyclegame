@@ -1101,4 +1101,107 @@ describe('Render & UI Subsystems', () => {
       expect(iceStroke).toBeDefined();
     });
   });
+
+  describe('HUD Weapon Deck Mastery & Floor Bounty Matrix', () => {
+    let hud: HUDController;
+    let player: PlayerState;
+
+    beforeEach(() => {
+      document.body.innerHTML = `
+        <div id="weapon-bar"></div>
+        <div id="hud-synergy-list"></div>
+        <div id="synergy-list"></div>
+        <div id="hp-text"></div>
+        <div id="hud-lv-badge"></div>
+        <div id="coin-count"></div>
+        <div id="scrap-count"></div>
+        <div id="floor-num"></div>
+        <div id="stats-grid"></div>
+        <div id="items-list"></div>
+      `;
+      hud = new HUDController();
+      player = {
+        x: 0,
+        y: 0,
+        vx: 0,
+        vy: 0,
+        radius: 17,
+        bikeAngle: 0,
+        aimAngle: 0,
+        baseSpeed: 265,
+        hp: 6,
+        maxHp: 6,
+        coins: 10,
+        invuln: 0,
+        stunTimer: 0,
+        weapon: 'pistol',
+        runWeapons: {},
+        fireTimer: 0,
+        dmgMult: 1,
+        fireRateMult: 1,
+        speedMult: 1,
+        projSpeedMult: 1,
+        blastMult: 1,
+        pierce: 0,
+        bounce: 0,
+        multiShot: 1,
+        vampChance: 0,
+        items: [],
+        itemStacks: {},
+        killCount: 0,
+        nos: 100,
+        nosMax: 100,
+        nosLock: false,
+        nosDelay: 0,
+        livery: 'crimson_kaneda',
+        heatLevel: 0
+      };
+    });
+
+    it('renders weapon deck cards with Mastery hints in data-tip (☆☆☆ UNRANKED at 0 kills, ★★★ MASTER III at 120 kills)', () => {
+      const metaSave: any = {
+        unlocked: { pistol: true, machine_gun: true },
+        weaponKills: {
+          pistol: 0,
+          machine_gun: 120
+        }
+      };
+
+      hud.renderWeaponDeck(player, metaSave);
+
+      const pistolCard = document.querySelector('[data-weapon="pistol"]') as HTMLElement;
+      expect(pistolCard).not.toBeNull();
+      const pistolTip = pistolCard.getAttribute('data-tip') || '';
+      expect(pistolTip).toContain('Mastery:');
+      expect(pistolTip).toContain('☆☆☆ UNRANKED');
+
+      const smgCard = document.querySelector('[data-weapon="machine_gun"]') as HTMLElement;
+      expect(smgCard).not.toBeNull();
+      const smgTip = smgCard.getAttribute('data-tip') || '';
+      expect(smgTip).toContain('Mastery:');
+      expect(smgTip).toContain('★★★ MASTER III');
+    });
+
+    it('populates #hud-synergy-list with active Floor Bounty Contract (.is-bounty-contract) for Floor 1 and Floor 4', () => {
+      const metaSave: any = { scrap: 50, unlocked: {}, weaponKills: {} };
+
+      // Floor 1 -> NEON DAREDEVIL
+      hud.updateSidebar(player, 1, metaSave);
+      const hudList1 = document.getElementById('hud-synergy-list')!;
+      const bountyRow1 = hudList1.querySelector('.is-bounty-contract') as HTMLElement;
+      expect(bountyRow1).not.toBeNull();
+      expect(bountyRow1.textContent).toContain('NEON DAREDEVIL');
+      expect(bountyRow1.textContent).toContain('+8⚙️ +10🪙');
+      expect(bountyRow1.getAttribute('data-tip')).toContain('NEON DAREDEVIL: Graze 3 enemy projectiles or clear Floor 1 Boss (Reward: +8 Scrap, +10 Coins)');
+
+      // Floor 4 -> CRYO BREAKER
+      hud.updateSidebar(player, 4, metaSave);
+      const hudList4 = document.getElementById('hud-synergy-list')!;
+      const bountyRow4 = hudList4.querySelector('.is-bounty-contract') as HTMLElement;
+      expect(bountyRow4).not.toBeNull();
+      expect(bountyRow4.textContent).toContain('CRYO BREAKER');
+      expect(bountyRow4.textContent).toContain('+18⚙️ +22🪙');
+      expect(bountyRow4.getAttribute('data-tip')).toContain('CRYO BREAKER: Detonate 2 Cryo/Explosive Barrels or clear Floor 4 Boss (Reward: +18 Scrap, +22 Coins)');
+    });
+  });
 });

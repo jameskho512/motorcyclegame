@@ -27,6 +27,8 @@ import {
   DROP_ITEM_HI_FI_SVG,
   getModIconSvg
 } from './icons';
+import { formatWeaponMasteryHint } from './tooltip';
+import { getFloorBountyContract } from '../world/dungeon';
 
 export interface MinimapCoord {
   rx: number;
@@ -250,6 +252,7 @@ export class HUDController {
   private bossIntroTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private bossIntroDismissHandler: ((e: Event) => void) | null = null;
   private toastTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  private lastMetaSave: any = null;
 
   public bossHudEl: HTMLElement | null = null;
   public bossSubEl: HTMLElement | null = null;
@@ -1065,14 +1068,38 @@ export class HUDController {
   }
 
   /**
+   * Safely escapes strings for inclusion in HTML attributes.
+   */
+  public escAttr(str: string): string {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  /**
+   * Renders the weapon selection deck cards with evolution badges, status, and mastery hints.
+   */
+  public renderWeaponDeck(player: PlayerState, metaSave?: any): void {
+    if (metaSave) this.lastMetaSave = metaSave;
+    const unlockedWeapons = metaSave?.unlocked || {};
+    this.updateWeapons(player, unlockedWeapons, metaSave);
+  }
+
+  /**
    * Updates weapon selection deck cards with evolution badges and status.
    */
-  public updateWeapons(player: PlayerState, unlockedWeapons: Record<string, boolean>): void {
-    const bar = document.getElementById('weapon-bar');
+  public updateWeapons(player: PlayerState, unlockedWeapons?: Record<string, boolean>, metaSave?: any): void {
+    const bar = document.getElementById('weapon-bar') || document.getElementById('hud-weapon-deck') || document.getElementById('weapon-deck');
     if (!bar) return;
     bar.innerHTML = '';
+    if (metaSave) this.lastMetaSave = metaSave;
+    const effectiveMeta = metaSave || this.lastMetaSave;
+    const unlocked = unlockedWeapons || effectiveMeta?.unlocked || {};
     Object.values(WEAPONS).forEach(w => {
-      const isPermanentlyUnlocked = unlockedWeapons[w.id] || w.id === 'pistol';
+      const isPermanentlyUnlocked = !!unlocked[w.id] || w.id === 'pistol';
       const isRunOnly = !isPermanentlyUnlocked && !!player.runWeapons[w.id];
       const isAvail = isPermanentlyUnlocked || isRunOnly;
       const isActive = player.weapon === w.id;
@@ -1110,7 +1137,10 @@ export class HUDController {
       if (isAvail && this.onSelectWeapon) {
         card.onclick = () => this.onSelectWeapon!(w.id);
       }
-      card.dataset.tip = `<b style="color:${w.color}">${w.name}</b>${evolved ? ' <span style="color:#00f5d4">★ EVOLVED</span>' : ''}<br/>${w.desc}<br/>Damage ${w.baseDmg} | Cooldown ${w.cooldown}s${isAvail ? '' : `<br/>🔒 Unlock in Garage: ${w.cost} scrap`}`;
+      const kills = (effectiveMeta as any)?.weaponKills?.[w.id] ?? (player as any)?.metaSave?.weaponKills?.[w.id] ?? 0;
+      const tipText = `<b style="color:${w.color}">${w.name}</b>${evolved ? ' <span style="color:#00f5d4">★ EVOLVED</span>' : ''}<br/>${w.desc}<br/>Damage ${w.baseDmg} | Cooldown ${w.cooldown}s${isAvail ? '' : `<br/>🔒 Unlock in Garage: ${w.cost} scrap`}\n${formatWeaponMasteryHint(kills)}`;
+      card.dataset.tip = tipText;
+      card.setAttribute('data-tip', tipText);
       bar.appendChild(card);
     });
   }
@@ -1121,14 +1151,48 @@ export class HUDController {
    */
   public updateSidebar(
     player: PlayerState,
-    metaScrap: number,
-    floorNum: number,
-    unlockedWeapons: Record<string, boolean>,
+    arg2: number,
+    arg3?: any,
+    arg4?: Record<string, boolean>,
     dungeon?: Dungeon,
     curRoomX?: number,
-    curRoomY?: number
+    curRoomY?: number,
+    extraMetaSave?: any
   ): void {
     if (typeof document === 'undefined') return;
+
+    let metaScrap: number = 0;
+    let floorNum: number = 1;
+    let unlockedWeapons: Record<string, boolean> = {};
+    let metaSave: any = undefined;
+    let dun: Dungeon | undefined = dungeon;
+    let rx: number | undefined = curRoomX;
+    let ry: number | undefined = curRoomY;
+
+    if (typeof arg3 === 'object' && arg3 !== null && !('0,0' in arg3 && !('scrap' in arg3 || 'weaponKills' in arg3 || 'unlocked' in arg3))) {
+      // Called as updateSidebar(player, floorNum, metaSave)
+      floorNum = Math.max(1, Math.floor(Number(arg2) || 1));
+      metaSave = arg3;
+      metaScrap = typeof metaSave?.scrap === 'number' ? metaSave.scrap : 0;
+      unlockedWeapons = metaSave?.unlocked || {};
+      dun = (typeof arg4 === 'object' && arg4 !== null && !('weaponKills' in arg4)) ? (arg4 as any) : undefined;
+    } else if (typeof arg3 === 'number') {
+      // Called as updateSidebar(player, metaScrap, floorNum, unlockedWeapons, dungeon, curRoomX, curRoomY, extraMetaSave)
+      metaScrap = Number(arg2) || 0;
+      floorNum = Math.max(1, Math.floor(arg3) || 1);
+      unlockedWeapons = (typeof arg4 === 'object' && arg4 !== null) ? arg4 : {};
+      dun = dungeon;
+      rx = curRoomX;
+      ry = curRoomY;
+      metaSave = extraMetaSave || (typeof dungeon === 'object' && ('weaponKills' in (dungeon as any)) ? dungeon : undefined);
+    } else {
+      floorNum = Math.max(1, Math.floor(Number(arg2) || 1));
+      metaScrap = Number(arg2) || 0;
+      unlockedWeapons = (typeof arg4 === 'object' && arg4 !== null) ? arg4 : {};
+      metaSave = arg3;
+    }
+
+    if (metaSave) this.lastMetaSave = metaSave;
 
     // 1. Hull (segmented bar; legacy fuel gauge canvas is hidden by CSS)
     const hpText = document.getElementById('hp-text');
@@ -1154,7 +1218,7 @@ export class HUDController {
     if (floorNumEl) floorNumEl.textContent = `${floorNum}`;
 
     // 4. Weapon card bar (High-Fidelity Cel-Shaded SVGs from src/ui/icons.ts)
-    this.updateWeapons(player, unlockedWeapons);
+    this.updateWeapons(player, unlockedWeapons, metaSave);
 
     // 5. Live Stats strip
     const statsGrid = document.getElementById('stats-grid');
@@ -1198,9 +1262,9 @@ export class HUDController {
     }
 
     // 7. Minimap & Automatic Boss Bar Sync
-    if (dungeon && curRoomX !== undefined && curRoomY !== undefined) {
-      this.drawMinimap(dungeon, curRoomX, curRoomY);
-      const curRoom = dungeon[`${curRoomX},${curRoomY}`];
+    if (dun && rx !== undefined && ry !== undefined) {
+      this.drawMinimap(dun, rx, ry);
+      const curRoom = dun[`${rx},${ry}`];
       const activeBoss = curRoom?.enemies?.find((e): e is Boss => e.type === 'boss' && e.hp > 0) ?? null;
       this.updateBossBar(activeBoss, floorNum);
     }
@@ -1252,45 +1316,61 @@ export class HUDController {
         : `${rankDef.bonusDesc} // DRIFT: ${Math.round((player.driftCharge || 0) * 100)}%`;
     }
 
-    const synListEl = document.getElementById('synergy-list');
-    if (synListEl) {
+    const synListContainers = [
+      document.getElementById('hud-synergy-list'),
+      document.getElementById('synergy-list')
+    ].filter(Boolean) as HTMLElement[];
+
+    if (synListContainers.length > 0) {
       const activeWep = WEAPONS[player.weapon] || WEAPONS.pistol;
       const evoDef = WEAPON_EVOLUTIONS[player.weapon];
       const isEvo = isWeaponEvolved(player.weapon, player);
       const totalStacks = Object.values(player.itemStacks || {}).reduce((acc, v) => acc + (v || 0), 0);
-      const rows: string[] = [];
+      const synergyRows: string[] = [];
 
       if (isEvo) {
-        rows.push(
+        synergyRows.push(
           `<div class="synergy-pill" style="--syn-color:#00f5d4" data-tip="<b style='color:#00f5d4'>★ ${evoDef.evolvedName}</b><br/>${evoDef.desc}"><span style="pointer-events:none">★ ${evoDef.evolvedName}</span><small style="pointer-events:none">ACTIVE</small></div>`
         );
       } else {
-        rows.push(
+        synergyRows.push(
           `<div class="synergy-pill" style="--syn-color:#ffd60a" data-tip="<b style='color:#ffd60a'>${evoDef.evolvedName}</b><br/>${evoDef.desc}<br/><i>Unlock: ${evoDef.signatureModDisplayName || evoDef.signatureModName} or 3+ Item Stacks</i>"><span style="pointer-events:none">${activeWep.name} → ${evoDef.evolvedName}</span><small style="pointer-events:none">${evoDef.signatureModDisplayName || evoDef.signatureModName} or ${totalStacks}/3 Stacks</small></div>`
         );
       }
 
       const activeDuos = getActiveDuoSynergies ? getActiveDuoSynergies(player) : [];
       for (const duo of activeDuos) {
-        rows.push(
+        synergyRows.push(
           `<div class="synergy-pill" style="--syn-color:${duo.color}" data-tip="<b style='color:${duo.color}'>✦ DUO: ${duo.name}</b><br/>${duo.desc}"><span style="pointer-events:none">✦ ${duo.name.toUpperCase()}</span><small style="pointer-events:none">DUO ACTIVE</small></div>`
         );
       }
 
       if ((player as any).scannerBuff) {
-        rows.push(
+        synergyRows.push(
           `<div class="synergy-pill" style="--syn-color:#72efdd" data-tip="<b style='color:#72efdd'>Doc Tactical Scanner</b><br/>+8% Weapon Damage &amp; +15% Projectile Speed"><span style="pointer-events:none">DOC TACTICAL SCANNER</span><small style="pointer-events:none">+8% DMG / +15% SPD</small></div>`
         );
       }
       if ((player.heatLevel || 0) > 0) {
-        rows.push(
+        synergyRows.push(
           `<div class="synergy-pill" style="--syn-color:#ff4d6d" data-tip="<b style='color:#ff4d6d'>Valkyrie Bounty Heat ${player.heatLevel}</b><br/>+${(player.heatLevel || 0) * 25}% Bonus Scrap &amp; Elevated Enemy Threat"><span style="pointer-events:none">VALKYRIE BOUNTY PACT</span><small style="pointer-events:none">+${(player.heatLevel || 0) * 25}% SCRAP</small></div>`
         );
       }
-      synListEl.innerHTML = rows.join('');
+
+      const contract = getFloorBountyContract(floorNum);
+      synergyRows.push(
+        `<div class="hud-synergy-row is-bounty-contract" data-tip="${this.escAttr(`${contract.title}: ${contract.desc} (Reward: +${contract.scrapReward} Scrap, +${contract.coinReward} Coins)`)}">
+  <span class="hud-synergy-name" style="color:#ffd60a;">🏆 ${this.escAttr(contract.title)}</span>
+  <span class="hud-synergy-state" style="color:#00f5d4;">+${contract.scrapReward}⚙️ +${contract.coinReward}🪙</span>
+</div>`
+      );
+
+      const html = synergyRows.join('');
+      for (const container of synListContainers) {
+        container.innerHTML = html;
+      }
     }
 
-    const curRoomObj = dungeon && curRoomX !== undefined && curRoomY !== undefined ? dungeon[`${curRoomX},${curRoomY}`] : undefined;
+    const curRoomObj = dun && rx !== undefined && ry !== undefined ? dun[`${rx},${ry}`] : undefined;
     const biomeEl = document.getElementById('wing-biome-name');
     if (biomeEl) {
       if (curRoomObj?.type === 'hub') {

@@ -62,10 +62,12 @@ import {
 
 import {
   createCombatState,
-  fireWeapon
+  fireWeapon,
+  calcOverkillBonus
 } from '../../src/systems/combat';
 
-import { generateDungeon } from '../../src/world/dungeon';
+import { generateDungeon, getFloorBountyContract } from '../../src/world/dungeon';
+import { formatWeaponMasteryHint } from '../../src/ui/tooltip';
 import { MotoRogueApp } from '../../src/main';
 
 describe('Tier 5: Playability Verification & End-to-End Simulation', () => {
@@ -1336,6 +1338,281 @@ describe('Tier 5: Playability Verification & End-to-End Simulation', () => {
       expect(shakeBtn.textContent).toBe('SHAKE: 50%');
 
       expect(recordedShakeLevels).toEqual([0.5, 0, 1, 0.5]);
+    });
+  });
+
+  // ==========================================================================
+  // 7. WAVE 9 PLAYABILITY INTEGRATION (BOUNTY CONTRACTS, OVERKILL BONUS, MASTERY HINTS & AUDIO POLISH)
+  // ==========================================================================
+  describe('7. Wave 9 Playability Integration (Bounty Contracts, Overkill Bonus, Mastery Hints & Audio Polish)', () => {
+    it('getFloorBountyContract(1..6) produces distinct floor contracts with monotonic Scrap & Coin rewards', () => {
+      const contracts = [1, 2, 3, 4, 5, 6].map(floor => getFloorBountyContract(floor));
+
+      // 1. All contracts have correct floor numbers and defined fields
+      contracts.forEach((c, idx) => {
+        expect(c.floor).toBe(idx + 1);
+        expect(typeof c.id).toBe('string');
+        expect(c.id.length).toBeGreaterThan(0);
+        expect(typeof c.title).toBe('string');
+        expect(c.title.length).toBeGreaterThan(0);
+        expect(typeof c.desc).toBe('string');
+        expect(c.desc.length).toBeGreaterThan(0);
+        expect(c.targetCount).toBeGreaterThan(0);
+        expect(c.scrapReward).toBeGreaterThan(0);
+        expect(c.coinReward).toBeGreaterThan(0);
+      });
+
+      // 2. Distinct IDs and titles across floors 1..6
+      const ids = contracts.map(c => c.id);
+      const uniqueIds = new Set(ids);
+      expect(uniqueIds.size).toBe(6);
+
+      const titles = contracts.map(c => c.title);
+      const uniqueTitles = new Set(titles);
+      expect(uniqueTitles.size).toBe(6);
+
+      // Verify specific floor contract identities
+      expect(contracts[0].id).toBe('GRAZE_INITIATE');
+      expect(contracts[1].id).toBe('DRIFT_DEMON');
+      expect(contracts[2].id).toBe('STYLE_HUNTER');
+      expect(contracts[3].id).toBe('CRYO_SHATTER');
+      expect(contracts[4].id).toBe('OVERDRIVE_SLAYER');
+      expect(contracts[5].id).toBe('VALHALLA_LEGEND');
+
+      // 3. Strictly monotonic Scrap & Coin rewards progression
+      for (let i = 0; i < contracts.length - 1; i++) {
+        expect(contracts[i + 1].scrapReward).toBeGreaterThan(contracts[i].scrapReward);
+        expect(contracts[i + 1].coinReward).toBeGreaterThan(contracts[i].coinReward);
+      }
+
+      // Concrete values check:
+      // Floor 1: 8 scrap, 10 coin
+      // Floor 2: 10 scrap, 14 coin
+      // Floor 3: 14 scrap, 18 coin
+      // Floor 4: 18 scrap, 22 coin
+      // Floor 5: 22 scrap, 28 coin
+      // Floor 6: 30 scrap, 40 coin
+      expect(contracts.map(c => c.scrapReward)).toEqual([8, 10, 14, 18, 22, 30]);
+      expect(contracts.map(c => c.coinReward)).toEqual([10, 14, 18, 22, 28, 40]);
+    });
+
+    it("calcOverkillBonus triggers '💀 OVERKILL!' and +4 style bonus when finalHp <= -0.5 * maxHp", () => {
+      // 1. Boundary tests with maxHp = 40 (threshold: -20)
+      const maxHp = 40;
+
+      // At exact threshold: finalHp = -20 (-0.5 * 40) -> triggers overkill
+      const exactOverkill = calcOverkillBonus(-20, maxHp);
+      expect(exactOverkill.isOverkill).toBe(true);
+      expect(exactOverkill.bonusStyle).toBe(4);
+      expect(exactOverkill.callout).toBe('💀 OVERKILL!');
+
+      // Beyond threshold: finalHp = -35 -> triggers overkill
+      const deepOverkill = calcOverkillBonus(-35, maxHp);
+      expect(deepOverkill.isOverkill).toBe(true);
+      expect(deepOverkill.bonusStyle).toBe(4);
+      expect(deepOverkill.callout).toBe('💀 OVERKILL!');
+
+      // Just shy of threshold: finalHp = -19 -> no overkill
+      const shyUnder = calcOverkillBonus(-19, maxHp);
+      expect(shyUnder.isOverkill).toBe(false);
+      expect(shyUnder.bonusStyle).toBe(0);
+      expect(shyUnder.callout).toBeNull();
+
+      // Normal fatal hit: finalHp = 0 or -1 -> no overkill
+      const normalFatal = calcOverkillBonus(0, maxHp);
+      expect(normalFatal.isOverkill).toBe(false);
+      expect(normalFatal.bonusStyle).toBe(0);
+      expect(normalFatal.callout).toBeNull();
+
+      const smallNegative = calcOverkillBonus(-1, maxHp);
+      expect(smallNegative.isOverkill).toBe(false);
+      expect(smallNegative.bonusStyle).toBe(0);
+      expect(smallNegative.callout).toBeNull();
+
+      // 2. Integration with PlayerState style score and CombatState damage floaters
+      player.styleScore = 50;
+      const combatState = createCombatState();
+      const testEnemy = {
+        hp: -25,
+        maxHp: 40,
+        x: 300,
+        y: 300,
+        radius: 18
+      };
+
+      const result = calcOverkillBonus(testEnemy.hp, testEnemy.maxHp);
+      if (result.isOverkill && result.callout) {
+        player.styleScore = Math.min(100, (player.styleScore || 0) + result.bonusStyle);
+        combatState.damageNumbers.push({
+          x: testEnemy.x,
+          y: testEnemy.y - testEnemy.radius - 22,
+          text: result.callout,
+          color: '#ff007f',
+          life: 0.95,
+          maxLife: 0.95
+        });
+      }
+
+      expect(player.styleScore).toBe(54); // 50 + 4
+      expect(combatState.damageNumbers.length).toBe(1);
+      expect(combatState.damageNumbers[0].text).toBe('💀 OVERKILL!');
+      expect(combatState.damageNumbers[0].color).toBe('#ff007f');
+    });
+
+    it('formatWeaponMasteryHint formats all 4 mastery tiers (0, 10, 40, 100 kills)', () => {
+      // Tier 0: UNRANKED (0..9 kills)
+      const t0_zero = formatWeaponMasteryHint(0);
+      expect(t0_zero).toBe('Mastery: ☆☆☆ UNRANKED (0/10 kills to ★☆☆ ROOKIE I +5% DMG)');
+
+      const t0_mid = formatWeaponMasteryHint(7);
+      expect(t0_mid).toBe('Mastery: ☆☆☆ UNRANKED (7/10 kills to ★☆☆ ROOKIE I +5% DMG)');
+
+      // Tier 1: ROOKIE I (10..39 kills)
+      const t1_min = formatWeaponMasteryHint(10);
+      expect(t1_min).toBe('Mastery: ★☆☆ ROOKIE I (+5% DMG · 10/40 kills to ★★☆ ADEPT II)');
+
+      const t1_mid = formatWeaponMasteryHint(25);
+      expect(t1_mid).toBe('Mastery: ★☆☆ ROOKIE I (+5% DMG · 25/40 kills to ★★☆ ADEPT II)');
+
+      // Tier 2: ADEPT II (40..99 kills)
+      const t2_min = formatWeaponMasteryHint(40);
+      expect(t2_min).toBe('Mastery: ★★☆ ADEPT II (+10% DMG · 40/100 kills to ★★★ MASTER III)');
+
+      const t2_mid = formatWeaponMasteryHint(85);
+      expect(t2_mid).toBe('Mastery: ★★☆ ADEPT II (+10% DMG · 85/100 kills to ★★★ MASTER III)');
+
+      // Tier 3: MASTER III (100+ kills)
+      const t3_min = formatWeaponMasteryHint(100);
+      expect(t3_min).toBe('Mastery: ★★★ MASTER III (+15% DMG · MAX RANK! · 100 kills)');
+
+      const t3_high = formatWeaponMasteryHint(250);
+      expect(t3_high).toBe('Mastery: ★★★ MASTER III (+15% DMG · MAX RANK! · 250 kills)');
+
+      // Edge cases: negative kills or undefined fallback to Tier 0
+      expect(formatWeaponMasteryHint(-10)).toBe('Mastery: ☆☆☆ UNRANKED (0/10 kills to ★☆☆ ROOKIE I +5% DMG)');
+      expect(formatWeaponMasteryHint(undefined as unknown as number)).toBe('Mastery: ☆☆☆ UNRANKED (0/10 kills to ★☆☆ ROOKIE I +5% DMG)');
+    });
+
+    it("SoundSynthesizer.setMusicIntensity transitions cleanly between 'calm', 'combat', and 'boss_phase2', and masteryUp() synthesizes the 4-note fanfare when unmuted", () => {
+      const sfx = new SoundSynthesizer(storage);
+
+      // 1. Music intensity state transitions
+      expect(sfx.getMusicIntensity()).toBe('calm');
+
+      sfx.setMusicIntensity('combat');
+      expect(sfx.getMusicIntensity()).toBe('combat');
+
+      sfx.setMusicIntensity('boss_phase2');
+      expect(sfx.getMusicIntensity()).toBe('boss_phase2');
+
+      sfx.setMusicIntensity('calm');
+      expect(sfx.getMusicIntensity()).toBe('calm');
+
+      // 2. masteryUp() Web Audio synthesis with 4-note ascending fanfare
+      interface FakeParam {
+        value: number;
+        setTargetAtTime: ReturnType<typeof vi.fn>;
+        setValueAtTime: ReturnType<typeof vi.fn>;
+        exponentialRampToValueAtTime: ReturnType<typeof vi.fn>;
+      }
+      interface FakeNode {
+        type?: string;
+        frequency?: FakeParam;
+        gain?: FakeParam;
+        connect: ReturnType<typeof vi.fn>;
+        start?: ReturnType<typeof vi.fn>;
+        stop?: ReturnType<typeof vi.fn>;
+      }
+
+      const param = (): FakeParam => ({
+        value: 0,
+        setTargetAtTime: vi.fn(),
+        setValueAtTime: vi.fn(),
+        exponentialRampToValueAtTime: vi.fn()
+      });
+
+      const oscillators: FakeNode[] = [];
+      const gains: FakeNode[] = [];
+
+      class MockAC {
+        state = 'running';
+        currentTime = 5.0;
+        sampleRate = 44100;
+        destination = { name: 'dest' };
+        createGain = vi.fn(() => {
+          const n: FakeNode = { gain: param(), connect: vi.fn() };
+          gains.push(n);
+          return n;
+        });
+        createOscillator = vi.fn(() => {
+          const n: FakeNode = {
+            type: 'sine',
+            frequency: param(),
+            connect: vi.fn(),
+            start: vi.fn(),
+            stop: vi.fn()
+          };
+          oscillators.push(n);
+          return n;
+        });
+        createBiquadFilter = vi.fn(() => ({
+          type: 'lowpass',
+          frequency: param(),
+          Q: { value: 1 },
+          connect: vi.fn()
+        }));
+        createBuffer = vi.fn(() => ({ getChannelData: () => new Float32Array(150) }));
+        createBufferSource = vi.fn(() => ({ buffer: null, connect: vi.fn(), start: vi.fn() }));
+        resume = vi.fn().mockResolvedValue(undefined);
+      }
+
+      const g = globalThis as unknown as { AudioContext?: unknown };
+      const originalAC = g.AudioContext;
+      g.AudioContext = MockAC;
+
+      try {
+        const synth = new SoundSynthesizer(storage);
+        expect(synth.init()).toBe(true);
+
+        const oscCountBefore = oscillators.length;
+
+        // Unmuted execution synthesizes the 4-note fanfare
+        synth.masteryUp();
+        const fanfareOscs = oscillators.slice(oscCountBefore);
+
+        // 4 notes * 2 (triangle lead + sine overtone) = 8 oscillators
+        expect(fanfareOscs.length).toBe(8);
+
+        // Verify waveforms: 4 triangle leads, 4 sine overtones
+        const triangleOscs = fanfareOscs.filter(o => o.type === 'triangle');
+        const sineOscs = fanfareOscs.filter(o => o.type === 'sine');
+        expect(triangleOscs.length).toBe(4);
+        expect(sineOscs.length).toBe(4);
+
+        // Expected 4-note frequencies: C5 (523.25), E5 (659.25), G5 (783.99), C6 (1046.50)
+        const expectedFrequencies = [523.25, 659.25, 783.99, 1046.50];
+        triangleOscs.forEach((osc, idx) => {
+          expect(osc.frequency?.setValueAtTime).toHaveBeenCalledWith(
+            expect.closeTo(expectedFrequencies[idx], 1),
+            expect.any(Number)
+          );
+        });
+
+        // Muted execution is a strict no-op
+        synth.setMuted(true);
+        const oscCountMuted = oscillators.length;
+        synth.masteryUp();
+        expect(oscillators.length).toBe(oscCountMuted);
+
+        // Zero UI volume execution is also a strict no-op
+        synth.setMuted(false);
+        synth.setVolume('ui', 0);
+        const oscCountZeroVol = oscillators.length;
+        synth.masteryUp();
+        expect(oscillators.length).toBe(oscCountZeroVol);
+      } finally {
+        g.AudioContext = originalAC;
+      }
     });
   });
 });

@@ -38,6 +38,7 @@ import {
   ARENA_HEIGHT,
   MAX_STASH_SIZE
 } from '@/types/game';
+import { getFloorBountyContract } from '@/world/dungeon';
 
 describe('Adversarial Challenge 1: Type Strictness & Untyped Any Audit', () => {
   it('scans all src/ TypeScript files for ts-ignore, ts-expect-error, and ts-nocheck directives', () => {
@@ -402,5 +403,186 @@ describe('Adversarial Challenge 4: Stress Testing Run Mod Clamps', () => {
     }
     expect(p.maxHp).toBe(110);
     expect(p.hp).toBe(110);
+  });
+
+  describe('Adversarial Challenge 5: Floor Bounty Contracts & Reward Invariants', () => {
+    it('verifies explicit contracts for Floors 1 through 6', () => {
+      const f1 = getFloorBountyContract(1);
+      expect(f1).toEqual({
+        id: 'GRAZE_INITIATE',
+        floor: 1,
+        title: 'NEON DAREDEVIL',
+        desc: 'Graze 3 enemy projectiles or clear Floor 1 Boss',
+        targetCount: 3,
+        scrapReward: 8,
+        coinReward: 10
+      });
+
+      const f2 = getFloorBountyContract(2);
+      expect(f2).toEqual({
+        id: 'DRIFT_DEMON',
+        floor: 2,
+        title: 'ASPHALT DRIFTER',
+        desc: 'Trigger 2 Handbrake Drift Boosts or clear Floor 2 Boss',
+        targetCount: 2,
+        scrapReward: 10,
+        coinReward: 14
+      });
+
+      const f3 = getFloorBountyContract(3);
+      expect(f3).toEqual({
+        id: 'STYLE_HUNTER',
+        floor: 3,
+        title: 'HIGH-OCTANE STYLER',
+        desc: 'Reach Style Rank A in combat or clear Floor 3 Boss',
+        targetCount: 55,
+        scrapReward: 14,
+        coinReward: 18
+      });
+
+      const f4 = getFloorBountyContract(4);
+      expect(f4).toEqual({
+        id: 'CRYO_SHATTER',
+        floor: 4,
+        title: 'CRYO BREAKER',
+        desc: 'Detonate 2 Cryo/Explosive Barrels or clear Floor 4 Boss',
+        targetCount: 2,
+        scrapReward: 18,
+        coinReward: 22
+      });
+
+      const f5 = getFloorBountyContract(5);
+      expect(f5).toEqual({
+        id: 'OVERDRIVE_SLAYER',
+        floor: 5,
+        title: 'FORGE EXECUTIONER',
+        desc: 'Achieve a 5x Rampage Killstreak or clear Floor 5 Boss',
+        targetCount: 5,
+        scrapReward: 22,
+        coinReward: 28
+      });
+
+      const f6 = getFloorBountyContract(6);
+      expect(f6).toEqual({
+        id: 'VALHALLA_LEGEND',
+        floor: 6,
+        title: 'VALHALLA ASCENDANT',
+        desc: 'Reach Style Rank SS or defeat the Sector Boss',
+        targetCount: 85,
+        scrapReward: 30,
+        coinReward: 40
+      });
+    });
+
+    it('verifies strictly monotonic reward scaling across floors 1 to 10', () => {
+      for (let f = 1; f < 10; f++) {
+        const cur = getFloorBountyContract(f);
+        const next = getFloorBountyContract(f + 1);
+        expect(next.scrapReward).toBeGreaterThan(cur.scrapReward);
+        expect(next.coinReward).toBeGreaterThan(cur.coinReward);
+        expect(cur.targetCount).toBeGreaterThan(0);
+        expect(cur.title.length).toBeGreaterThan(0);
+        expect(cur.desc.length).toBeGreaterThan(0);
+      }
+    });
+
+    it('handles negative, zero, fractional, and NaN input defensively', () => {
+      const fNeg = getFloorBountyContract(-3);
+      expect(fNeg.floor).toBe(1);
+      expect(fNeg.id).toBe('GRAZE_INITIATE');
+
+      const fZero = getFloorBountyContract(0);
+      expect(fZero.floor).toBe(1);
+      expect(fZero.id).toBe('GRAZE_INITIATE');
+
+      const fFloat = getFloorBountyContract(3.8);
+      expect(fFloat.floor).toBe(3);
+      expect(fFloat.id).toBe('STYLE_HUNTER');
+
+      const fNaN = getFloorBountyContract(NaN as any);
+      expect(fNaN.floor).toBe(1);
+      expect(fNaN.id).toBe('GRAZE_INITIATE');
+    });
+
+    it('validates bounty progression and reward payout state transition semantics', () => {
+      const contract = getFloorBountyContract(1);
+      const mockState = {
+        floorNum: 1,
+        metaSave: { scrap: 0 },
+        player: { coins: 0 },
+        saved: false,
+        saveMeta() { this.saved = true; }
+      };
+
+      let floorBountyProgress = 0;
+      let floorBountyCompleted = false;
+
+      const advance = (amount: number = 1, forceComplete: boolean = false) => {
+        if (floorBountyCompleted) return;
+        floorBountyProgress = forceComplete ? contract.targetCount : floorBountyProgress + amount;
+        if (floorBountyProgress >= contract.targetCount) {
+          floorBountyCompleted = true;
+          mockState.metaSave.scrap += contract.scrapReward;
+          mockState.player.coins += contract.coinReward;
+          mockState.saveMeta();
+        }
+      };
+
+      // Incremental progress: 1 of 3
+      advance(1);
+      expect(floorBountyProgress).toBe(1);
+      expect(floorBountyCompleted).toBe(false);
+      expect(mockState.metaSave.scrap).toBe(0);
+      expect(mockState.player.coins).toBe(0);
+
+      // Incremental progress: 2 of 3
+      advance(1);
+      expect(floorBountyProgress).toBe(2);
+      expect(floorBountyCompleted).toBe(false);
+
+      // Complete: 3 of 3
+      advance(1);
+      expect(floorBountyProgress).toBe(3);
+      expect(floorBountyCompleted).toBe(true);
+      expect(mockState.metaSave.scrap).toBe(contract.scrapReward);
+      expect(mockState.player.coins).toBe(contract.coinReward);
+      expect(mockState.saved).toBe(true);
+
+      // Subsequent calls must be no-op
+      advance(5);
+      expect(floorBountyProgress).toBe(3);
+      expect(mockState.metaSave.scrap).toBe(contract.scrapReward);
+      expect(mockState.player.coins).toBe(contract.coinReward);
+    });
+
+    it('validates forceComplete behavior (boss room clear override)', () => {
+      const contract = getFloorBountyContract(4);
+      const mockState = {
+        metaSave: { scrap: 10 },
+        player: { coins: 5 },
+        saveMeta() {}
+      };
+
+      let floorBountyProgress = 0;
+      let floorBountyCompleted = false;
+
+      const advance = (amount: number = 1, forceComplete: boolean = false) => {
+        if (floorBountyCompleted) return;
+        floorBountyProgress = forceComplete ? contract.targetCount : floorBountyProgress + amount;
+        if (floorBountyProgress >= contract.targetCount) {
+          floorBountyCompleted = true;
+          mockState.metaSave.scrap += contract.scrapReward;
+          mockState.player.coins += contract.coinReward;
+          mockState.saveMeta();
+        }
+      };
+
+      advance(1, true);
+
+      expect(floorBountyCompleted).toBe(true);
+      expect(floorBountyProgress).toBe(contract.targetCount);
+      expect(mockState.metaSave.scrap).toBe(10 + contract.scrapReward);
+      expect(mockState.player.coins).toBe(5 + contract.coinReward);
+    });
   });
 });

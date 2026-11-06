@@ -79,6 +79,36 @@ export function getWeaponMasteryTier(kills: number = 0): WeaponMasteryInfo {
   return { tier: 0, label: 'UNRANKED', stars: '☆☆☆', dmgBonusPct: 0, kills: safeKills };
 }
 
+export interface RunPostMortemSummary {
+  rankGrade: 'S' | 'A' | 'B' | 'C';
+  headline: string;
+  statsLine: string;
+}
+
+export function buildRunPostMortemSummary(
+  floorNum: number,
+  player: PlayerState,
+  _metaSave?: MetaSaveState
+): RunPostMortemSummary {
+  const safeFloor = Math.max(1, Math.floor(Number(floorNum) || 1));
+  const kills = Math.max(0, Math.floor(Number(player?.killCount) || 0));
+  const wepName = (WEAPONS[player?.weapon] || WEAPONS.pistol).name.toUpperCase();
+  let rankGrade: 'S' | 'A' | 'B' | 'C' = 'C';
+  let headline = 'ROOKIE WIPEOUT';
+  if (safeFloor >= 5 || kills >= 40) {
+    rankGrade = 'S';
+    headline = 'VALHALLA OUTLAW LEGEND';
+  } else if (safeFloor >= 3 || kills >= 20) {
+    rankGrade = 'A';
+    headline = 'HIGH-OCTANE VETERAN';
+  } else if (safeFloor >= 2 || kills >= 8) {
+    rankGrade = 'B';
+    headline = 'HIGHWAY CONTENDER';
+  }
+  const statsLine = `FLOOR ${safeFloor} · ${kills} KILLS · ${wepName} · GRADE ${rankGrade}`;
+  return { rankGrade, headline, statsLine };
+}
+
 export interface GarageCallbacks {
   onEquipItem: (item: EquipmentItem) => void;
   onUnequipSlot: (slotId: EquipSlot) => void;
@@ -202,8 +232,8 @@ export class GarageController {
       this.overlay = document.getElementById('garage-overlay');
       this.modalTitle = document.getElementById('modal-title');
       this.modalScrap = document.getElementById('modal-scrap');
-      this.koBurst = document.getElementById('garage-ko');
-      this.koFloor = document.getElementById('garage-ko-floor');
+      this.koBurst = document.getElementById('garage-ko') || document.getElementById('ko-burst');
+      this.koFloor = document.getElementById('garage-ko-floor') || document.getElementById('ko-floor');
       this.slotsLeft = document.getElementById('slots-left');
       this.slotsRight = document.getElementById('slots-right');
       this.bikeCanvas = document.getElementById('bike-canvas') as HTMLCanvasElement | null;
@@ -321,12 +351,15 @@ export class GarageController {
       this.modalTitle.textContent = 'GARAGE BAY';
     }
 
+    const postMortem = buildRunPostMortemSummary(floorNum, player, metaSave);
+
     // Fighting-game style defeat burst ("K.O." + floor reached)
     if (this.koBurst) {
       this.koBurst.hidden = !isDead;
+      this.koBurst.setAttribute('data-run-grade', postMortem.rankGrade);
     }
     if (this.koFloor) {
-      this.koFloor.textContent = `RUN OVER \u00b7 FLOOR ${floorNum}`;
+      this.koFloor.textContent = `RUN OVER \u00b7 ${postMortem.statsLine}`;
     }
 
     if (this.resumeBtn) {

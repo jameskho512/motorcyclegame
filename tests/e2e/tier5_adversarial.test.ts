@@ -45,7 +45,7 @@ import {
   loadMetaSave
 } from '@/core/state';
 
-import { generateDungeon, createBoss } from '@/world/dungeon';
+import { generateDungeon, createBoss, getFloorBountyContract } from '@/world/dungeon';
 
 import {
   updateBikeKinematics,
@@ -60,7 +60,8 @@ import {
   handleEnemyDeath,
   applyTireIronBonus,
   rollCrit,
-  triggerExplosion
+  triggerExplosion,
+  calcOverkillBonus
 } from '@/systems/combat';
 
 import {
@@ -1136,6 +1137,119 @@ describe('Tier 5: Adversarial Coverage Hardening', () => {
         expect(Number.isFinite(b.x)).toBe(true);
         expect(Number.isFinite(b.y)).toBe(true);
       }
+    });
+  });
+
+  // ==========================================================================
+  // SECTION 5: WAVE 9 ADVERSARIAL COVERAGE HARDENING
+  // ==========================================================================
+  describe('5. Wave 9 Adversarial Extremes (Overkill Edge Cases & Bounty Contract Input Sanitization)', () => {
+    it('5.1 handles extreme negative HP (-1e9), 0 maxHp, and NaN inputs in calcOverkillBonus without throw or NaN state', () => {
+      // 1. Extreme negative HP (-1e9) with normal maxHp (100)
+      const extremeNeg = calcOverkillBonus(-1e9, 100);
+      expect(extremeNeg.isOverkill).toBe(true);
+      expect(extremeNeg.bonusStyle).toBe(4);
+      expect(extremeNeg.callout).toBe('💀 OVERKILL!');
+
+      // 2. Extreme negative HP (-1e9) with extreme negative maxHp (-1e9)
+      // safeMax clamps to Math.max(1, Number(-1e9) || 1) = 1
+      const extremeBothNeg = calcOverkillBonus(-1e9, -1e9);
+      expect(extremeBothNeg.isOverkill).toBe(true);
+      expect(extremeBothNeg.bonusStyle).toBe(4);
+      expect(extremeBothNeg.callout).toBe('💀 OVERKILL!');
+
+      // 3. 0 maxHp edge case: safeMax clamps to 1
+      // When finalHp is 0, 0 <= -0.5 is false -> no overkill
+      const zeroHpZeroMax = calcOverkillBonus(0, 0);
+      expect(zeroHpZeroMax.isOverkill).toBe(false);
+      expect(zeroHpZeroMax.bonusStyle).toBe(0);
+      expect(zeroHpZeroMax.callout).toBeNull();
+
+      // When finalHp is -1 with maxHp = 0: -1 <= -0.5 is true -> overkill triggered
+      const negHpZeroMax = calcOverkillBonus(-1, 0);
+      expect(negHpZeroMax.isOverkill).toBe(true);
+      expect(negHpZeroMax.bonusStyle).toBe(4);
+      expect(negHpZeroMax.callout).toBe('💀 OVERKILL!');
+
+      // Positive finalHp with 0 maxHp: no overkill
+      const posHpZeroMax = calcOverkillBonus(10, 0);
+      expect(posHpZeroMax.isOverkill).toBe(false);
+      expect(posHpZeroMax.bonusStyle).toBe(0);
+      expect(posHpZeroMax.callout).toBeNull();
+
+      // 4. NaN input handling: safeMax clamps to 1; NaN comparisons return false safely
+      const nanHpNormalMax = calcOverkillBonus(NaN, 100);
+      expect(nanHpNormalMax.isOverkill).toBe(false);
+      expect(nanHpNormalMax.bonusStyle).toBe(0);
+      expect(nanHpNormalMax.callout).toBeNull();
+
+      const negHpNanMax = calcOverkillBonus(-50, NaN);
+      // safeMax = 1, -50 <= -0.5 is true -> overkill safely handled
+      expect(negHpNanMax.isOverkill).toBe(true);
+      expect(negHpNanMax.bonusStyle).toBe(4);
+      expect(negHpNanMax.callout).toBe('💀 OVERKILL!');
+
+      const bothNan = calcOverkillBonus(NaN, NaN);
+      expect(bothNan.isOverkill).toBe(false);
+      expect(bothNan.bonusStyle).toBe(0);
+      expect(bothNan.callout).toBeNull();
+
+      // 5. Infinity / -Infinity inputs
+      const negInfHp = calcOverkillBonus(-Infinity, 100);
+      expect(negInfHp.isOverkill).toBe(true);
+      expect(negInfHp.bonusStyle).toBe(4);
+      expect(negInfHp.callout).toBe('💀 OVERKILL!');
+
+      const posInfHp = calcOverkillBonus(Infinity, 100);
+      expect(posInfHp.isOverkill).toBe(false);
+      expect(posInfHp.bonusStyle).toBe(0);
+      expect(posInfHp.callout).toBeNull();
+    });
+
+    it('5.2 sanitizes extreme floor numbers (-999, 0, 999, NaN) in getFloorBountyContract safely', () => {
+      // 1. Extreme negative floor (-999) clamps safely to Floor 1 contract
+      const negFloorContract = getFloorBountyContract(-999);
+      expect(negFloorContract.floor).toBe(1);
+      expect(negFloorContract.id).toBe('GRAZE_INITIATE');
+      expect(negFloorContract.title).toBe('NEON DAREDEVIL');
+      expect(negFloorContract.scrapReward).toBe(8);
+      expect(negFloorContract.coinReward).toBe(10);
+      expect(Number.isFinite(negFloorContract.scrapReward)).toBe(true);
+      expect(Number.isFinite(negFloorContract.coinReward)).toBe(true);
+
+      // 2. Zero floor (0) clamps safely to Floor 1 contract
+      const zeroFloorContract = getFloorBountyContract(0);
+      expect(zeroFloorContract.floor).toBe(1);
+      expect(zeroFloorContract.id).toBe('GRAZE_INITIATE');
+      expect(zeroFloorContract.title).toBe('NEON DAREDEVIL');
+      expect(zeroFloorContract.scrapReward).toBe(8);
+      expect(zeroFloorContract.coinReward).toBe(10);
+
+      // 3. Extreme high floor (999) produces valid scaled Valhalla contract without NaN or overflow
+      const highFloorContract = getFloorBountyContract(999);
+      expect(highFloorContract.floor).toBe(999);
+      expect(highFloorContract.id).toBe('VALHALLA_LEGEND');
+      expect(highFloorContract.title).toBe('VALHALLA ASCENDANT');
+      // Formula: scrapReward: 30 + (999 - 6) * 5 = 4995, coinReward: 40 + (999 - 6) * 8 = 7984
+      expect(highFloorContract.scrapReward).toBe(30 + (999 - 6) * 5);
+      expect(highFloorContract.coinReward).toBe(40 + (999 - 6) * 8);
+      expect(highFloorContract.targetCount).toBe(85);
+      expect(Number.isFinite(highFloorContract.scrapReward)).toBe(true);
+      expect(Number.isFinite(highFloorContract.coinReward)).toBe(true);
+      expect(highFloorContract.scrapReward).toBeGreaterThan(0);
+      expect(highFloorContract.coinReward).toBeGreaterThan(0);
+
+      // 4. NaN input defaults safely to Floor 1 contract
+      const nanFloorContract = getFloorBountyContract(NaN);
+      expect(nanFloorContract.floor).toBe(1);
+      expect(nanFloorContract.id).toBe('GRAZE_INITIATE');
+      expect(nanFloorContract.scrapReward).toBe(8);
+      expect(nanFloorContract.coinReward).toBe(10);
+
+      // 5. Floating point floor numbers are floored cleanly
+      const floatFloorContract = getFloorBountyContract(3.85);
+      expect(floatFloorContract.floor).toBe(3);
+      expect(floatFloorContract.id).toBe('STYLE_HUNTER');
     });
   });
 });

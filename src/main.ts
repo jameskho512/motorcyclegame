@@ -28,7 +28,7 @@ import {
 import { StateManager } from './core/state';
 import { InputManager } from './core/input';
 import { SoundSynthesizer } from './audio/sfx';
-import { generateDungeon, createHomeBaseRoom, enableChoicePedestalsInTreasureRooms } from './world/dungeon';
+import { generateDungeon, createHomeBaseRoom, enableChoicePedestalsInTreasureRooms, getFloorBountyContract } from './world/dungeon';
 import { genLoot } from './data/equipment';
 import { KISS_CURSE_MOD_POOL, getActiveDuoSynergies } from './data/upgrades';
 import {
@@ -72,6 +72,8 @@ export class MotoRogueApp {
   public inHomeBase: boolean = false;
   public bountyClaimedInHub: boolean = false;
   public codexBuffClaimedInHub: boolean = false;
+  public floorBountyProgress: number = 0;
+  public floorBountyCompleted: boolean = false;
 
   public hitStopTimer: number = 0;
   public hitStopCooldown: number = 0;
@@ -402,6 +404,8 @@ export class MotoRogueApp {
     this.lastKnownKillCount = player.killCount || 0;
     this.styleGraceTimer = 0;
     this.grazeCalloutCooldown = 0;
+    this.floorBountyProgress = 0;
+    this.floorBountyCompleted = false;
 
     this.combatState = createCombatState();
     this.hud.hideToast();
@@ -411,6 +415,26 @@ export class MotoRogueApp {
 
   public getCurrentRoom(): Room | undefined {
     return this.dungeon[`${this.curRoomX},${this.curRoomY}`];
+  }
+
+  public advanceFloorBounty(amount: number = 1, forceComplete: boolean = false): void {
+    if (this.floorBountyCompleted || this.inHomeBase) return;
+    const contract = getFloorBountyContract(this.stateManager.floorNum);
+    this.floorBountyProgress = forceComplete ? contract.targetCount : this.floorBountyProgress + amount;
+    if (this.floorBountyProgress >= contract.targetCount) {
+      this.floorBountyCompleted = true;
+      this.stateManager.metaSave.scrap += contract.scrapReward;
+      this.stateManager.player.coins += contract.coinReward;
+      this.stateManager.saveMeta();
+      this.audio.masteryUp?.();
+      this.hud.showToast(
+        `🏆 BOUNTY COMPLETE: ${contract.title}`,
+        `+${contract.scrapReward} SCRAP · +${contract.coinReward} COINS`,
+        '#ffd60a',
+        2500
+      );
+      this.updateHUD();
+    }
   }
 
   public selectWeapon(id: WeaponId): void {
@@ -539,6 +563,17 @@ export class MotoRogueApp {
     const activeBoss = room ? (room.enemies.find((e): e is Boss => e.type === 'boss' && e.hp > 0) || null) : null;
     this.hud.updateBossBar(activeBoss, this.stateManager.floorNum);
 
+    if (room) {
+      const nextIntensity = (activeBoss && activeBoss.enraged)
+        ? 'boss_phase2'
+        : (!room.cleared && room.enemies.length > 0 && !this.inHomeBase)
+          ? 'combat'
+          : 'calm';
+      if (this.audio.getMusicIntensity?.() !== nextIntensity) {
+        this.audio.setMusicIntensity?.(nextIntensity);
+      }
+    }
+
     // Call inputManager.update(player.x, player.y) at the start of every frame
     this.inputManager.update(player.x, player.y);
 
@@ -655,6 +690,9 @@ export class MotoRogueApp {
       player.styleScore = Math.min(100, (player.styleScore || 12) + 14);
       this.styleGraceTimer = 2.5;
       this.audio.driftBoost?.();
+      if (this.stateManager.floorNum === 2) {
+        this.advanceFloorBounty(1);
+      }
 
       for (let i = 0; i < 8; i++) {
         const a = (i * Math.PI) / 4;
@@ -701,6 +739,11 @@ export class MotoRogueApp {
       }
     }
     const curStyle = player.styleScore || 12;
+    if (this.stateManager.floorNum === 3 && curStyle >= 55) {
+      this.advanceFloorBounty(55, true);
+    } else if (this.stateManager.floorNum >= 6 && curStyle >= 85) {
+      this.advanceFloorBounty(85, true);
+    }
     if (curStyle >= 92) {
       player.nos = Math.min(player.nosMax, player.nos + dt * 4.0);
       player.fireTimer = Math.max(0, player.fireTimer - dt * 0.25);
@@ -853,6 +896,9 @@ export class MotoRogueApp {
         player.styleScore = Math.min(100, (player.styleScore || 12) + 12);
         this.styleGraceTimer = 2.4;
         this.audio.graze?.();
+        if (this.stateManager.floorNum === 1) {
+          this.advanceFloorBounty(1);
+        }
         this.combatState.beamEffects.push({
           x1: player.x,
           y1: player.y,
@@ -921,6 +967,11 @@ export class MotoRogueApp {
       if ((prevWepKills < 10 && nextWepKills >= 10) || (prevWepKills < 40 && nextWepKills >= 40) || (prevWepKills < 100 && nextWepKills >= 100)) {
         const tierLabel = nextWepKills >= 100 ? '★★★ MASTER III (+15% DMG)' : nextWepKills >= 40 ? '★★☆ ADEPT II (+10% DMG)' : '★☆☆ ROOKIE I (+5% DMG)';
         this.hud.showToast('★ WEAPON MASTERY UP!', `${WEAPONS[player.weapon].name.toUpperCase()}: ${tierLabel}`, '#ffd60a', 2400);
+        this.audio.masteryUp?.();
+      }
+
+      if (this.stateManager.floorNum === 5 && this.killStreakCount >= 5) {
+        this.advanceFloorBounty(5, true);
       }
 
       if (boosting && this.hitStopCooldown <= 0) {
@@ -980,12 +1031,15 @@ export class MotoRogueApp {
       room.cleared = true;
       if (room.type === 'boss') {
         room.trapdoor = true;
+        this.advanceFloorBounty(1, true);
         this.hud.showToast('APEX TARGET ELIMINATED', '☠ DIMENSIONAL RIFT UNLOCKED!', '#ffd60a', 2400);
       } else {
         this.hud.showToast('SECTOR SECURED', '★ DOORS & MINIMAP WARP UNLOCKED', '#00f5d4', 1900);
       }
       this.audio.roomClear();
       this.updateHUD();
+    } else if (room.type === 'boss' && room.cleared && !this.floorBountyCompleted) {
+      this.advanceFloorBounty(1, true);
     }
 
     // Clear dismissed shop pickup if player moved away from it
@@ -1386,6 +1440,8 @@ export class MotoRogueApp {
   public nextFloor(): void {
     this.portalDismissed = false;
     this.portalModal.close();
+    this.floorBountyProgress = 0;
+    this.floorBountyCompleted = false;
     const clearedValhalla = this.stateManager.floorNum === 6;
     this.stateManager.floorNum += 1;
     if (clearedValhalla) {
