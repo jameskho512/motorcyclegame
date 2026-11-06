@@ -207,6 +207,10 @@ export class HUDController {
   private minimapCanvas: HTMLCanvasElement | null = null;
   private minimapCtx: CanvasRenderingContext2D | null = null;
   private minimapRoomHitboxes: Array<{ x: number; y: number; rx: number; ry: number; visited: boolean }> = [];
+  private hoveredMinimapRoom: { rx: number; ry: number } | null = null;
+  private lastDungeonRef: Dungeon | null = null;
+  private lastCurRoomX: number = 0;
+  private lastCurRoomY: number = 0;
   public onFastTravelRoom?: (rx: number, ry: number) => void;
 
   private onSelectWeapon?: (id: WeaponId) => void;
@@ -248,6 +252,29 @@ export class HUDController {
           const hit = this.minimapRoomHitboxes.find(hb => hb.visited && Math.hypot(mx - hb.x, my - hb.y) <= 22);
           if (hit) {
             this.onFastTravelRoom(hit.rx, hit.ry);
+          }
+        });
+        this.minimapCanvas.addEventListener('mousemove', (e: MouseEvent) => {
+          if (!this.minimapCanvas) return;
+          const rect = this.minimapCanvas.getBoundingClientRect();
+          const mx = e.clientX - rect.left;
+          const my = e.clientY - rect.top;
+          const hit = this.minimapRoomHitboxes.find(
+            hb => hb.visited && !(hb.rx === this.lastCurRoomX && hb.ry === this.lastCurRoomY) && Math.hypot(mx - hb.x, my - hb.y) <= 22
+          );
+          this.minimapCanvas.style.cursor = hit ? 'pointer' : 'default';
+          const prev = this.hoveredMinimapRoom;
+          const next = hit ? { rx: hit.rx, ry: hit.ry } : null;
+          if ((prev?.rx !== next?.rx || prev?.ry !== next?.ry) && this.lastDungeonRef) {
+            this.hoveredMinimapRoom = next;
+            this.drawMinimap(this.lastDungeonRef, this.lastCurRoomX, this.lastCurRoomY);
+          }
+        });
+        this.minimapCanvas.addEventListener('mouseleave', () => {
+          if (this.minimapCanvas) this.minimapCanvas.style.cursor = 'default';
+          if (this.hoveredMinimapRoom && this.lastDungeonRef) {
+            this.hoveredMinimapRoom = null;
+            this.drawMinimap(this.lastDungeonRef, this.lastCurRoomX, this.lastCurRoomY);
           }
         });
       }
@@ -379,12 +406,44 @@ export class HUDController {
     g.fillStyle = '#08070f';
     g.fillRect(0, 0, mw, mh);
 
-    const cx = mw / 2;
-    const cy = mh / 2 - 2;
+    this.lastDungeonRef = dungeon;
+    this.lastCurRoomX = curRoomX;
+    this.lastCurRoomY = curRoomY;
 
-    // Isometric tile dimensions & grid step
-    const scale = Math.min(mw / 250, mh / 155);
-    const tileW = Math.max(15, Math.round(21 * scale));
+    const rooms = Object.values(dungeon);
+    // Compute isometric bounding box in grid coordinates u = (x - y), v = (x + y)
+    let minU = 0;
+    let maxU = 0;
+    let minV = 0;
+    let maxV = 0;
+    if (rooms.length > 0) {
+      minU = Infinity;
+      maxU = -Infinity;
+      minV = Infinity;
+      maxV = -Infinity;
+      for (const r of rooms) {
+        const u = r.x - r.y;
+        const v = r.x + r.y;
+        if (u < minU) minU = u;
+        if (u > maxU) maxU = u;
+        if (v < minV) minV = v;
+        if (v > maxV) maxV = v;
+      }
+    }
+    const centerU = (minU + maxU) / 2;
+    const centerV = (minV + maxV) / 2;
+    const spanU = Math.max(2.5, maxU - minU + 1.6);
+    const spanV = Math.max(2.5, maxV - minV + 1.8);
+
+    const cx = mw / 2;
+    const cy = mh / 2 + 4;
+
+    // Isometric tile dimensions & grid step auto-fitted so the entire floor map stays inside the frame
+    const baseScale = Math.min(mw / 250, mh / 155);
+    const fitScaleU = (mw - 64) / (spanU * 31);
+    const fitScaleV = (mh - 52) / (spanV * 19.5);
+    const scale = Math.max(0.72, Math.min(baseScale, fitScaleU, fitScaleV));
+    const tileW = Math.max(14, Math.round(21 * scale));
     const tileH = Math.max(9, Math.round(13 * scale));
     const stepX = Math.round(tileW * 1.48);
     const stepY = Math.round(tileH * 1.48);
@@ -418,15 +477,14 @@ export class HUDController {
     g.restore();
 
     const projectIso = (rx: number, ry: number): { x: number; y: number } => {
-      const dx = rx - curRoomX;
-      const dy = ry - curRoomY;
+      const u = rx - ry - centerU;
+      const v = rx + ry - centerV;
       return {
-        x: cx + (dx - dy) * stepX,
-        y: cy + (dx + dy) * stepY
+        x: cx + u * stepX,
+        y: cy + v * stepY
       };
     };
 
-    const rooms = Object.values(dungeon);
     // Sort rooms back-to-front by (x + y) so isometric 2.5D lips layer cleanly
     rooms.sort((a, b) => (a.x + a.y) - (b.x + b.y));
 
@@ -581,6 +639,22 @@ export class HUDController {
         g.shadowColor = CURRENT_YELLOW;
         g.shadowBlur = 10 * pulse;
         g.lineWidth = 2.2;
+        g.stroke();
+        g.restore();
+      } else if (this.hoveredMinimapRoom && this.hoveredMinimapRoom.rx === r.x && this.hoveredMinimapRoom.ry === r.y) {
+        const haloW = tileW + 4;
+        const haloH = tileH + 2.5;
+        g.save();
+        g.beginPath();
+        g.moveTo(isoX, isoY - haloH);
+        g.lineTo(isoX + haloW, isoY);
+        g.lineTo(isoX, isoY + haloH);
+        g.lineTo(isoX - haloW, isoY);
+        g.closePath();
+        g.strokeStyle = '#ffffff';
+        g.shadowColor = CLEARED_CYAN;
+        g.shadowBlur = 10;
+        g.lineWidth = 2;
         g.stroke();
         g.restore();
       }

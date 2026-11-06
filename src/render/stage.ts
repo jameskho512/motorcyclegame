@@ -965,6 +965,14 @@ export class StageManager {
           col = 0xe5203a;
         }
 
+        // Proximity glow halo when player is near an interactive Sanctuary station
+        const distToPlayer = Math.hypot(player.x - p.x, player.y - p.y);
+        if (distToPlayer < 105) {
+          const haloPulse = 0.45 + 0.25 * Math.sin(timestampMs / 130);
+          g.circle(p.x, p.y, (p.radius || 34) + 10)
+            .stroke({ color: col, width: 2.5, alpha: haloPulse });
+        }
+
         // Wider slanted comic nameplate badge (halfW = 54)
         const halfW = 54;
         const halfH = 10;
