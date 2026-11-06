@@ -99,29 +99,50 @@ export function pickRandomMod(random: () => number = Math.random): RunModDef {
  * index.html L1706-L1730
  */
 export function createBoss(floor: number, x: number, y: number): Boss {
-  const scale = getFloorScale(floor);
-  const bossVariant = ((floor - 1) % 3) as BossVariantId;
-  const names: BossVariantName[] = ['SCRAP GOLIATH', 'SIEGE BEHEMOTH', 'OVERLORD HELION'];
-  const colors = ['#e63946', '#f77f00', '#9d4edd'];
-  const baseHp = Math.round(280 * scale);
+  const f = Math.max(1, floor);
+  const scale = getFloorScale(f);
+  const bossVariant = ((f - 1) % 6) as BossVariantId;
+  const names: BossVariantName[] = [
+    'SCRAP GOLIATH',
+    'SIEGE BEHEMOTH',
+    'OVERLORD HELION',
+    'CRYO VALKYRIE',
+    'INFERNO COLOSSUS',
+    'OMEGA VALHALLA'
+  ];
+  const subtitles: string[] = [
+    'THE RUSTYARD JUGGERNAUT',
+    'HELLFIRE ARTILLERY RIG',
+    'CYBER-PLASMA HOVERTANK',
+    'SUB-ZERO JET INTERCEPTOR',
+    'MOLTEN SMELTER CRAWLER',
+    'THE CHROME APOCALYPSE'
+  ];
+  const colors = ['#e63946', '#f77f00', '#9d4edd', '#00bbf9', '#ff5400', '#ffd166'];
+  const radii = [36, 38, 36, 34, 40, 40];
+  const baseHp = Math.round(1120 * scale);
 
   return {
     id: getNextEntityId(),
     type: 'boss',
     bossVariant,
     name: names[bossVariant],
+    subtitle: subtitles[bossVariant],
     x,
     y,
     vx: 0,
     vy: 0,
-    radius: 34,
+    radius: radii[bossVariant] ?? 36,
     hp: baseHp,
     maxHp: baseHp,
-    speed: Math.round(105 * Math.pow(1.06, Math.max(1, floor) - 1)),
+    speed: Math.round(105 * Math.pow(1.06, f - 1)),
     burnTimer: 0,
     burnTick: 0,
     aiTimer: 1.3,
     subTimer: 3.2,
+    specialTimer: 4.5,
+    dashVx: 0,
+    dashVy: 0,
     angle: 0,
     state: 'idle',
     isElite: false,

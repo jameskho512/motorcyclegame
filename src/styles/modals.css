@@ -216,9 +216,46 @@
   border: 4px solid var(--ink);
   box-shadow: 8px 8px 0 var(--ink);
   transform: rotate(-2deg);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 2cqmin;
+  row-gap: 1.4cqmin;
+  align-items: center;
+}
+
+/* Angled comic badge preview beside the item title and description */
+.shop-item-art {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  width: clamp(68px, 12cqmin, 114px);
+  height: clamp(68px, 12cqmin, 114px);
+  padding: 8px;
+  box-sizing: border-box;
   display: flex;
-  flex-direction: column;
-  gap: 1.6cqmin;
+  align-items: center;
+  justify-content: center;
+  background:
+    var(--halftone),
+    radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--shop-art-accent, #ffd60a) 36%, #242838) 0%, #12141d 85%);
+  border: 3.5px solid var(--ink, #0a0b10);
+  box-shadow:
+    5px 5px 0 var(--ink, #0a0b10),
+    inset 0 0 0 2px color-mix(in srgb, var(--shop-art-accent, #ffd60a) 75%, #ffffff);
+  transform: rotate(-4deg) skewX(-6deg);
+  flex-shrink: 0;
+}
+
+.shop-item-art[data-kind='weapon'] {
+  width: clamp(82px, 14.5cqmin, 136px);
+}
+
+.shop-item-art svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  filter:
+    drop-shadow(2px 2px 0 var(--ink, #0a0b10))
+    drop-shadow(0 0 8px color-mix(in srgb, var(--shop-art-accent, #ffd60a) 60%, transparent));
 }
 
 .shop-type-tag {
@@ -234,15 +271,18 @@
   transform: skewX(var(--skew));
   border: 2px solid var(--yellow);
   box-shadow: 3px 3px 0 var(--ink);
+  z-index: 3;
 }
 
 #shop-confirm-overlay[data-kind='weapon'] .shop-type-tag { color: var(--cyan); border-color: var(--cyan); }
 #shop-confirm-overlay[data-kind='repair'] .shop-type-tag { color: #ff8796; border-color: #ff8796; }
 
 #shop-confirm-overlay .shop-item-name {
+  grid-column: 2;
+  min-width: 0;
   margin: 0;
   font-family: var(--font-display);
-  font-size: clamp(32px, 6.6cqmin, 72px);
+  font-size: clamp(28px, 5.8cqmin, 64px);
   font-style: italic;
   font-weight: 900;
   line-height: 0.95;
@@ -265,6 +305,8 @@
 
 /* ---- Description + gold price badge row ---- */
 .shop-info-row {
+  grid-column: 2;
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;

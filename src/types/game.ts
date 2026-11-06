@@ -275,14 +275,25 @@ export interface RegularEnemy extends BaseEnemy {
   zigPhase?: number;
 }
 
-export type BossVariantId = 0 | 1 | 2;
-export type BossVariantName = 'SCRAP GOLIATH' | 'SIEGE BEHEMOTH' | 'OVERLORD HELION';
+export type BossVariantId = 0 | 1 | 2 | 3 | 4 | 5;
+export type BossVariantName =
+  | 'SCRAP GOLIATH'
+  | 'SIEGE BEHEMOTH'
+  | 'OVERLORD HELION'
+  | 'CRYO VALKYRIE'
+  | 'INFERNO COLOSSUS'
+  | 'OMEGA VALHALLA';
 
 export interface Boss extends BaseEnemy {
   type: 'boss';
   bossVariant: BossVariantId;
   name: BossVariantName | string;
+  subtitle?: string;
   subTimer: number;
+  specialTimer?: number;
+  dashVx?: number;
+  dashVy?: number;
+  phase?: number;
   isElite: false;
 }
 
@@ -328,6 +339,7 @@ export interface Room {
   hazards: FloorHazard[];
   skids: SkidMark[];
   trapdoor: boolean;
+  bossIntroShown?: boolean;
   powerUpDropQuota?: FloorPowerUpQuota;
   powerUpDroppedInRoom?: boolean;
 }

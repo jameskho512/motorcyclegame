@@ -456,15 +456,15 @@
    -------------------------------------------------------------------------- */
 .unlock-item.gx-weapon {
   position: relative;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 54px 1fr auto;
+  align-items: center;
   padding: 5px 8px;
   background: #14151e;
   border: 2px solid #36394a;
   border-radius: 2px;
-  gap: 4px;
-  min-height: 64px;
-  justify-content: space-between;
+  gap: 6px;
+  min-height: 58px;
   transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s;
 }
 
@@ -486,17 +486,21 @@
 .unlock-item.gx-weapon .info {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
+  min-width: 0;
 }
 
 .unlock-item.gx-weapon .info strong {
   font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
   font-style: italic;
-  font-size: 13.5px;
-  letter-spacing: 1px;
+  font-size: 13px;
+  letter-spacing: 0.8px;
   color: #ffffff;
   text-transform: uppercase;
   line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .unlock-item.gx-weapon.is-equipped .info strong {
@@ -522,49 +526,79 @@
   text-overflow: ellipsis;
 }
 
-/* Center Lock / Check Icon */
-.unlock-item.gx-weapon.is-locked .gx-weapon-art {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 32px;
-  height: 32px;
+/* Cel-Shaded Weapon Illustration Box & Corner Status Badge */
+.unlock-item.gx-weapon .gx-weapon-art {
+  position: relative;
+  width: 54px;
+  height: 38px;
   display: flex;
   align-items: center;
   justify-content: center;
+  background:
+    radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--wc, #ffd60a) 26%, transparent) 0%, rgba(10, 11, 16, 0.9) 82%);
+  border: 1.5px solid color-mix(in srgb, var(--wc, #4a5068) 70%, #2a2d3a);
+  border-radius: 3px;
+  box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.7), 2px 2px 0 var(--ink, #0a0b10);
   pointer-events: none;
+  flex-shrink: 0;
+}
+
+.gx-weapon-art svg {
+  width: 50px;
+  height: 34px;
+  display: block;
+  filter:
+    drop-shadow(1.5px 1.5px 0 var(--ink, #0a0b10))
+    drop-shadow(0 0 6px color-mix(in srgb, var(--wc, #ffd60a) 55%, transparent));
+}
+
+.unlock-item.gx-weapon.is-locked .gx-weapon-art > svg {
+  filter:
+    grayscale(0.4)
+    brightness(0.78)
+    drop-shadow(1.5px 1.5px 0 var(--ink, #0a0b10));
+  opacity: 0.86;
+}
+
+.gx-weapon-status {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ink, #0a0b10);
+  border: 1.5px solid color-mix(in srgb, var(--wc, #ffd60a) 65%, #36394a);
+  border-radius: 50%;
+  box-shadow: 1px 1px 0 var(--ink, #0a0b10);
   z-index: 2;
 }
 
+.gx-weapon-status svg,
 .gx-weapon-art .gx-lock {
-  width: 26px;
-  height: 26px;
-  fill: #ffffff;
-  stroke: var(--ink, #0a0b10);
-  stroke-width: 2px;
-  filter: drop-shadow(2px 2px 0 var(--ink, #0a0b10));
-}
-
-.unlock-item.gx-weapon.is-unlocked .gx-weapon-art,
-.unlock-item.gx-weapon.is-equipped .gx-weapon-art {
-  display: none;
+  width: 11px;
+  height: 11px;
+  display: block;
+  filter: none;
 }
 
 /* Weapon Equip / Unlock Buttons */
 .unlock-item.gx-weapon .btn {
-  align-self: flex-end;
-  padding: 3px 10px;
+  align-self: center;
+  padding: 3px 8px;
   font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
   font-style: italic;
   font-weight: 900;
-  font-size: 11.5px;
+  font-size: 11px;
   letter-spacing: 0.5px;
   text-transform: uppercase;
   transform: skewX(-12deg);
   border: 2px solid var(--ink, #0a0b10);
   box-shadow: 2px 2px 0 var(--ink, #0a0b10);
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .unlock-item.gx-weapon.is-equipped .btn {
@@ -674,27 +708,32 @@
   opacity: 0.85;
 }
 
-.eq-slot .gx-slot-icon {
-  width: 38px;
-  height: 38px;
+.eq-slot .gx-slot-icon,
+.eq-slot .sl-icon {
+  width: 46px;
+  height: 46px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.eq-slot .gx-slot-icon svg {
+.eq-slot .gx-slot-icon svg,
+.eq-slot .sl-icon svg {
   width: 100%;
   height: 100%;
-  fill: none;
-  stroke: var(--rar, #ffd60a);
-  stroke-width: 2.2px;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  filter: drop-shadow(1px 1px 0 var(--ink, #0a0b10));
+  display: block;
+  filter:
+    drop-shadow(1.5px 1.5px 0 var(--ink, #0a0b10))
+    drop-shadow(0 0 6px var(--rar, rgba(255, 214, 10, 0.35)));
 }
 
-.eq-slot.is-empty .gx-slot-icon svg {
-  stroke: #63687a;
+.eq-slot.is-empty .gx-slot-icon svg,
+.eq-slot.is-empty .sl-icon svg {
+  filter:
+    grayscale(0.55)
+    brightness(0.82)
+    drop-shadow(1.5px 1.5px 0 var(--ink, #0a0b10));
+  opacity: 0.78;
 }
 
 /* Keep internal text hidden from card body to maintain clean square layout */
@@ -813,9 +852,28 @@
   box-shadow: 3px 4px 0 var(--ink, #0a0b10), 0 0 10px var(--rar, #ffd166);
 }
 
+.gx-stash-art {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+.gx-stash-art svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  filter:
+    drop-shadow(1px 1px 0 var(--ink, #0a0b10))
+    drop-shadow(0 0 5px var(--rar, transparent));
+}
+
 .stash-item b {
   font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
-  font-size: 8.5px;
+  font-size: 7.5px;
   color: #ffffff;
   line-height: 1;
   text-align: center;

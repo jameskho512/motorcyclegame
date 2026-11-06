@@ -1,13 +1,14 @@
 /* ==========================================================================
    MOTO-ROGUE: Anime Fighting-Game Overlay HUD Stylesheet
    Guilty Gear Strive / DBFZ / Persona 5 aesthetic:
-   - Slanted, cel-shaded geometry with heavy black contours
-   - Top-left: Rider helmet portrait + ink splash + segmented HULL + NOS bar
-   - Top-right: Tilted parallelogram minimap with neon colors + COINS/SCRAP badges
-   - Bottom-center: 7 slanted weapon cards (1-7), active weapon enlarged with flame border
-   - Bottom-right: Die-cut sticker badges for collected mods
-   - Widescreen background: Dark red/black halftone and radial speedline action streaks
-   - Pointer-events: none on overlay containers, auto on interactive cards/buttons
+   - Slanted, cel-shaded geometry with heavy black contours & white comic frames
+   - Top-left: Hexagonal Rider helmet portrait + dramatic white ink splash +
+     segmented HULL & NOS bars + LV. badge + bike stats strip
+   - Top-center: Spanning Boss Health Bar (#boss-hud) with damage-lag trail
+   - Top-right: Tilted trapezoidal 2.5D Isometric Minimap + COINS/SCRAP badges
+   - Bottom-center: 7 slanted weapon cards (1-7) with high-fi cel-shaded guns
+   - Bottom-right: Die-cut vinyl sticker badges for power-ups & run mods
+   - Center Arena Overlay: Guilty Gear / Persona 5 VS Boss Intro Banner
    ========================================================================== */
 
 /* --------------------------------------------------------------------------
@@ -133,7 +134,7 @@ canvas#canvas {
 }
 
 /* --------------------------------------------------------------------------
-   3. Top-Left Cluster: Helmet Badge + Slanted HULL / NOS Meters + Stats
+   3. Top-Left Cluster: Hexagonal Helmet Badge + Ink Splash + HULL / NOS
    -------------------------------------------------------------------------- */
 .hud-tl {
   top: 14px;
@@ -147,31 +148,32 @@ canvas#canvas {
   position: relative;
   display: flex;
   align-items: center;
+  padding-top: 4px;
 }
 
-/* Comic ink splash radiating behind helmet portrait */
+/* Dramatic White Comic Ink Splash radiating behind helmet portrait & meters */
 .hud-splash {
   position: absolute;
-  top: -16px;
-  left: -16px;
-  width: 195px;
-  height: 120px;
+  top: -28px;
+  left: -26px;
+  width: 285px;
+  height: 182px;
   z-index: 1;
   pointer-events: none;
-  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.85));
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.9));
 }
 
-/* Rider Helmet Portrait Badge */
+/* Rider Helmet Portrait Hexagonal Badge */
 .hud-portrait {
   position: relative;
-  z-index: 2;
-  width: 82px;
-  height: 82px;
-  margin-right: 14px;
+  z-index: 3;
+  width: 98px;
+  height: 98px;
+  margin-right: -8px;
   flex-shrink: 0;
-  filter: drop-shadow(3.5px 3.5px 0 #0a0b10);
-  transform: rotate(-3deg);
+  transform: rotate(-4deg);
   transition: transform 0.2s var(--ease-snap);
+  filter: drop-shadow(4px 5px 0 #0a0b10);
 }
 
 .hud-portrait:hover {
@@ -181,30 +183,26 @@ canvas#canvas {
 .hud-portrait-inner {
   width: 100%;
   height: 100%;
-  clip-path: polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%);
-  background: linear-gradient(135deg, #e5203a 0%, #800d1e 100%);
-  border: 3.5px solid #0a0b10;
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
-  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.6);
 }
 
 .hud-portrait-inner svg {
-  width: 72px;
-  height: 72px;
-  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.7));
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
-/* Slanted Meters Column */
+/* Cohesive Slanted Comic Meter Housing (Matches Concept Art) */
 .hud-meters {
   position: relative;
   z-index: 2;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  transform: skewX(-14deg);
+  gap: 5px;
+  padding: 6px 12px 8px 18px;
+  transform: skewX(-15deg) rotate(-3deg);
   transform-origin: left center;
 }
 
@@ -213,60 +211,74 @@ canvas#canvas {
   justify-content: space-between;
   align-items: baseline;
   margin-bottom: 2px;
+  padding-right: 4px;
 }
 
 .hud-label {
-  font-family: var(--font-display, 'Impact', sans-serif);
-  font-size: 16px;
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  font-size: 19px;
+  font-weight: 900;
   font-style: italic;
-  letter-spacing: 1.5px;
-  text-shadow: var(--stroke-text);
+  letter-spacing: 1.8px;
+  color: #ffffff;
+  text-shadow:
+    -2px -2px 0 #0a0b10,
+     2px -2px 0 #0a0b10,
+    -2px  2px 0 #0a0b10,
+     2px  2px 0 #0a0b10,
+     3px  3px 0 #0a0b10;
 }
 
 .hud-readout {
-  font-family: var(--font-display, 'Impact', sans-serif);
-  font-size: 15px;
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  font-size: 14px;
   font-weight: 800;
-  letter-spacing: 0.5px;
-  text-shadow: var(--stroke-text);
-}
-
-/* HULL Meter */
-.hud-hull {
-  width: 290px;
-}
-
-.hud-hull .hud-label,
-.hud-hull .hud-readout {
+  font-style: italic;
+  letter-spacing: 0.8px;
   color: #ffffff;
+  text-shadow:
+    -1.5px -1.5px 0 #0a0b10,
+     1.5px -1.5px 0 #0a0b10,
+    -1.5px  1.5px 0 #0a0b10,
+     1.5px  1.5px 0 #0a0b10,
+     2px  2px 0 #0a0b10;
+}
+
+/* HULL Meter (Thick White & Black Comic Frame + Slanted Crimson Segments) */
+.hud-hull {
+  width: 300px;
+}
+
+.hud-hull-frame {
+  background: #ffffff;
+  padding: 3px;
+  border: 3px solid #0a0b10;
+  box-shadow:
+    5px 5px 0 #0a0b10,
+    0 0 18px rgba(229, 32, 58, 0.35);
 }
 
 .hud-segbar {
   display: flex;
-  gap: 3px;
-  height: 24px;
-  background: #140407;
-  border: 3px solid #0a0b10;
-  box-shadow:
-    2.5px 2.5px 0 #0a0b10,
-    0 0 12px rgba(229, 32, 58, 0.4);
+  gap: 4px;
+  height: 26px;
+  background: #0a0b10;
+  border: 2.5px solid #0a0b10;
   padding: 2px;
-  border-radius: 1px;
 }
 
 .hud-seg {
   flex: 1;
   height: 100%;
-  background: #2b0811;
-  transition: background 0.15s ease-out, transform 0.15s ease-out;
-  border-radius: 1px;
+  background: linear-gradient(180deg, #360a14 0%, #1c0409 100%);
+  transition: background 0.14s ease-out, transform 0.14s ease-out;
 }
 
 .hud-seg.is-filled {
-  background: linear-gradient(180deg, #ff4d6d 0%, #e5203a 45%, #b70928 100%);
+  background: linear-gradient(180deg, #ff4d6d 0%, #ff2a4b 18%, #e51b38 65%, #b00b23 100%);
   box-shadow:
-    inset 0 2px 0 rgba(255, 255, 255, 0.5),
-    inset 0 -2px 0 rgba(0, 0, 0, 0.35);
+    inset 0 3px 0 rgba(255, 255, 255, 0.48),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.4);
 }
 
 /* Low Hull Warning Pulse */
@@ -283,48 +295,93 @@ canvas#canvas {
   }
 }
 
-/* NOS Meter */
+/* NOS Meter + LV. X Badge Row (Matches Concept Art Segmented Yellow Blocks) */
 .hud-nos {
-  width: 245px;
+  width: 280px;
 }
 
-.hud-nos .hud-label,
+.hud-nos .hud-label {
+  font-size: 16px;
+  color: #ffffff;
+}
+
 .hud-nos .hud-readout {
   color: #ffd60a;
 }
 
+.hud-nos-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .hud-nos-track {
-  height: 15px;
-  background: #16141c;
-  border: 2.5px solid #0a0b10;
-  box-shadow: 2px 2px 0 #0a0b10;
-  padding: 1.5px;
+  flex: 1;
+  height: 19px;
+  background: #241e14;
+  border: 3px solid #ffffff;
+  outline: 2.5px solid #0a0b10;
+  box-shadow: 4px 4px 0 #0a0b10;
+  padding: 2px;
   overflow: hidden;
-  border-radius: 1px;
+  position: relative;
 }
 
 #nos-fill {
+  position: relative;
   height: 100%;
   width: 100%;
-  background: linear-gradient(90deg, #ffd60a 0%, #ff9f1c 100%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0px,
+      transparent 13px,
+      #0a0b10 13px,
+      #0a0b10 16.5px
+    ),
+    linear-gradient(180deg, #fff699 0%, #ffd60a 35%, #ff9f1c 100%) !important;
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.55);
   transition: width 0.05s linear;
-  border-radius: 1px;
 }
 
 /* NOS Active Boosting */
 .hud-nos.is-boosting #nos-fill {
-  background: linear-gradient(90deg, #2ee6ff 0%, #ffffff 50%, #2ee6ff 100%);
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0px,
+      transparent 13px,
+      #0a0b10 13px,
+      #0a0b10 16.5px
+    ),
+    linear-gradient(90deg, #2ee6ff 0%, #ffffff 50%, #2ee6ff 100%) !important;
   box-shadow: 0 0 12px #2ee6ff, inset 0 0 6px #ffffff;
 }
 
 /* NOS Locked */
 .hud-nos.is-locked #nos-fill {
-  background: repeating-linear-gradient(45deg, #e5203a, #e5203a 8px, #7a0f1e 8px, #7a0f1e 16px);
+  background: repeating-linear-gradient(45deg, #e5203a, #e5203a 8px, #7a0f1e 8px, #7a0f1e 16px) !important;
 }
 
 .hud-nos.is-locked .hud-readout {
   color: #e5203a;
+}
+
+/* Concept-Art Comic "LV. 3" Floor Badge right beside NOS Bar */
+.hud-lv-badge {
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  font-size: 19px;
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: 1px;
+  color: #ffffff;
+  white-space: nowrap;
+  text-shadow:
+    -2px -2px 0 #0a0b10,
+     2px -2px 0 #0a0b10,
+    -2px  2px 0 #0a0b10,
+     2px  2px 0 #0a0b10,
+     3px  4px 0 #0a0b10;
 }
 
 /* Live Stats Strip */
@@ -334,13 +391,14 @@ canvas#canvas {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
-  margin-top: 10px;
-  max-width: 380px;
+  margin-top: 8px;
+  margin-left: 8px;
+  max-width: 390px;
   z-index: 2;
 }
 
 .hud-stats .stat-item {
-  background: rgba(10, 11, 16, 0.9);
+  background: rgba(10, 11, 16, 0.92);
   border: 1.5px solid #363248;
   border-radius: 3px;
   padding: 2px 7px;
@@ -351,7 +409,7 @@ canvas#canvas {
   display: inline-flex;
   gap: 5px;
   align-items: baseline;
-  box-shadow: 1.5px 1.5px 0 #0a0b10;
+  box-shadow: 2px 2px 0 #0a0b10;
 }
 
 .hud-stats .stat-item strong {
@@ -367,70 +425,214 @@ canvas#fuel-gauge {
 }
 
 /* --------------------------------------------------------------------------
-   4. Top-Right Cluster: Minimap + Currency Badges + Utility Buttons
+   4. Top-Center Spanning Boss Health Bar (#boss-hud)
+   -------------------------------------------------------------------------- */
+.hud-boss {
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%) skewX(-12deg);
+  width: min(520px, calc(100vw - 720px));
+  min-width: 320px;
+  z-index: 25;
+  pointer-events: none;
+  transition: opacity 0.2s ease-out, transform 0.2s var(--ease-snap);
+}
+
+.hud-boss[hidden] {
+  display: none !important;
+}
+
+.boss-hud-inner {
+  background: rgba(10, 11, 16, 0.92);
+  border: 3px solid #ffffff;
+  outline: 3px solid #0a0b10;
+  box-shadow:
+    5px 6px 0 #0a0b10,
+    0 0 28px rgba(255, 42, 75, 0.45);
+  padding: 6px 12px 8px 12px;
+}
+
+.boss-hud-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.boss-hud-title-wrap {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.boss-hud-skull {
+  color: var(--boss-accent, #ff2a4b);
+  font-size: 18px;
+  text-shadow: 2px 2px 0 #0a0b10;
+}
+
+.boss-hud-name {
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  font-size: 18px;
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: 1.5px;
+  color: #ffffff;
+  text-shadow:
+    -2px -2px 0 #0a0b10,
+     2px -2px 0 #0a0b10,
+    -2px  2px 0 #0a0b10,
+     2px  2px 0 #0a0b10;
+  white-space: nowrap;
+}
+
+.boss-hud-sub {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  color: #ffd60a;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.boss-hud-hp {
+  font-family: var(--font-display, 'Impact', sans-serif);
+  font-size: 14px;
+  font-weight: 800;
+  font-style: italic;
+  color: #ffffff;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-shadow: 2px 2px 0 #0a0b10;
+}
+
+.boss-bar-track {
+  position: relative;
+  height: 18px;
+  background: #1c050a;
+  border: 2.5px solid #0a0b10;
+  overflow: hidden;
+}
+
+.boss-bar-lag {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  background: linear-gradient(180deg, #ffffff 0%, #ffd60a 100%);
+  transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+  z-index: 1;
+}
+
+.boss-bar-fill {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #c8102e 0%, #ff2a4b 50%, #ff6b1a 90%, #ffd60a 100%);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.45);
+  transition: width 0.08s ease-out;
+  z-index: 2;
+}
+
+.boss-bar-ticks {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent 0%,
+    transparent calc(10% - 2px),
+    rgba(10, 11, 16, 0.65) calc(10% - 2px),
+    rgba(10, 11, 16, 0.65) 10%
+  );
+}
+
+/* --------------------------------------------------------------------------
+   5. Top-Right Cluster: Isometric Minimap + Currency Badges + Utility Buttons
    -------------------------------------------------------------------------- */
 .hud-tr {
   top: 14px;
-  right: 18px;
+  right: 20px;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 8px;
+  gap: 9px;
 }
 
-/* Tilted Parallelogram Minimap Frame */
+/* Trapezoidal / Tilted Comic Minimap Frame (Matches Concept Art) */
 .hud-map {
-  transform: skewX(-12deg);
+  transform: rotate(-2deg) skewX(-8deg);
   transform-origin: right top;
   background: #0a0b10;
-  border: 3.5px solid #ffffff;
+  border: 4px solid #ffffff;
+  outline: 3px solid #0a0b10;
   box-shadow:
-    4px 4px 0 #0a0b10,
-    0 8px 26px rgba(0, 0, 0, 0.9);
+    6px 6px 0 #0a0b10,
+    0 10px 28px rgba(0, 0, 0, 0.92);
   padding: 3px;
   position: relative;
   border-radius: 2px;
 }
 
+.hud-map-spikes {
+  position: absolute;
+  inset: -12px -18px -12px -12px;
+  width: calc(100% + 30px);
+  height: calc(100% + 24px);
+  pointer-events: none;
+  z-index: 0;
+}
+
 .hud-map-inner {
   position: relative;
+  z-index: 1;
   overflow: hidden;
-  background: #0c0b14;
-  border-radius: 1px;
+  background: #08070f;
+  border: 2px solid #0a0b10;
 }
 
 #minimap-canvas {
   display: block;
-  width: 220px;
-  height: 135px;
-  background: #0c0b14;
+  width: 232px;
+  height: 142px;
+  background: #08070f;
 }
 
 .hud-map-floor {
   position: absolute;
-  top: 6px;
-  right: 8px;
+  top: 5px;
+  left: 8px;
   font-family: var(--font-display, 'Impact', sans-serif);
-  font-size: 13px;
+  font-size: 12px;
   font-style: italic;
   color: #ffffff;
-  text-shadow: var(--stroke-text);
+  text-shadow:
+    -1.5px -1.5px 0 #0a0b10,
+     1.5px -1.5px 0 #0a0b10,
+    -1.5px  1.5px 0 #0a0b10,
+     1.5px  1.5px 0 #0a0b10;
   z-index: 2;
   pointer-events: none;
   letter-spacing: 1px;
 }
 
 .hud-map-floor strong {
-  color: #2ee6ff;
+  color: #ffd60a;
 }
 
 .hud-map-legend {
   display: flex;
   justify-content: space-around;
-  font-size: 9px;
+  font-size: 9.5px;
   font-weight: 800;
   padding: 2px 4px;
-  background: rgba(10, 11, 16, 0.94);
+  background: rgba(10, 11, 16, 0.95);
   border-top: 1.5px solid #2a2538;
   letter-spacing: 0.5px;
 }
@@ -447,67 +649,76 @@ canvas#fuel-gauge {
   color: #ff2e93;
 }
 
-/* Slanted Currency Counters */
+/* Slanted Currency Counters (Matches Concept Art Crimson COINS & Cyan SCRAP Plates) */
 .hud-counter {
-  transform: skewX(-12deg);
+  transform: rotate(-1.5deg) skewX(-12deg);
   transform-origin: right center;
-  height: 33px;
+  height: 36px;
   display: inline-flex;
   align-items: center;
   justify-content: space-between;
-  padding: 2px 10px 2px 14px;
-  border: 2.5px solid #0a0b10;
-  box-shadow: 2.5px 2.5px 0 #0a0b10;
-  font-family: var(--font-display, 'Impact', sans-serif);
-  font-size: 15px;
+  padding: 2px 12px 2px 16px;
+  background: #0d0c14;
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  font-size: 16px;
   font-style: italic;
-  min-width: 140px;
-  border-radius: 2px;
+  min-width: 158px;
+  position: relative;
 }
 
 .hud-coins {
-  background: linear-gradient(135deg, #1f0b0e 0%, #0a0b10 100%);
-  border-right: 4px solid #ffb627;
+  border: 3px solid #ff2a4b;
+  outline: 2.5px solid #0a0b10;
+  box-shadow:
+    4px 4px 0 #0a0b10,
+    0 0 14px rgba(255, 42, 75, 0.35);
 }
 
 .hud-coins .hud-counter-label {
-  color: #ffb627;
+  color: #ffffff;
   margin-right: 6px;
-  font-size: 13px;
+  font-size: 15px;
   letter-spacing: 1px;
+  text-shadow: 2px 2px 0 #0a0b10;
 }
 
 .hud-coins strong#coin-count {
   color: #ffffff;
-  text-shadow: var(--stroke-text);
-  font-size: 16px;
+  text-shadow: 2px 2px 0 #0a0b10;
+  font-size: 18px;
   margin-right: 8px;
+  font-variant-numeric: tabular-nums;
 }
 
 .hud-scrap {
-  background: linear-gradient(135deg, #071920 0%, #0a0b10 100%);
-  border-right: 4px solid #2ee6ff;
+  border: 3px solid #2ee6ff;
+  outline: 2.5px solid #0a0b10;
+  box-shadow:
+    4px 4px 0 #0a0b10,
+    0 0 14px rgba(46, 230, 255, 0.35);
 }
 
 .hud-scrap .hud-counter-label {
-  color: #2ee6ff;
+  color: #ffffff;
   margin-right: 6px;
-  font-size: 13px;
+  font-size: 15px;
   letter-spacing: 1px;
+  text-shadow: 2px 2px 0 #0a0b10;
 }
 
 .hud-scrap strong#scrap-count {
   color: #ffffff;
-  text-shadow: var(--stroke-text);
-  font-size: 16px;
+  text-shadow: 2px 2px 0 #0a0b10;
+  font-size: 18px;
   margin-right: 8px;
+  font-variant-numeric: tabular-nums;
 }
 
 .hud-counter-icon {
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   flex-shrink: 0;
-  filter: drop-shadow(1px 1px 0 rgba(0, 0, 0, 0.8));
+  filter: drop-shadow(1.5px 1.5px 0 #0a0b10);
 }
 
 /* Utility Buttons */
@@ -556,7 +767,7 @@ canvas#fuel-gauge {
 }
 
 /* --------------------------------------------------------------------------
-   5. Bottom Cluster: 7 Slanted Weapon Cards + Installed Mod Stickers
+   6. Bottom Cluster: 7 Slanted Weapon Cards + Die-Cut Vinyl Mod Stickers
    -------------------------------------------------------------------------- */
 .hud-bottom {
   bottom: 6px;
@@ -572,27 +783,30 @@ canvas#fuel-gauge {
 .hud-weapons {
   display: flex;
   align-items: flex-end;
-  gap: 7px;
+  gap: 8px;
   margin: 0 auto;
   z-index: 15;
 }
 
 .wcard,
 .weapon-slot {
-  transform: skewX(-12deg);
+  transform: skewX(-11deg);
   transform-origin: center bottom;
-  width: 78px;
-  height: 96px;
-  border: 3px solid #0a0b10;
+  width: 82px;
+  height: 102px;
+  border: 2.5px solid #ffffff;
+  outline: 2.5px solid #0a0b10;
   box-shadow:
-    3px 3px 0 #0a0b10,
-    0 4px 14px rgba(0, 0, 0, 0.65);
+    4px 4px 0 #0a0b10,
+    0 6px 16px rgba(0, 0, 0, 0.75);
   position: relative;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   padding: 4px;
-  background: var(--wc, #2a2538);
+  background:
+    radial-gradient(circle at 50% 42%, rgba(255, 255, 255, 0.22) 0%, transparent 68%),
+    linear-gradient(180deg, var(--wc, #2a2538) 0%, #14121d 92%);
   cursor: pointer;
   transition:
     transform 0.18s var(--ease-snap),
@@ -602,26 +816,27 @@ canvas#fuel-gauge {
 }
 
 .wcard:hover:not(.locked) {
-  transform: skewX(-12deg) translateY(-6px);
+  transform: skewX(-11deg) translateY(-6px);
   box-shadow:
-    3px 8px 0 #0a0b10,
-    0 8px 20px rgba(0, 0, 0, 0.75);
+    4px 9px 0 #0a0b10,
+    0 8px 20px rgba(0, 0, 0, 0.8);
 }
 
 .wcard-key {
   position: absolute;
-  top: 3px;
-  left: 3px;
-  background: #0a0b10;
+  top: 2px;
+  left: 4px;
   color: #ffffff;
-  font-family: var(--font-display, 'Impact', sans-serif);
-  font-size: 13px;
-  font-weight: 800;
-  width: 18px;
-  height: 18px;
-  line-height: 18px;
-  text-align: center;
-  border-radius: 2px;
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  font-size: 16px;
+  font-weight: 900;
+  font-style: italic;
+  line-height: 1;
+  text-shadow:
+    -2px -2px 0 #0a0b10,
+     2px -2px 0 #0a0b10,
+    -2px  2px 0 #0a0b10,
+     2px  2px 0 #0a0b10;
   z-index: 3;
 }
 
@@ -641,7 +856,7 @@ canvas#fuel-gauge {
 }
 
 .wcard-icon {
-  margin: auto 0;
+  margin: auto 0 2px 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -649,23 +864,23 @@ canvas#fuel-gauge {
 }
 
 .wcard-icon svg {
-  width: 64px;
-  height: 38px;
-  filter: drop-shadow(1px 2px 0 rgba(0, 0, 0, 0.9));
+  width: 68px;
+  height: 42px;
+  filter: drop-shadow(2px 3px 0 rgba(10, 11, 16, 0.92));
 }
 
 .wcard-name {
   background: #0a0b10;
   color: #ffffff;
-  font-family: var(--font-display, 'Impact', sans-serif);
-  font-size: 9px;
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  font-size: 9.5px;
   font-style: italic;
   text-align: center;
-  padding: 2.5px 1px;
+  padding: 3px 2px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.6px;
   z-index: 3;
   border-radius: 1px;
 }
@@ -695,21 +910,22 @@ canvas#fuel-gauge {
 
 .wcard.locked,
 .wcard.is-locked {
-  opacity: 0.62;
+  opacity: 0.68;
   cursor: not-allowed;
-  filter: grayscale(40%);
+  filter: saturate(0.45);
 }
 
-/* Active Weapon Card: Enlarged with Glowing Flame Border (Mockup Parity) */
+/* Active Weapon Card: Enlarged with Roaring Anime Flame Border (Mockup Parity) */
 .wcard.active,
 .wcard.is-active {
-  transform: skewX(-12deg) scale(1.12) translateY(-8px);
+  transform: skewX(-11deg) scale(1.14) translateY(-9px);
   z-index: 25;
+  border-color: #fff699;
   box-shadow:
     0 0 0 3.5px #ffd60a,
     0 0 14px 4px #ff6b2b,
     0 0 28px 8px #e5203a,
-    3.5px 7px 0 #0a0b10;
+    4px 8px 0 #0a0b10;
   animation: flamePulse 0.45s infinite alternate ease-in-out;
 }
 
@@ -721,13 +937,14 @@ canvas#fuel-gauge {
 .wcard.is-active .wcard-flame {
   display: block;
   position: absolute;
-  inset: -8px -6px -4px -6px;
+  inset: -12px -8px -4px -8px;
   pointer-events: none;
   z-index: 1;
-  border-radius: 6px;
-  background: radial-gradient(ellipse at 50% 0%, rgba(255, 214, 10, 0.65) 0%, rgba(255, 107, 43, 0.45) 45%, transparent 75%);
+  border-radius: 8px;
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(255, 230, 80, 0.85) 0%, rgba(255, 107, 43, 0.6) 45%, transparent 72%);
   filter: blur(2px);
-  animation: flameTongues 0.45s infinite alternate;
+  animation: flameTongues 0.42s infinite alternate;
 }
 
 @keyframes flamePulse {
@@ -749,23 +966,23 @@ canvas#fuel-gauge {
 
 @keyframes flameTongues {
   0% {
-    transform: scale(0.98);
-    opacity: 0.8;
+    transform: scale(0.97) translateY(1px);
+    opacity: 0.82;
   }
   100% {
-    transform: scale(1.04);
+    transform: scale(1.05) translateY(-3px);
     opacity: 1;
   }
 }
 
-/* Installed Mod Stickers (Bottom-Right) */
+/* Die-Cut Vinyl Mod & Power-Up Stickers (Bottom-Right — Matches Concept Art) */
 .hud-items {
   position: absolute;
-  right: 20px;
+  right: 18px;
   bottom: 8px;
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 7px;
   max-width: 280px;
   justify-content: flex-end;
   z-index: 15;
@@ -776,62 +993,89 @@ canvas#fuel-gauge {
   font-size: 10px;
   font-weight: 600;
   font-style: italic;
-  background: rgba(10, 11, 16, 0.7);
+  background: rgba(10, 11, 16, 0.72);
   padding: 4px 8px;
   border-radius: 4px;
 }
 
 .item-badge.sticker {
   position: relative;
-  background: #181622;
+  width: 48px;
+  height: 48px;
+  background:
+    radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--ic, #ffd60a) 35%, #1d1a2b) 0%, #12101b 100%);
   border: 3px solid #ffffff;
-  outline: 2px solid #0a0b10;
+  outline: 2.5px solid #0a0b10;
   box-shadow:
-    0 4px 10px rgba(0, 0, 0, 0.7),
-    inset 0 0 6px rgba(0, 0, 0, 0.5);
-  padding: 4px 8px;
-  border-radius: 5px;
+    3px 4px 0 #0a0b10,
+    0 5px 12px rgba(0, 0, 0, 0.75);
+  padding: 4px;
+  border-radius: 10px;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
   font-family: var(--font-display, 'Impact', sans-serif);
-  font-size: 11px;
-  font-style: italic;
   color: #ffffff;
   cursor: help;
   transition: transform 0.15s var(--ease-snap), z-index 0.05s;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .item-badge.sticker:hover {
-  transform: scale(1.22) rotate(0deg) !important;
+  transform: scale(1.24) rotate(0deg) !important;
   z-index: 40;
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.9);
+  box-shadow:
+    4px 6px 0 #0a0b10,
+    0 8px 20px rgba(0, 0, 0, 0.92);
 }
 
 .sticker-glyph {
+  width: 35px;
+  height: 35px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-weight: 900;
   color: var(--ic, #ffd60a);
   font-size: 13px;
 }
 
+.sticker-glyph svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  filter: drop-shadow(1px 1.5px 0 #0a0b10);
+}
+
 .sticker-count {
+  position: absolute;
+  bottom: -4px;
+  right: -4px;
+  background: #0a0b10;
   color: #ffd60a;
+  border: 2px solid #ffffff;
+  outline: 1.5px solid #0a0b10;
+  border-radius: 5px;
+  padding: 0 4px;
   font-size: 10.5px;
-  margin-left: 2px;
+  font-weight: 900;
+  font-style: italic;
+  line-height: 1.25;
+  z-index: 3;
 }
 
 /* Folded Corner Peel Effect */
 .sticker-peel {
   position: absolute;
-  bottom: 0;
+  top: 0;
   right: 0;
   width: 0;
   height: 0;
   border-style: solid;
-  border-width: 0 0 7px 7px;
-  border-color: transparent transparent #e0e0e8 transparent;
-  filter: drop-shadow(-1px -1px 1px rgba(0, 0, 0, 0.4));
+  border-width: 0 8px 8px 0;
+  border-color: transparent #d8dce8 transparent transparent;
+  filter: drop-shadow(-1px 1px 0 #0a0b10);
+  pointer-events: none;
 }
 
 /* Organic Sticker Rotation Angles */
@@ -843,7 +1087,213 @@ canvas#fuel-gauge {
 .sticker.rot-6 { transform: rotate(4deg); }
 
 /* --------------------------------------------------------------------------
-   6. Tooltip Styling
+   7. Boss Room Entry Intro Splash Banner (#boss-intro-banner)
+   -------------------------------------------------------------------------- */
+#boss-intro-banner {
+  position: absolute;
+  inset: 0;
+  z-index: 48;
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background: radial-gradient(circle at center, rgba(20, 4, 10, 0.78) 0%, rgba(6, 2, 6, 0.94) 100%);
+  overflow: hidden;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+#boss-intro-banner.is-open,
+#boss-intro-banner[aria-hidden="false"] {
+  display: flex;
+  animation: bossIntroFadeIn 0.18s ease-out;
+}
+
+@keyframes bossIntroFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(1.04);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.boss-intro-speedlines {
+  position: absolute;
+  inset: -40%;
+  background: repeating-conic-gradient(
+    from 0deg at 50% 50%,
+    rgba(255, 42, 75, 0.16) 0deg 2.5deg,
+    transparent 2.5deg 9deg
+  );
+  animation: bossSpeedSpin 12s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes bossSpeedSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.boss-intro-tape {
+  width: 120%;
+  background: repeating-linear-gradient(
+    -45deg,
+    #ffd60a 0px,
+    #ffd60a 18px,
+    #0a0b10 18px,
+    #0a0b10 36px
+  );
+  border-top: 3px solid #ffffff;
+  border-bottom: 3px solid #ffffff;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.9);
+  padding: 4px 0;
+  text-align: center;
+  transform: rotate(-4deg);
+  z-index: 2;
+}
+
+.boss-intro-tape span {
+  display: inline-block;
+  background: #0a0b10;
+  color: #ffd60a;
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  font-size: 12px;
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: 2.5px;
+  padding: 1px 14px;
+}
+
+.boss-intro-slash {
+  position: relative;
+  z-index: 3;
+  width: 112%;
+  background: linear-gradient(135deg, #1b050b 0%, #8f0b21 45%, #d91834 85%, #ff5400 100%);
+  border-top: 5px solid #ffffff;
+  border-bottom: 5px solid #ffffff;
+  outline: 4px solid #0a0b10;
+  box-shadow:
+    0 14px 40px rgba(0, 0, 0, 0.95),
+    0 0 45px rgba(255, 42, 75, 0.6);
+  transform: rotate(-4deg);
+  margin: 14px 0;
+  padding: 20px 10%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  animation: bossSlashSlam 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes bossSlashSlam {
+  0% {
+    transform: rotate(-4deg) translateX(-120px) scaleY(0.2);
+    opacity: 0;
+  }
+  100% {
+    transform: rotate(-4deg) translateX(0) scaleY(1);
+    opacity: 1;
+  }
+}
+
+.boss-intro-art {
+  width: 150px;
+  height: 110px;
+  flex-shrink: 0;
+  filter: drop-shadow(5px 6px 0 #0a0b10);
+}
+
+.boss-intro-art svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.boss-intro-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: 440px;
+}
+
+.boss-intro-kicker {
+  background: #ffd60a;
+  color: #0a0b10;
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  font-size: 12px;
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: 2px;
+  padding: 2px 10px;
+  border: 2px solid #0a0b10;
+  box-shadow: 3px 3px 0 #0a0b10;
+  margin-bottom: 6px;
+}
+
+.boss-intro-name {
+  margin: 0;
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  font-size: 46px;
+  font-weight: 900;
+  font-style: italic;
+  line-height: 0.98;
+  letter-spacing: 2px;
+  color: #ffffff;
+  text-shadow:
+    -3px -3px 0 #0a0b10,
+     3px -3px 0 #0a0b10,
+    -3px  3px 0 #0a0b10,
+     3px  3px 0 #0a0b10,
+     6px  6px 0 #0a0b10;
+}
+
+.boss-intro-sub {
+  margin: 6px 0 12px 0;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: #fff3b0;
+  text-shadow: 2px 2px 0 #0a0b10;
+}
+
+.boss-intro-footer {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+}
+
+.boss-intro-prompt {
+  font-family: var(--font-display, 'Impact', sans-serif);
+  font-size: 12px;
+  font-style: italic;
+  letter-spacing: 1.2px;
+  color: #ffffff;
+  background: #0a0b10;
+  border: 1.5px solid #ffd60a;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+
+.boss-intro-timer {
+  flex: 1;
+  height: 8px;
+  background: #0a0b10;
+  border: 2px solid #ffffff;
+  overflow: hidden;
+}
+
+.boss-intro-timer-fill {
+  height: 100%;
+  width: 100%;
+  background: linear-gradient(90deg, #ffd60a 0%, #2ee6ff 100%);
+}
+
+/* --------------------------------------------------------------------------
+   8. Tooltip Styling
    -------------------------------------------------------------------------- */
 #tooltip {
   position: fixed;
@@ -864,46 +1314,50 @@ canvas#fuel-gauge {
 }
 
 /* --------------------------------------------------------------------------
-   7. Responsive Scale Adaptations
+   9. Responsive Scale Adaptations
    -------------------------------------------------------------------------- */
 @media (max-width: 1200px) {
   .hud-tl {
     top: 8px;
     left: 10px;
   }
+  .hud-portrait {
+    width: 82px;
+    height: 82px;
+  }
   .hud-hull {
     width: 240px;
   }
   .hud-nos {
-    width: 200px;
+    width: 220px;
   }
   .hud-tr {
     top: 8px;
     right: 10px;
   }
   #minimap-canvas {
-    width: 180px;
-    height: 110px;
+    width: 190px;
+    height: 115px;
   }
   .wcard,
   .weapon-slot {
-    width: 68px;
-    height: 82px;
+    width: 70px;
+    height: 86px;
   }
 }
 
 @media (max-height: 820px) {
   .wcard,
   .weapon-slot {
-    width: 66px;
-    height: 78px;
+    width: 68px;
+    height: 82px;
   }
   .wcard.active,
   .wcard.is-active {
-    transform: skewX(-12deg) scale(1.08) translateY(-5px);
+    transform: skewX(-11deg) scale(1.1) translateY(-5px);
   }
   .wcard-icon svg {
-    width: 52px;
-    height: 30px;
+    width: 56px;
+    height: 34px;
   }
 }

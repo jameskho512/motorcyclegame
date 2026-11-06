@@ -476,7 +476,8 @@ export function drawBossCar(g: Graphics, boss: Boss, timestampMs: number = 0): v
   const bx = boss.x;
   const by = boss.y;
   const angle = boss.angle;
-  const raging = boss.aiTimer < 0.4;
+  const variant = boss.bossVariant ?? 0;
+  const raging = boss.aiTimer < 0.4 || boss.state === 'windup' || boss.state === 'dashing';
   const bodyColor = boss.burnTimer > 0
     ? 0xff6b2b
     : parseColor(boss.color, 0xe63946);
@@ -484,13 +485,242 @@ export function drawBossCar(g: Graphics, boss: Boss, timestampMs: number = 0): v
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
 
-  const toWorld = (lx: number, ly: number): [number, number] => {
+  // 2.5D extrusion helper (z lifts upward in screen Y)
+  const toWorld = (lx: number, ly: number, z: number = 0): [number, number] => {
     return [
       bx + cos * lx - sin * ly,
-      by + sin * lx + cos * ly
+      by + sin * lx + cos * ly - z
     ];
   };
 
+  // Windup / Charge Telegraph Laser Sight & Warning Cone
+  if (boss.state === 'windup') {
+    const [tx1, ty1] = toWorld(38, 0, 4);
+    const [tx2, ty2] = toWorld(290, -24, 0);
+    const [tx3, ty3] = toWorld(290, 24, 0);
+    g.poly([tx1, ty1, tx2, ty2, tx3, ty3])
+      .fill({ color: 0xff2a55, alpha: 0.18 });
+    const [lx2, ly2] = toWorld(310, 0, 4);
+    g.moveTo(tx1, ty1)
+      .lineTo(lx2, ly2)
+      .stroke({ color: 0xff2a55, width: 3, alpha: 0.85 });
+  }
+
+  if (variant === 1) {
+    // =========================================================================
+    // VARIANT 1: SIEGE BEHEMOTH (6-Wheeled Armored Artillery War-Rig)
+    // =========================================================================
+    const wheelXs = [-32, 0, 28];
+    for (const wx of wheelXs) {
+      for (const wy of [-31, 23]) {
+        const wPts = [toWorld(wx, wy, 0), toWorld(wx + 16, wy, 0), toWorld(wx + 16, wy + 8, 0), toWorld(wx, wy + 8, 0)].flat();
+        g.poly(wPts).fill({ color: 0x0a0b10 }).stroke({ color: 0x2a2b36, width: 2 });
+      }
+    }
+
+    // 2.5D Lower Armored Skirt
+    const lowerHull = [toWorld(-50, -25, 0), toWorld(48, -25, 0), toWorld(48, 25, 0), toWorld(-50, 25, 0)].flat();
+    g.poly(lowerHull).fill({ color: 0x7a3800 }).stroke({ color: 0x0a0b10, width: 4.5 });
+
+    // Elevated Upper Deck
+    const upperHull = [toWorld(-48, -24, 7), toWorld(46, -24, 7), toWorld(46, 24, 7), toWorld(-48, 24, 7)].flat();
+    g.poly(upperHull).fill({ color: bodyColor }).stroke({ color: 0x0a0b10, width: 3.5 });
+
+    // Reactive Side Armor Slabs & Hazard Chevrons
+    for (const sy of [-22, 16]) {
+      const slab = [toWorld(-40, sy, 8), toWorld(36, sy, 8), toWorld(36, sy + 6, 8), toWorld(-40, sy + 6, 8)].flat();
+      g.poly(slab).fill({ color: 0x2b2d3c }).stroke({ color: 0x0a0b10, width: 2 });
+    }
+    const plow = [toWorld(46, -26, 4), toWorld(56, -18, 4), toWorld(56, 18, 4), toWorld(46, 26, 4)].flat();
+    g.poly(plow).fill({ color: 0xffd166 }).stroke({ color: 0x0a0b10, width: 3 });
+
+    // Rear Twin Mortar Launch Tubes
+    for (const my of [-11, 11]) {
+      const [mx, mY] = toWorld(-30, my, 10);
+      g.circle(mx, mY, 7).fill({ color: 0x161822 }).stroke({ color: 0x0a0b10, width: 2.5 });
+      g.circle(mx, mY, 3.5).fill({ color: 0xff5400 });
+    }
+
+    // Central Rotating Dual-Barrel Siege Howitzer Turret
+    const turretOct = [
+      toWorld(-8, -14, 12), toWorld(14, -14, 12),
+      toWorld(20, -6, 12), toWorld(20, 6, 12),
+      toWorld(14, 14, 12), toWorld(-8, 14, 12)
+    ].flat();
+    g.poly(turretOct).fill({ color: 0x3a3d4d }).stroke({ color: 0x0a0b10, width: 3 });
+
+    for (const byOff of [-5, 5]) {
+      const barrel = [toWorld(18, byOff - 2.5, 13), toWorld(48, byOff - 2.5, 13), toWorld(48, byOff + 2.5, 13), toWorld(18, byOff + 2.5, 13)].flat();
+      g.poly(barrel).fill({ color: 0x1b1d28 }).stroke({ color: 0x0a0b10, width: 2 });
+    }
+    const [coreX, coreY] = toWorld(4, 0, 14);
+    g.circle(coreX, coreY, 5).fill({ color: raging ? 0xff2a55 : 0xffd166 }).stroke({ color: 0x0a0b10, width: 2 });
+    return;
+  }
+
+  if (variant === 2) {
+    // =========================================================================
+    // VARIANT 2: OVERLORD HELION (Cyber-Plasma Hovertank)
+    // =========================================================================
+    const hoverBob = Math.sin(timestampMs / 160) * 3;
+    const zBase = 6 + hoverBob;
+
+    // 4 Glowing Cyan Hover-Thruster Rings
+    for (const [hx, hy] of [[-28, -24], [22, -24], [-28, 24], [22, 24]]) {
+      const [wx, wy] = toWorld(hx, hy, 2);
+      g.circle(wx, wy, 10).fill({ color: 0x00f5d4, alpha: 0.35 }).stroke({ color: 0x00f5d4, width: 2.5 });
+      g.circle(wx, wy, 5).fill({ color: 0xffffff });
+    }
+
+    // Twin-Pronged Cyber Hull
+    const hull = [
+      toWorld(-44, -18, zBase),
+      toWorld(-20, -27, zBase),
+      toWorld(26, -25, zBase),
+      toWorld(50, -14, zBase),
+      toWorld(50, -6, zBase),
+      toWorld(18, -6, zBase),
+      toWorld(18, 6, zBase),
+      toWorld(50, 6, zBase),
+      toWorld(50, 14, zBase),
+      toWorld(26, 25, zBase),
+      toWorld(-20, 27, zBase),
+      toWorld(-44, 18, zBase)
+    ].flat();
+    g.poly(hull).fill({ color: bodyColor }).stroke({ color: 0x0a0b10, width: 4 });
+
+    // Cel-Shaded Top Armor Deck & Neon Circuit Lines
+    const innerDeck = [
+      toWorld(-34, -14, zBase + 4),
+      toWorld(16, -16, zBase + 4),
+      toWorld(16, 16, zBase + 4),
+      toWorld(-34, 14, zBase + 4)
+    ].flat();
+    g.poly(innerDeck).fill({ color: 0x241734 }).stroke({ color: 0x00f5d4, width: 2 });
+
+    // Twin Plasma Rail-Prong Glow Strips
+    for (const pyOff of [-10, 10]) {
+      const [p1x, p1y] = toWorld(20, pyOff, zBase + 2);
+      const [p2x, p2y] = toWorld(48, pyOff, zBase + 2);
+      g.moveTo(p1x, p1y).lineTo(p2x, p2y).stroke({ color: 0x00f5d4, width: 3.5 });
+    }
+
+    // Pulsing Central Cyber-Core
+    const [cx, cy] = toWorld(-6, 0, zBase + 6);
+    g.circle(cx, cy, 11).fill({ color: 0x0a0b10 }).stroke({ color: 0x00f5d4, width: 2.5 });
+    g.circle(cx, cy, 6.5).fill({ color: raging ? 0xff2a55 : 0x00f5d4 });
+    return;
+  }
+
+  if (variant === 3) {
+    // =========================================================================
+    // VARIANT 3: CRYO VALKYRIE (Sub-Zero Jet Interceptor)
+    // =========================================================================
+    const zLift = 5 + Math.sin(timestampMs / 150) * 2.5;
+
+    // Twin Rear Cryo-Turbine Afterburners
+    const jetLen = 14 + Math.random() * 10 + (raging ? 10 : 0);
+    for (const jy of [-11, 11]) {
+      const jet = [toWorld(-42, jy - 4, zLift), toWorld(-42 - jetLen, jy, zLift), toWorld(-42, jy + 4, zLift)].flat();
+      g.poly(jet).fill({ color: 0x90e0ef }).stroke({ color: 0x00bbf9, width: 1.5 });
+    }
+
+    // Swept Forward-Angled Cryo-Wings
+    const wings = [
+      toWorld(-38, -12, zLift),
+      toWorld(-8, -32, zLift),
+      toWorld(28, -24, zLift),
+      toWorld(18, -10, zLift),
+      toWorld(54, 0, zLift + 2),
+      toWorld(18, 10, zLift),
+      toWorld(28, 24, zLift),
+      toWorld(-8, 32, zLift),
+      toWorld(-38, 12, zLift)
+    ].flat();
+    g.poly(wings).fill({ color: bodyColor }).stroke({ color: 0x0a0b10, width: 4 });
+
+    // White Cel-Shaded Frost Highlight Blades
+    const frostTrim = [
+      toWorld(-6, -28, zLift + 2),
+      toWorld(24, -21, zLift + 2),
+      toWorld(12, -9, zLift + 2),
+      toWorld(46, 0, zLift + 3),
+      toWorld(12, 9, zLift + 2),
+      toWorld(24, 21, zLift + 2),
+      toWorld(-6, 28, zLift + 2),
+      toWorld(-20, 0, zLift + 2)
+    ].flat();
+    g.poly(frostTrim).fill({ color: 0xe0fbfc, alpha: 0.88 }).stroke({ color: 0x0a0b10, width: 2 });
+
+    // Armored Dark-Ice Cockpit Canopy
+    const canopy = [toWorld(-18, -7, zLift + 4), toWorld(16, -5, zLift + 4), toWorld(24, 0, zLift + 4), toWorld(16, 5, zLift + 4), toWorld(-18, 7, zLift + 4)].flat();
+    g.poly(canopy).fill({ color: 0x101828 }).stroke({ color: 0x0a0b10, width: 2.5 });
+    return;
+  }
+
+  if (variant === 4) {
+    // =========================================================================
+    // VARIANT 4: INFERNO COLOSSUS (Molten Smelter Crawler)
+    // =========================================================================
+    // Twin Armored Caterpillar Treads
+    for (const ty of [-30, 18]) {
+      const tread = [toWorld(-46, ty, 0), toWorld(44, ty, 0), toWorld(44, ty + 12, 0), toWorld(-46, ty + 12, 0)].flat();
+      g.poly(tread).fill({ color: 0x14151d }).stroke({ color: 0x0a0b10, width: 3 });
+    }
+
+    // Black-Iron & Molten-Orange Bulky Smelter Hull
+    const hull = [toWorld(-44, -22, 6), toWorld(42, -22, 6), toWorld(42, 22, 6), toWorld(-44, 22, 6)].flat();
+    g.poly(hull).fill({ color: 0x262328 }).stroke({ color: 0x0a0b10, width: 4.5 });
+
+    // Glowing Molten Magma Vats on Rear Deck
+    for (const vxOff of [-22, 4]) {
+      const [vx, vy] = toWorld(vxOff, 0, 9);
+      g.circle(vx, vy, 12).fill({ color: 0xff5400 }).stroke({ color: 0x0a0b10, width: 2.5 });
+      g.circle(vx, vy, 6).fill({ color: 0xffd166 });
+    }
+
+    // Twin Front Flamethrower Nozzles & Rotating Crusher Spikes
+    for (let i = -3; i <= 3; i++) {
+      const tooth = [toWorld(42, i * 6 - 3, 4), toWorld(54, i * 6, 4), toWorld(42, i * 6 + 3, 4)].flat();
+      g.poly(tooth).fill({ color: 0xff9f1c }).stroke({ color: 0x0a0b10, width: 2 });
+    }
+    return;
+  }
+
+  if (variant === 5) {
+    // =========================================================================
+    // VARIANT 5: OMEGA VALHALLA (Gold-Chrome & Crimson 8-Wheeled Dreadnought)
+    // =========================================================================
+    for (const wx of [-36, -14, 8, 28]) {
+      for (const wy of [-31, 23]) {
+        const wPts = [toWorld(wx, wy, 0), toWorld(wx + 14, wy, 0), toWorld(wx + 14, wy + 8, 0), toWorld(wx, wy + 8, 0)].flat();
+        g.poly(wPts).fill({ color: 0x0a0b10 }).stroke({ color: 0xffd166, width: 1.8 });
+      }
+    }
+
+    // Crimson & Gold-Chrome Royal Dreadnought Chassis
+    const baseHull = [toWorld(-50, -25, 4), toWorld(48, -25, 4), toWorld(56, 0, 4), toWorld(48, 25, 4), toWorld(-50, 25, 4)].flat();
+    g.poly(baseHull).fill({ color: 0x9e1b26 }).stroke({ color: 0x0a0b10, width: 4.5 });
+
+    const goldDeck = [toWorld(-44, -20, 9), toWorld(42, -20, 9), toWorld(50, 0, 9), toWorld(42, 20, 9), toWorld(-44, 20, 9)].flat();
+    g.poly(goldDeck).fill({ color: bodyColor }).stroke({ color: 0x0a0b10, width: 3 });
+
+    // Spiked Golden Cowcatcher Ram
+    for (let i = -3; i <= 3; i++) {
+      const spike = [toWorld(48, i * 6 - 3, 5), toWorld(60, i * 6, 5), toWorld(48, i * 6 + 3, 5)].flat();
+      g.poly(spike).fill({ color: 0xffffff }).stroke({ color: 0x0a0b10, width: 1.8 });
+    }
+
+    // Glowing Cyan Halo Reactor Core & Quad Turret Barrels
+    const [rx, ry] = toWorld(-4, 0, 13);
+    g.circle(rx, ry, 14).fill({ color: 0x141622 }).stroke({ color: 0x0a0b10, width: 3 });
+    g.circle(rx, ry, 9).fill({ color: 0x00f5d4 }).stroke({ color: 0xffffff, width: 2 });
+    return;
+  }
+
+  // ===========================================================================
+  // VARIANT 0 (DEFAULT): SCRAP GOLIATH (Supercharged Muscle-Interceptor)
+  // ===========================================================================
   // 1. Wheels (4 heavy wide-drag tires)
   const wheelOffsets = [
     [-28, -29], [24, -29],
@@ -498,74 +728,79 @@ export function drawBossCar(g: Graphics, boss: Boss, timestampMs: number = 0): v
   ];
   wheelOffsets.forEach(([wx, wy]) => {
     const coords = [
-      toWorld(wx, wy),
-      toWorld(wx + 18, wy),
-      toWorld(wx + 18, wy + 8),
-      toWorld(wx, wy + 8)
+      toWorld(wx, wy, 0),
+      toWorld(wx + 18, wy, 0),
+      toWorld(wx + 18, wy + 8, 0),
+      toWorld(wx, wy + 8, 0)
     ].flat();
     g.poly(coords)
       .fill({ color: 0x0a0b10 })
       .stroke({ color: 0x2a2b36, width: 2 });
   });
 
-  // 2. Car Chassis (Heavy muscle car body)
-  const bodyCoords = [
-    toWorld(-46, -23),
-    toWorld(46, -23),
-    toWorld(46, 23),
-    toWorld(-46, 23)
+  // 2. 2.5D Extruded Lower Chassis Shadow & Upper Muscle Car Body
+  const lowerCoords = [
+    toWorld(-46, -23, 0),
+    toWorld(46, -23, 0),
+    toWorld(46, 23, 0),
+    toWorld(-46, 23, 0)
   ].flat();
-
-  // Bold black ink outline (ArcSys style)
-  g.poly(bodyCoords)
+  g.poly(lowerCoords)
+    .fill({ color: 0x6b111b })
     .stroke({ color: 0x0a0b10, width: 4.5 });
 
-  // Hard-edge primary color
+  const bodyCoords = [
+    toWorld(-46, -23, 5),
+    toWorld(46, -23, 5),
+    toWorld(46, 23, 5),
+    toWorld(-46, 23, 5)
+  ].flat();
   g.poly(bodyCoords)
-    .fill({ color: bodyColor });
+    .fill({ color: bodyColor })
+    .stroke({ color: 0x0a0b10, width: 4 });
 
   // 3. Dual White Racing Stripes
-  const stripe1 = [toWorld(-44, -6), toWorld(44, -6), toWorld(44, -2), toWorld(-44, -2)].flat();
-  const stripe2 = [toWorld(-44, 2), toWorld(44, 2), toWorld(44, 6), toWorld(-44, 6)].flat();
+  const stripe1 = [toWorld(-44, -6, 5.5), toWorld(44, -6, 5.5), toWorld(44, -2, 5.5), toWorld(-44, -2, 5.5)].flat();
+  const stripe2 = [toWorld(-44, 2, 5.5), toWorld(44, 2, 5.5), toWorld(44, 6, 5.5), toWorld(-44, 6, 5.5)].flat();
   g.poly(stripe1).fill({ color: 0xffffff, alpha: 0.85 });
   g.poly(stripe2).fill({ color: 0xffffff, alpha: 0.85 });
 
   // 4. Windshield & Cabin Roof
-  const frontGlass = [toWorld(4, -17), toWorld(18, -17), toWorld(18, 17), toWorld(4, 17)].flat();
-  const rearGlass = [toWorld(-34, -16), toWorld(-24, -16), toWorld(-24, 16), toWorld(-34, 16)].flat();
-  const cabinRoof = [toWorld(-22, -15), toWorld(4, -15), toWorld(4, 15), toWorld(-22, 15)].flat();
+  const frontGlass = [toWorld(4, -17, 7), toWorld(18, -17, 7), toWorld(18, 17, 7), toWorld(4, 17, 7)].flat();
+  const rearGlass = [toWorld(-34, -16, 7), toWorld(-24, -16, 7), toWorld(-24, 16, 7), toWorld(-34, 16, 7)].flat();
+  const cabinRoof = [toWorld(-22, -15, 8.5), toWorld(4, -15, 8.5), toWorld(4, 15, 8.5), toWorld(-22, 15, 8.5)].flat();
 
   g.poly(frontGlass).fill({ color: 0x1b2530 }).stroke({ color: 0x0a0b10, width: 2 });
   g.poly(rearGlass).fill({ color: 0x1b2530 }).stroke({ color: 0x0a0b10, width: 2 });
   g.poly(cabinRoof).fill({ color: bodyColor }).stroke({ color: 0x0a0b10, width: 2 });
 
   // 5. Angry Driver Silhouette & Fist
-  const [driverHeadX, driverHeadY] = toWorld(-9, 0);
+  const [driverHeadX, driverHeadY] = toWorld(-9, 0, 9.5);
   g.circle(driverHeadX, driverHeadY, 6)
     .fill({ color: 0xf1c27d })
     .stroke({ color: 0x0a0b10, width: 1.5 });
 
   const fistShake = Math.sin(timestampMs / 50) * (raging ? 4 : 1);
   const fistCoords = [
-    toWorld(-4, -22 - fistShake),
-    toWorld(4, -22 - fistShake),
-    toWorld(4, -16 - fistShake),
-    toWorld(-4, -16 - fistShake)
+    toWorld(-4, -22 - fistShake, 8),
+    toWorld(4, -22 - fistShake, 8),
+    toWorld(4, -16 - fistShake, 8),
+    toWorld(-4, -16 - fistShake, 8)
   ].flat();
   g.poly(fistCoords)
     .fill({ color: 0xf1c27d })
     .stroke({ color: 0x0a0b10, width: 1.5 });
 
-  // 6. Hood Scoop
-  const scoop = [toWorld(22, -7), toWorld(38, -7), toWorld(38, 7), toWorld(22, 7)].flat();
-  g.poly(scoop).fill({ color: 0x0a0b10 });
+  // 6. Supercharger Hood Scoop
+  const scoop = [toWorld(22, -7, 8), toWorld(38, -7, 8), toWorld(38, 7, 8), toWorld(22, 7, 8)].flat();
+  g.poly(scoop).fill({ color: 0x2b2d3c }).stroke({ color: 0x0a0b10, width: 2 });
 
-  // 7. Chrome Spiked Front Bumper
+  // 7. Chrome Spiked Front Bulldozer Bumper
   for (let i = -3; i <= 3; i++) {
     const spike = [
-      toWorld(46, i * 6 - 3),
-      toWorld(56, i * 6),
-      toWorld(46, i * 6 + 3)
+      toWorld(46, i * 6 - 3, 4),
+      toWorld(57, i * 6, 4),
+      toWorld(46, i * 6 + 3, 4)
     ].flat();
     g.poly(spike)
       .fill({ color: 0xc9ced8 })
@@ -574,23 +809,23 @@ export function drawBossCar(g: Graphics, boss: Boss, timestampMs: number = 0): v
 
   // 8. Slanted Angular Angry Headlights with Furrowed Eyebrows
   const hlColor = raging ? 0xff4d6d : 0xfff3b0;
-  const [hl1X, hl1Y] = toWorld(43, -15);
-  const [hl2X, hl2Y] = toWorld(43, 15);
+  const [hl1X, hl1Y] = toWorld(43, -15, 5.5);
+  const [hl2X, hl2Y] = toWorld(43, 15, 5.5);
   g.circle(hl1X, hl1Y, 5).fill({ color: hlColor }).stroke({ color: 0x0a0b10, width: 2 });
   g.circle(hl2X, hl2Y, 5).fill({ color: hlColor }).stroke({ color: 0x0a0b10, width: 2 });
 
   // Slanted eyebrow cuts
-  const [eb1StartX, eb1StartY] = toWorld(38, -23);
-  const [eb1EndX, eb1EndY] = toWorld(48, -11);
-  const [eb2StartX, eb2StartY] = toWorld(38, 23);
-  const [eb2EndX, eb2EndY] = toWorld(48, 11);
+  const [eb1StartX, eb1StartY] = toWorld(38, -23, 6);
+  const [eb1EndX, eb1EndY] = toWorld(48, -11, 6);
+  const [eb2StartX, eb2StartY] = toWorld(38, 23, 6);
+  const [eb2EndX, eb2EndY] = toWorld(48, 11, 6);
   g.moveTo(eb1StartX, eb1StartY).lineTo(eb1EndX, eb1EndY).stroke({ color: 0x0a0b10, width: 3.5 });
   g.moveTo(eb2StartX, eb2StartY).lineTo(eb2EndX, eb2EndY).stroke({ color: 0x0a0b10, width: 3.5 });
 
   // 9. Rear Exhaust Flames
   const flameLen = 10 + Math.random() * 12 + (raging ? 10 : 0);
-  const flame1 = [toWorld(-47, -9), toWorld(-47 - flameLen, -7), toWorld(-47, -4)].flat();
-  const flame2 = [toWorld(-47, 9), toWorld(-47 - flameLen, 7), toWorld(-47, 4)].flat();
+  const flame1 = [toWorld(-47, -9, 4), toWorld(-47 - flameLen, -7, 4), toWorld(-47, -4, 4)].flat();
+  const flame2 = [toWorld(-47, 9, 4), toWorld(-47 - flameLen, 7, 4), toWorld(-47, 4, 4)].flat();
   const flameCol = Math.random() < 0.5 ? 0xff9f1c : 0xff5400;
   g.poly(flame1).fill({ color: flameCol }).stroke({ color: 0x0a0b10, width: 1.5 });
   g.poly(flame2).fill({ color: flameCol }).stroke({ color: 0x0a0b10, width: 1.5 });
@@ -903,11 +1138,11 @@ export function drawObstacle(g: Graphics, ob: Obstacle): void {
 
 export function drawPickup(g: Graphics, p: Pickup, timestampMs: number = 0): void {
   const bob = Math.sin(timestampMs / 220) * 3;
-  const shadowY = p.y + 12;
+  const shadowY = p.y + 13;
 
   // Ground drop shadow
-  g.ellipse(p.x, shadowY, 14, 5)
-    .fill({ color: 0x000000, alpha: 0.45 });
+  g.ellipse(p.x, shadowY, 15, 5.5)
+    .fill({ color: 0x050508, alpha: 0.55 });
 
   if (p.type === 'loot') {
     const R = RARITY[p.item.rarity];
@@ -915,81 +1150,76 @@ export function drawPickup(g: Graphics, p: Pickup, timestampMs: number = 0): voi
     const slot = p.item.slot;
     const itemY = p.y + bob;
 
-    // Glowing rarity tech pedestal disc
-    g.circle(p.x, p.y + 6, 17)
-      .fill({ color: 0x161822 })
-      .stroke({ color: rColor, width: 2.5, alpha: 0.9 });
-    g.circle(p.x, p.y + 6, 12)
-      .stroke({ color: rColor, width: 1, alpha: 0.4 });
+    // 2.5D Cel-Shaded Rarity Tech Pedestal Disc
+    g.ellipse(p.x, p.y + 8, 18, 8)
+      .fill({ color: 0x10121c })
+      .stroke({ color: 0x0a0b10, width: 3 });
+    g.ellipse(p.x, p.y + 5, 17, 7)
+      .fill({ color: 0x1e2235 })
+      .stroke({ color: rColor, width: 2.5 });
+    g.ellipse(p.x, p.y + 5, 11, 4.2)
+      .stroke({ color: 0xffffff, width: 1, alpha: 0.5 });
 
-    // Distinct Motorcycle Equipment Vector Graphics
+    // Distinct Motorcycle Equipment Vector Graphics (Crisp Comic Outlines & Cel Highlights)
     if (slot === 'tires') {
-      // Detailed motorcycle wheel: outer tire, rim, spokes, hub
-      g.circle(p.x, itemY, 13)
-        .fill({ color: 0x1a1c24 })
-        .stroke({ color: 0x0a0b10, width: 2 });
-      g.circle(p.x, itemY, 8.5)
+      g.circle(p.x, itemY, 13.5)
+        .fill({ color: 0x181a24 })
+        .stroke({ color: 0x0a0b10, width: 3 });
+      g.circle(p.x, itemY, 8.8)
         .fill({ color: 0x3a3d4d })
-        .stroke({ color: rColor, width: 1.5 });
-      // 4 silver rim spokes
+        .stroke({ color: rColor, width: 2 });
       for (let a = 0; a < 4; a++) {
         const ang = (a * Math.PI) / 2 + (timestampMs / 1000);
         g.moveTo(p.x, itemY)
           .lineTo(p.x + Math.cos(ang) * 8.5, itemY + Math.sin(ang) * 8.5)
-          .stroke({ color: 0xc9ced8, width: 1.5 });
+          .stroke({ color: 0xdde2eb, width: 1.8 });
       }
-      g.circle(p.x, itemY, 3.5).fill({ color: rColor });
+      g.circle(p.x, itemY, 3.8).fill({ color: rColor }).stroke({ color: 0x0a0b10, width: 1.5 });
     } else if (slot === 'engine') {
-      // V-twin motorcycle engine block with cooling fins
-      g.rect(p.x - 9, itemY - 6, 18, 14)
+      g.rect(p.x - 9, itemY - 5, 18, 13)
         .fill({ color: 0x2e303d })
-        .stroke({ color: 0x0a0b10, width: 1.5 });
-      // Dual V-angled cylinder heads
-      const cylL = [p.x - 9, itemY - 6, p.x - 13, itemY - 14, p.x - 4, itemY - 14, p.x - 2, itemY - 6];
-      const cylR = [p.x + 2, itemY - 6, p.x + 4, itemY - 14, p.x + 13, itemY - 14, p.x + 9, itemY - 6];
-      g.poly(cylL).fill({ color: 0x484b60 }).stroke({ color: rColor, width: 1.5 });
-      g.poly(cylR).fill({ color: 0x484b60 }).stroke({ color: rColor, width: 1.5 });
-      // Cooling fin horizontal stripes
-      g.moveTo(p.x - 7, itemY - 2).lineTo(p.x + 7, itemY - 2).stroke({ color: rColor, width: 1 });
-      g.moveTo(p.x - 7, itemY + 2).lineTo(p.x + 7, itemY + 2).stroke({ color: rColor, width: 1 });
-      g.circle(p.x, itemY + 5, 3).fill({ color: 0xffffff, alpha: 0.8 });
+        .stroke({ color: 0x0a0b10, width: 2.5 });
+      const cylL = [p.x - 9, itemY - 5, p.x - 13, itemY - 14, p.x - 4, itemY - 14, p.x - 2, itemY - 5];
+      const cylR = [p.x + 2, itemY - 5, p.x + 4, itemY - 14, p.x + 13, itemY - 14, p.x + 9, itemY - 5];
+      g.poly(cylL).fill({ color: 0x52576e }).stroke({ color: 0x0a0b10, width: 2 });
+      g.poly(cylR).fill({ color: 0x52576e }).stroke({ color: 0x0a0b10, width: 2 });
+      g.moveTo(p.x - 7, itemY - 1).lineTo(p.x + 7, itemY - 1).stroke({ color: rColor, width: 1.8 });
+      g.circle(p.x, itemY + 3, 3.2).fill({ color: rColor }).stroke({ color: 0x0a0b10, width: 1.5 });
     } else if (slot === 'handlebars') {
-      // Swept motorcycle handlebars with grips and levers
       g.moveTo(p.x - 14, itemY + 3)
         .lineTo(p.x - 7, itemY - 6)
         .lineTo(p.x + 7, itemY - 6)
         .lineTo(p.x + 14, itemY + 3)
-        .stroke({ color: 0xdde1e7, width: 2.5 });
-      // Handgrips
-      g.rect(p.x - 16, itemY + 1, 4, 6).fill({ color: 0x0a0b10 }).stroke({ color: rColor, width: 1 });
-      g.rect(p.x + 12, itemY + 1, 4, 6).fill({ color: 0x0a0b10 }).stroke({ color: rColor, width: 1 });
-      // Center clamp
-      g.circle(p.x, itemY - 6, 3.5).fill({ color: rColor });
+        .stroke({ color: 0x0a0b10, width: 5.5 });
+      g.moveTo(p.x - 14, itemY + 3)
+        .lineTo(p.x - 7, itemY - 6)
+        .lineTo(p.x + 7, itemY - 6)
+        .lineTo(p.x + 14, itemY + 3)
+        .stroke({ color: 0xdde1e7, width: 3 });
+      g.rect(p.x - 16, itemY, 5, 7).fill({ color: rColor }).stroke({ color: 0x0a0b10, width: 2 });
+      g.rect(p.x + 11, itemY, 5, 7).fill({ color: rColor }).stroke({ color: 0x0a0b10, width: 2 });
+      g.circle(p.x, itemY - 6, 4).fill({ color: rColor }).stroke({ color: 0x0a0b10, width: 2 });
     } else if (slot === 'exhaust') {
-      // Curved twin chrome exhaust headers and megaphone muffler
       const pipePts = [
-        p.x - 10, itemY - 7,
-        p.x - 3, itemY - 7,
-        p.x + 5, itemY,
-        p.x + 14, itemY + 3
+        p.x - 12, itemY - 6,
+        p.x + 12, itemY - 9,
+        p.x + 15, itemY + 4,
+        p.x - 12, itemY + 2
       ];
-      g.poly(pipePts).stroke({ color: 0xdde1e7, width: 3.5 });
-      // Flared muffler tip with heated nozzle
-      g.ellipse(p.x + 14, itemY + 3, 3, 5).fill({ color: 0xff9f1c });
-      g.circle(p.x - 10, itemY - 7, 3).fill({ color: rColor });
+      g.poly(pipePts).fill({ color: 0xb8c0d0 }).stroke({ color: 0x0a0b10, width: 2.8 });
+      g.ellipse(p.x + 13.5, itemY - 2.5, 3, 5.5).fill({ color: 0xff5c00 }).stroke({ color: 0x0a0b10, width: 1.8 });
+      g.circle(p.x - 8, itemY - 2, 3.2).fill({ color: rColor }).stroke({ color: 0x0a0b10, width: 1.5 });
     } else if (slot === 'frame') {
-      // Trellis tubular triangulated chassis frame
       const framePts = [
         p.x - 12, itemY + 6,
         p.x - 4, itemY - 10,
         p.x + 12, itemY - 4,
-        p.x + 6, itemY + 6,
-        p.x - 12, itemY + 6
+        p.x + 6, itemY + 6
       ];
+      g.poly(framePts).fill({ color: 0x202436, alpha: 0.85 }).stroke({ color: 0x0a0b10, width: 4.5 });
       g.poly(framePts).stroke({ color: rColor, width: 2.5 });
-      g.moveTo(p.x - 4, itemY - 10).lineTo(p.x + 6, itemY + 6).stroke({ color: 0xffffff, width: 1.5, alpha: 0.8 });
+      g.moveTo(p.x - 4, itemY - 10).lineTo(p.x + 6, itemY + 6).stroke({ color: 0xffffff, width: 2 });
     } else {
-      // Tank: sculpted teardrop fuel tank with chrome cap
       const tankPts = [
         p.x - 13, itemY + 2,
         p.x - 7, itemY - 8,
@@ -998,167 +1228,168 @@ export function drawPickup(g: Graphics, p: Pickup, timestampMs: number = 0): voi
         p.x + 7, itemY + 7,
         p.x - 7, itemY + 7
       ];
-      g.poly(tankPts).fill({ color: 0x222433 }).stroke({ color: rColor, width: 2 });
-      g.ellipse(p.x - 1, itemY - 3, 6, 2.5).fill({ color: rColor });
-      g.circle(p.x + 4, itemY - 7, 2).fill({ color: 0xffffff });
+      g.poly(tankPts).fill({ color: rColor }).stroke({ color: 0x0a0b10, width: 3 });
+      g.ellipse(p.x - 1, itemY - 4, 6.5, 2.5).fill({ color: 0xffffff, alpha: 0.75 });
+      g.circle(p.x + 4, itemY - 7, 2.5).fill({ color: 0x161822 }).stroke({ color: 0x0a0b10, width: 1.5 });
     }
   } else if (p.type === 'item_drop') {
     const it = DROP_ITEMS[p.itemId];
     const itColor = parseColor(it ? it.color : '#ffd166', 0xffd166);
     const itemY = p.y + bob;
 
-    // Glowing aura base ring
-    g.circle(p.x, p.y + 6, 16)
+    // 2.5D Glowing Power-Up Pad
+    g.ellipse(p.x, p.y + 7, 17, 7)
       .fill({ color: 0x141520 })
-      .stroke({ color: itColor, width: 2, alpha: 0.85 });
+      .stroke({ color: 0x0a0b10, width: 3 });
+    g.ellipse(p.x, p.y + 5, 15, 6)
+      .fill({ color: 0x1f2233 })
+      .stroke({ color: itColor, width: 2.2 });
 
-    // Distinct Stacking Item Graphics
+    // Distinct Cel-Shaded Anime Power-Up Icons
     if (p.itemId === 'nitro_syringe') {
-      // Nitro Injector Syringe: glass cylinder with orange nitro fuel & steel needle
-      // Needle pointing down
-      g.moveTo(p.x, itemY + 6).lineTo(p.x, itemY + 14).stroke({ color: 0xdde1e7, width: 1.5 });
-      // Glass barrel
-      g.rect(p.x - 4, itemY - 6, 8, 12).fill({ color: 0xff9f1c, alpha: 0.9 }).stroke({ color: 0xffffff, width: 1.5 });
-      // Plunger & flange
-      g.moveTo(p.x - 5, itemY - 6).lineTo(p.x + 5, itemY - 6).stroke({ color: 0xdde1e7, width: 2 });
-      g.moveTo(p.x, itemY - 6).lineTo(p.x, itemY - 11).stroke({ color: 0xdde1e7, width: 1.5 });
-      g.circle(p.x, itemY - 12, 2.5).fill({ color: 0xffffff });
+      // Needle + glowing orange NOS barrel + plunger
+      g.moveTo(p.x, itemY + 7).lineTo(p.x, itemY + 14).stroke({ color: 0x0a0b10, width: 3.5 });
+      g.moveTo(p.x, itemY + 7).lineTo(p.x, itemY + 14).stroke({ color: 0xffffff, width: 1.8 });
+      g.rect(p.x - 5, itemY - 7, 10, 14)
+        .fill({ color: 0xff9f1c })
+        .stroke({ color: 0x0a0b10, width: 2.5 });
+      g.rect(p.x - 2.5, itemY - 5, 2.5, 10).fill({ color: 0xfff3b0 });
+      g.rect(p.x - 6, itemY - 11, 12, 3.5).fill({ color: 0xdde2eb }).stroke({ color: 0x0a0b10, width: 2 });
     } else if (p.itemId === 'tire_iron') {
-      // Steel Tire Iron / Angled Crowbar
-      const barPts = [
-        p.x - 12, itemY + 9,
-        p.x + 6, itemY - 9,
-        p.x + 13, itemY - 7
+      // Heavy L-shaped Chrome Crowbar / Tire Iron
+      const bar = [
+        p.x - 11, itemY + 9,
+        p.x + 5, itemY - 9,
+        p.x + 13, itemY - 5,
+        p.x + 10, itemY - 1,
+        p.x + 5, itemY - 3,
+        p.x - 7, itemY + 11
       ];
-      g.poly(barPts).stroke({ color: 0xc9ced8, width: 3.5 });
-      // Chisel pry tip
-      g.moveTo(p.x - 14, itemY + 11).lineTo(p.x - 9, itemY + 7).stroke({ color: itColor, width: 2 });
+      g.poly(bar).fill({ color: 0xdde2eb }).stroke({ color: 0x0a0b10, width: 2.5 });
+      g.circle(p.x - 9, itemY + 10, 2.5).fill({ color: 0xff4d6d });
     } else if (p.itemId === 'chrome_lens') {
-      // Motorcycle Riding Goggles / Aviator Lenses
-      // Bridge
-      g.moveTo(p.x - 3, itemY).lineTo(p.x + 3, itemY).stroke({ color: 0xadb5bd, width: 2 });
-      // Dual rounded frames
-      g.ellipse(p.x - 7, itemY, 5.5, 4.5).fill({ color: 0x4cc9f0, alpha: 0.85 }).stroke({ color: 0xffffff, width: 1.5 });
-      g.ellipse(p.x + 7, itemY, 5.5, 4.5).fill({ color: 0x4cc9f0, alpha: 0.85 }).stroke({ color: 0xffffff, width: 1.5 });
-      // Lens glare glints
-      g.moveTo(p.x - 9, itemY - 2).lineTo(p.x - 6, itemY + 2).stroke({ color: 0xffffff, width: 1 });
-      g.moveTo(p.x + 5, itemY - 2).lineTo(p.x + 8, itemY + 2).stroke({ color: 0xffffff, width: 1 });
+      // Cyber-Tactical Precision Aviator Goggles
+      g.rect(p.x - 4, itemY - 2, 8, 3).fill({ color: 0xdde2eb }).stroke({ color: 0x0a0b10, width: 1.5 });
+      g.ellipse(p.x - 7.5, itemY, 6.5, 5).fill({ color: 0x4cc9f0 }).stroke({ color: 0x0a0b10, width: 2.5 });
+      g.ellipse(p.x + 7.5, itemY, 6.5, 5).fill({ color: 0x4cc9f0 }).stroke({ color: 0x0a0b10, width: 2.5 });
+      g.moveTo(p.x - 10, itemY - 2).lineTo(p.x - 6, itemY + 2).stroke({ color: 0xffffff, width: 2 });
+      g.moveTo(p.x + 5, itemY - 2).lineTo(p.x + 9, itemY + 2).stroke({ color: 0xffffff, width: 2 });
     } else if (p.itemId === 'gasoline') {
-      // Vintage Steel Jerry-can with Flame insignia
-      g.rect(p.x - 8, itemY - 8, 16, 17).fill({ color: 0xd62828 }).stroke({ color: 0x0a0b10, width: 1.5 });
-      g.moveTo(p.x - 8, itemY - 8).lineTo(p.x + 8, itemY + 9).stroke({ color: 0x8a1313, width: 1.5 });
-      // Spout & handle
-      g.rect(p.x - 7, itemY - 12, 6, 4).fill({ color: 0xffd166 });
-      g.rect(p.x + 1, itemY - 12, 7, 3).fill({ color: 0xffd166 });
-      // Flame badge
-      g.circle(p.x, itemY, 3).fill({ color: 0xffbe0b });
+      // High-Octane Red Fuel Canister with Flame Badge
+      g.rect(p.x - 9, itemY - 8, 18, 17).fill({ color: 0xe63946 }).stroke({ color: 0x0a0b10, width: 2.5 });
+      g.rect(p.x - 7, itemY - 12, 7, 4).fill({ color: 0xffd166 }).stroke({ color: 0x0a0b10, width: 1.8 });
+      g.circle(p.x, itemY + 1, 4.5).fill({ color: 0xffbe0b }).stroke({ color: 0x0a0b10, width: 1.5 });
     } else if (p.itemId === 'racing_slicks') {
-      // Racing Slick Motorcycle Wheel
-      g.circle(p.x, itemY, 11).fill({ color: 0x111218 }).stroke({ color: 0x00f5d4, width: 2 });
-      g.circle(p.x, itemY, 6).fill({ color: 0x3d405b }).stroke({ color: 0xffffff, width: 1 });
-      g.circle(p.x, itemY, 2.5).fill({ color: 0x00f5d4 });
+      // Turbo Cyan-Rimmed Racing Slick Tire
+      g.circle(p.x, itemY, 12).fill({ color: 0x141622 }).stroke({ color: 0x0a0b10, width: 3 });
+      g.circle(p.x, itemY, 8.5).stroke({ color: 0x00f5d4, width: 2.2 });
+      g.circle(p.x, itemY, 4.5).fill({ color: 0xffffff }).stroke({ color: 0x0a0b10, width: 1.5 });
     } else {
-      // Oil Infusion: Glass chemical flask with shimmering oil
+      // Oil Infusion: Alchemical Violet Flask with Glowing Core
       const flaskPts = [
-        p.x - 3, itemY - 10,
-        p.x + 3, itemY - 10,
-        p.x + 3, itemY - 4,
-        p.x + 9, itemY + 7,
-        p.x - 9, itemY + 7,
-        p.x - 3, itemY - 4
+        p.x - 3.5, itemY - 11,
+        p.x + 3.5, itemY - 11,
+        p.x + 3.5, itemY - 5,
+        p.x + 10, itemY + 7,
+        p.x - 10, itemY + 7,
+        p.x - 3.5, itemY - 5
       ];
-      g.poly(flaskPts).fill({ color: 0x7209b7, alpha: 0.9 }).stroke({ color: 0xffffff, width: 1.5 });
-      g.circle(p.x, itemY + 3, 3).fill({ color: 0xff9f1c });
+      g.poly(flaskPts).fill({ color: 0x9d4edd }).stroke({ color: 0x0a0b10, width: 2.5 });
+      g.circle(p.x, itemY + 2, 3.8).fill({ color: 0xffd166 });
     }
   } else if (p.type === 'heart' || p.type === 'shop_heart') {
     const itemY = p.y + bob;
-    // Red Fuel Jerry-can
-    g.rect(p.x - 9, itemY - 9, 18, 20)
-      .fill({ color: 0xd62828 })
-      .stroke({ color: 0x0a0b10, width: 2 });
+    // Cel-Shaded Crimson Jerry-Can with Bold Outline & Specular Highlight
+    g.rect(p.x - 10, itemY - 9, 20, 20)
+      .fill({ color: 0xe63946 })
+      .stroke({ color: 0x0a0b10, width: 3 });
+    g.rect(p.x - 7.5, itemY - 6.5, 4, 15)
+      .fill({ color: 0xff758f, alpha: 0.7 });
 
     // Stamped structural cross-brace
-    g.moveTo(p.x - 6, itemY - 6).lineTo(p.x + 6, itemY + 7).stroke({ color: 0x9e1a1a, width: 1.5 });
-    g.moveTo(p.x + 6, itemY - 6).lineTo(p.x - 6, itemY + 7).stroke({ color: 0x9e1a1a, width: 1.5 });
+    g.moveTo(p.x - 5, itemY - 4).lineTo(p.x + 6, itemY + 7).stroke({ color: 0x800f2f, width: 2 });
+    g.moveTo(p.x + 6, itemY - 4).lineTo(p.x - 5, itemY + 7).stroke({ color: 0x800f2f, width: 2 });
 
     // Handle & Brass Pour Spout
-    g.rect(p.x - 9, itemY - 14, 7, 5).fill({ color: 0xffd166 }).stroke({ color: 0x0a0b10, width: 1 });
-    g.rect(p.x + 1, itemY - 14, 8, 4).fill({ color: 0xffd166 }).stroke({ color: 0x0a0b10, width: 1 });
+    g.rect(p.x - 9, itemY - 14, 8, 5).fill({ color: 0xffd166 }).stroke({ color: 0x0a0b10, width: 2 });
+    g.rect(p.x + 1, itemY - 14, 8, 4).fill({ color: 0xffd166 }).stroke({ color: 0x0a0b10, width: 2 });
   } else if (p.type === 'mod_pedestal') {
     const itemY = p.y + bob;
 
-    // High-tech Octagonal Stone Pedestal Base
+    // 2.5D Octagonal Shrine Pedestal Base
     const octBase = [
-      p.x - 16, p.y + 4,
-      p.x - 8, p.y - 4,
-      p.x + 8, p.y - 4,
-      p.x + 16, p.y + 4,
-      p.x + 16, p.y + 12,
-      p.x + 8, p.y + 18,
-      p.x - 8, p.y + 18,
-      p.x - 16, p.y + 12
+      p.x - 17, p.y + 4,
+      p.x - 9, p.y - 4,
+      p.x + 9, p.y - 4,
+      p.x + 17, p.y + 4,
+      p.x + 17, p.y + 13,
+      p.x + 9, p.y + 19,
+      p.x - 9, p.y + 19,
+      p.x - 17, p.y + 13
     ];
-    g.poly(octBase).fill({ color: 0x1b1d2a }).stroke({ color: 0x3d4158, width: 2 });
-    g.circle(p.x, p.y + 7, 10).stroke({ color: 0xffd166, width: 1.5, alpha: 0.7 });
+    g.poly(octBase).fill({ color: 0x1b1d2a }).stroke({ color: 0x0a0b10, width: 3 });
+    g.ellipse(p.x, p.y + 6, 11, 5).fill({ color: 0x2b2f44 }).stroke({ color: 0xffd166, width: 2 });
 
-    // Floating Rotating Faceted Mod Crystal
+    // Floating Rotating Faceted Golden Mod Crystal
     const pulse = 1 + Math.sin(timestampMs / 180) * 0.12;
     const crystalPts = [
-      p.x, itemY - 14 * pulse,
-      p.x + 10 * pulse, itemY,
+      p.x, itemY - 15 * pulse,
+      p.x + 11 * pulse, itemY,
       p.x, itemY + 12 * pulse,
-      p.x - 10 * pulse, itemY
+      p.x - 11 * pulse, itemY
     ];
-    g.poly(crystalPts).fill({ color: 0xffd166, alpha: 0.9 }).stroke({ color: 0xffffff, width: 2 });
-    // Core specular shine
-    g.circle(p.x, itemY, 3.5).fill({ color: 0xffffff });
+    g.poly(crystalPts).fill({ color: 0xffd166 }).stroke({ color: 0x0a0b10, width: 3 });
+    const innerPts = [
+      p.x, itemY - 10 * pulse,
+      p.x + 6 * pulse, itemY,
+      p.x, itemY + 7 * pulse,
+      p.x - 6 * pulse, itemY
+    ];
+    g.poly(innerPts).fill({ color: 0xffffff, alpha: 0.85 });
   } else if (p.type === 'run_weapon') {
     const wInfo = WEAPONS[p.weaponId];
     const wColor = parseColor(wInfo ? wInfo.color : '#ffd166', 0xffd166);
     const itemY = p.y + bob;
 
-    // High-tech Armory Weapon Display Rack
-    g.roundRect(p.x - 18, p.y + 2, 36, 14, 4)
-      .fill({ color: 0x181a24 })
+    // 2.5D Armory Display Pedestal
+    g.roundRect(p.x - 20, p.y + 2, 40, 14, 5)
+      .fill({ color: 0x181a26 })
+      .stroke({ color: 0x0a0b10, width: 3 });
+    g.roundRect(p.x - 17, p.y + 4, 34, 9, 3)
+      .fill({ color: 0x25283a })
       .stroke({ color: wColor, width: 2 });
-    g.circle(p.x, p.y + 9, 3).fill({ color: wColor, alpha: 0.8 });
 
-    // Distinct Vector Silhouette per Weapon
+    // Crisp Cel-Shaded Weapon Silhouette per WeaponId
     const wid = p.weaponId;
     if (wid === 'pistol') {
-      // Semi-auto sidearm
-      g.rect(p.x - 9, itemY - 6, 16, 5).fill({ color: wColor }).stroke({ color: 0x0a0b10, width: 1 });
-      g.rect(p.x - 6, itemY - 1, 6, 9).fill({ color: 0x222530 }).stroke({ color: wColor, width: 1 });
+      const barrel = [p.x - 10, itemY - 7, p.x + 10, itemY - 7, p.x + 10, itemY - 1, p.x - 2, itemY - 1, p.x - 5, itemY + 8, p.x - 11, itemY + 8];
+      g.poly(barrel).fill({ color: wColor }).stroke({ color: 0x0a0b10, width: 2.5 });
+      g.rect(p.x - 8, itemY - 5.5, 14, 2).fill({ color: 0xffffff, alpha: 0.8 });
     } else if (wid === 'machine_gun') {
-      // Compact SMG with curved clip
-      g.rect(p.x - 13, itemY - 5, 24, 5).fill({ color: wColor }).stroke({ color: 0x0a0b10, width: 1 });
-      g.rect(p.x - 4, itemY, 5, 9).fill({ color: 0x1c1e28 }).stroke({ color: wColor, width: 1 });
-      g.rect(p.x - 10, itemY, 4, 6).fill({ color: 0x3a3d4d });
+      g.rect(p.x - 15, itemY - 6, 28, 6).fill({ color: wColor }).stroke({ color: 0x0a0b10, width: 2.5 });
+      g.rect(p.x - 5, itemY, 5, 9).fill({ color: 0x2b2d3c }).stroke({ color: 0x0a0b10, width: 2 });
+      g.rect(p.x + 3, itemY, 4, 8).fill({ color: 0xffd166 }).stroke({ color: 0x0a0b10, width: 2 });
     } else if (wid === 'flamethrower') {
-      // Flame projector with twin canisters & pilot flame
-      g.rect(p.x - 12, itemY - 6, 20, 6).fill({ color: wColor }).stroke({ color: 0x0a0b10, width: 1 });
-      g.ellipse(p.x - 5, itemY + 4, 4, 6).fill({ color: 0xff5400 });
-      g.circle(p.x + 10, itemY - 3, 2.5).fill({ color: 0xffd166 });
+      g.rect(p.x - 14, itemY - 6, 24, 6).fill({ color: wColor }).stroke({ color: 0x0a0b10, width: 2.5 });
+      g.ellipse(p.x - 4, itemY + 4, 6, 4.5).fill({ color: 0xff5400 }).stroke({ color: 0x0a0b10, width: 2 });
+      g.circle(p.x + 13, itemY - 3, 3.5).fill({ color: 0xffd166 }).stroke({ color: 0x0a0b10, width: 1.5 });
     } else if (wid === 'grenade_launcher') {
-      // Revolving drum grenade launcher
-      g.rect(p.x - 8, itemY - 7, 20, 7).fill({ color: wColor }).stroke({ color: 0x0a0b10, width: 1 });
-      g.circle(p.x - 4, itemY - 1, 6).fill({ color: 0x2b2d3d }).stroke({ color: wColor, width: 1.5 });
+      g.rect(p.x - 13, itemY - 6, 26, 7).fill({ color: wColor }).stroke({ color: 0x0a0b10, width: 2.5 });
+      g.circle(p.x - 2, itemY, 6.5).fill({ color: 0x2b2d3d }).stroke({ color: 0x0a0b10, width: 2.5 });
+      g.circle(p.x - 2, itemY, 2.5).fill({ color: wColor });
     } else if (wid === 'shotgun') {
-      // Double-barrel shotgun
-      g.rect(p.x - 14, itemY - 7, 26, 4).fill({ color: wColor }).stroke({ color: 0x0a0b10, width: 1 });
-      g.rect(p.x - 14, itemY - 3, 26, 4).fill({ color: wColor }).stroke({ color: 0x0a0b10, width: 1 });
-      g.rect(p.x - 14, itemY + 1, 10, 5).fill({ color: 0x483c32 });
+      g.rect(p.x - 15, itemY - 7, 29, 4.5).fill({ color: wColor }).stroke({ color: 0x0a0b10, width: 2.2 });
+      g.rect(p.x - 15, itemY - 2.5, 29, 4.5).fill({ color: 0xdde2eb }).stroke({ color: 0x0a0b10, width: 2.2 });
+      g.rect(p.x - 16, itemY + 1, 10, 6).fill({ color: 0x8a5a36 }).stroke({ color: 0x0a0b10, width: 2 });
     } else if (wid === 'railgun') {
-      // Electromagnetic dual rail accelerator
-      g.rect(p.x - 16, itemY - 6, 30, 3).fill({ color: 0x00f5d4 }).stroke({ color: 0x0a0b10, width: 1 });
-      g.rect(p.x - 16, itemY - 1, 30, 3).fill({ color: 0x00f5d4 }).stroke({ color: 0x0a0b10, width: 1 });
-      g.rect(p.x - 8, itemY - 8, 4, 12).fill({ color: 0xffffff });
-      g.rect(p.x + 4, itemY - 8, 4, 12).fill({ color: 0xffffff });
+      g.rect(p.x - 17, itemY - 7, 34, 4).fill({ color: 0x00f5d4 }).stroke({ color: 0x0a0b10, width: 2.2 });
+      g.rect(p.x - 17, itemY - 1, 34, 4).fill({ color: 0x00f5d4 }).stroke({ color: 0x0a0b10, width: 2.2 });
+      g.moveTo(p.x - 14, itemY - 2).lineTo(p.x + 15, itemY - 2).stroke({ color: 0xffffff, width: 2.2 });
     } else {
       // Arc Tesla Coil emitter
-      g.rect(p.x - 3, itemY - 4, 6, 12).fill({ color: 0x484b60 }).stroke({ color: wColor, width: 1 });
-      g.circle(p.x, itemY - 8, 6).fill({ color: 0x7bdff2 }).stroke({ color: 0xffffff, width: 1.5 });
-      g.circle(p.x, itemY - 8, 2.5).fill({ color: 0xffffff });
+      g.rect(p.x - 4, itemY - 3, 8, 12).fill({ color: 0x3a3d4d }).stroke({ color: 0x0a0b10, width: 2.2 });
+      g.circle(p.x, itemY - 7, 7).fill({ color: 0x7bdff2 }).stroke({ color: 0x0a0b10, width: 2.5 });
+      g.circle(p.x, itemY - 7, 3).fill({ color: 0xffffff });
     }
   }
 }

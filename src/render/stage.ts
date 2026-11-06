@@ -718,11 +718,11 @@ export class StageManager {
       pricePool[i].visible = false;
     }
 
-    // Enemy & Boss Health Bars
+    // Enemy Health Bars (Boss HP is displayed on the top HUD Boss Bar)
     for (const en of room.enemies) {
-      if (en.hp < en.maxHp || en.type === 'boss' || en.isElite) {
-        const barWidth = en.type === 'boss' ? 90 : en.radius * 2.2;
-        const barY = en.y - en.radius - (en.type === 'boss' ? 24 : 12);
+      if (en.type !== 'boss' && (en.hp < en.maxHp || en.isElite)) {
+        const barWidth = en.radius * 2.2;
+        const barY = en.y - en.radius - 12;
         const frac = Math.max(0, Math.min(1, en.hp / en.maxHp));
 
         // Background

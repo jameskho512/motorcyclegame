@@ -29,6 +29,7 @@ import {
 import { WEAPONS, UNLOCKABLE_IDS } from '../data/weapons';
 import { META_UPGRADES, calcUpgradeCost } from '../data/upgrades';
 import { EQUIP_SLOTS, RARITY, MAX_STASH, fmtStat } from '../data/equipment';
+import { EQUIP_SLOT_HI_FI_SVG, WEAPON_HI_FI_SVG } from './icons';
 
 export interface GarageCallbacks {
   onEquipItem: (item: EquipmentItem) => void;
@@ -74,16 +75,6 @@ const EMPTY_PART_COLOR: Record<EquipSlot, string> = {
 
 const INK = '#0a0b10';
 
-/** Inline SVG glyphs for the slot frames (stroke uses currentColor). */
-const SLOT_ICONS: Record<EquipSlot, string> = {
-  tires: '<circle cx="12" cy="12" r="9" stroke-width="2.5"/><circle cx="12" cy="12" r="5" stroke-width="2"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" stroke-width="2"/>',
-  engine: '<path d="M5 8h14l2 5v7H3v-7z" stroke-width="2.2"/><path d="M8 5l2-2h4l2 2M7 11h10M7 14h10M7 17h10" stroke-width="2"/><circle cx="12" cy="14" r="2.5" fill="currentColor"/>',
-  exhaust: '<path d="M3 17c3 0 5-2 6-5l2-5h9v7l-8 2c-3 1-5 4-9 1z" stroke-width="2.2"/><line x1="16" y1="7" x2="20" y2="14" stroke-width="2"/>',
-  handlebars: '<path d="M2 9l5 1 2 4h6l2-4 5-1" stroke-width="2.4"/><path d="M10 14v5M14 14v5M4 10v3M20 10v3" stroke-width="2"/>',
-  frame: '<path d="M3 18L10 6h8l3 12z" stroke-width="2.2"/><path d="M10 6l4 12M5 14h15M14 6l-4 12" stroke-width="1.8"/>',
-  tank: '<path d="M3 14c0-4 4-8 10-8h4l4 4v5c0 2-2 3-5 3H7c-3 0-4-1-4-4z" stroke-width="2.2"/><path d="M13 6V4h3v2" stroke-width="2"/><path d="M7 12h10" stroke-width="1.8"/>'
-};
-
 const GEAR_SVG =
   '<svg class="gx-gear" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.3 2h3.4l.5 2.6 1.9.8 2.2-1.5 2.4 2.4-1.5 2.2.8 1.9 2.6.5v3.4l-2.6.5-.8 1.9 1.5 2.2-2.4 2.4-2.2-1.5-1.9.8-.5 2.6h-3.4l-.5-2.6-1.9-.8-2.2 1.5-2.4-2.4 1.5-2.2-.8-1.9L2 13.7v-3.4l2.6-.5.8-1.9-1.5-2.2 2.4-2.4 2.2 1.5 1.9-.8zM12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>';
 
@@ -110,7 +101,7 @@ function statsText(stats: EquipmentItem['stats']): string {
 }
 
 function slotIcon(slot: EquipSlot): string {
-  return `<svg viewBox="0 0 24 24" aria-hidden="true">${SLOT_ICONS[slot]}</svg>`;
+  return EQUIP_SLOT_HI_FI_SVG[slot] || '';
 }
 
 export class GarageController {
@@ -317,7 +308,7 @@ export class GarageController {
         el.title = `${it.name} (${R.name}) - ${statsStr}. Click to remove.`;
         el.setAttribute('aria-label', `${slotDef.label}: ${it.name}, ${R.name}. ${statsStr}. Remove part`);
         el.innerHTML = `
-          <span class="gx-slot-icon">${slotIcon(slotDef.id)}</span>
+          <span class="gx-slot-icon sl-icon">${slotIcon(slotDef.id)}</span>
           <span class="sl-name">${esc(it.name)}</span>
           <span class="sl-stats">${esc(statsStr)}</span>
           <span class="sl-label">${esc(slotDef.label.toUpperCase())}</span>
@@ -331,7 +322,7 @@ export class GarageController {
         el.className = 'eq-slot is-empty';
         el.setAttribute('aria-label', `${slotDef.label}: Empty Slot`);
         el.innerHTML = `
-          <span class="gx-slot-icon">${slotIcon(slotDef.id)}</span>
+          <span class="gx-slot-icon sl-icon">${slotIcon(slotDef.id)}</span>
           <span class="sl-name">Empty Slot</span>
           <span class="sl-stats">No part installed</span>
           <span class="sl-label">${esc(slotDef.label.toUpperCase())}</span>
@@ -390,6 +381,7 @@ export class GarageController {
       el.title = `${it.name} - ${R.name} ${slotLabel}\n${statsStr}\nClick: install | Right-click / Del: sell for ${R.sell} scrap`;
       el.setAttribute('aria-label', `${it.name}, ${R.name} ${slotLabel}. ${statsStr}. Install. Press Delete to sell for ${R.sell} scrap`);
       el.innerHTML = `
+        <div class="gx-stash-art">${EQUIP_SLOT_HI_FI_SVG[it.slot] || ''}</div>
         <b>${esc(it.name)}</b>
         <span class="gx-stash-meta">${esc(R.name)} ${esc(slotLabel)}</span>
         <span class="gx-stash-stats">${esc(statsStr)}</span>
@@ -446,7 +438,7 @@ export class GarageController {
       row.className = `unlock-item gx-weapon ${state}`;
       row.style.setProperty('--wc', w.color);
       row.innerHTML = `
-        <div class="gx-weapon-art">${isUnlocked ? CHECK_SVG : LOCK_SVG}</div>
+        <div class="gx-weapon-art">${WEAPON_HI_FI_SVG[id]}<span class="gx-weapon-status">${isUnlocked ? CHECK_SVG : LOCK_SVG}</span></div>
         <div class="info">
           <strong><span class="gx-key">${esc(w.key)}</span>${esc(w.name.toUpperCase())}</strong>
           <span>${esc(w.desc)}</span>

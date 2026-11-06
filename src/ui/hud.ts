@@ -4,22 +4,29 @@
  * Implements:
  * 1. Semicircular Fuel Gauge canvas with HP needle and low-fuel jitter
  *    (legacy; the canvas is hidden by the anime HUD, math helpers stay exported).
- * 2. Centered dynamic floor minimap canvas (neon cyan/magenta/yellow palette).
- * 3. Anime fighting-game overlay HUD: segmented HULL / NOS meters, bike stats strip,
- *    weapon card bar, and installed mod sticker badges.
- *
- * Parity reference: moto-rogue/index.html L3699-L3865
+ * 2. Isometric 2.5D tilted diamond floor minimap canvas (neon yellow/cyan/magenta palette).
+ * 3. Anime fighting-game overlay HUD: hexagonal rider portrait, comic ink splash,
+ *    segmented HULL / NOS meters with LV. badge, high-fidelity cel-shaded weapon deck,
+ *    and die-cut vinyl sticker badges for power-ups & run mods.
+ * 4. Top-spanning Boss Health Bar (#boss-hud) with delayed damage-lag bar.
+ * 5. Guilty Gear / Persona 5 style Boss Room Entry Intro Banner (#boss-intro-banner).
  */
 
 import {
   PlayerState,
   Dungeon,
   WeaponId,
-  DropItemId
+  DropItemId,
+  Boss
 } from '../types/game';
 
 import { WEAPONS } from '../data/weapons';
 import { DROP_ITEMS, RUN_MOD_POOL } from '../data/upgrades';
+import {
+  WEAPON_HI_FI_SVG,
+  DROP_ITEM_HI_FI_SVG,
+  getModIconSvg
+} from './icons';
 
 export interface MinimapCoord {
   rx: number;
@@ -54,6 +61,7 @@ export function calcNeedleAngle(
 
 /**
  * Pure calculation: maps room grid coordinates to minimap canvas screen coordinates.
+ * Kept with exact signature for backward compatibility.
  */
 export function calcMinimapRoomCoords(
   roomX: number,
@@ -85,28 +93,111 @@ const WEAPON_CARD_LABEL: Record<WeaponId, string> = {
   arc_coil: 'TESLA COIL'
 };
 
-const SVG_ATTRS = 'viewBox="0 0 64 40" aria-hidden="true" focusable="false"';
-const BODY = 'fill="#f4f1ea" stroke="#0a0b10" stroke-width="2.5" stroke-linejoin="round"';
-
-/** Inline-SVG weapon silhouettes (offline-safe, no external assets). */
-const WEAPON_ICON: Record<WeaponId, string> = {
-  pistol: `<svg ${SVG_ATTRS}><path ${BODY} d="M10 10H52V19H30L26 33H16L19 19H10Z"/><path fill="#0a0b10" d="M30 19h6v5h-6z"/></svg>`,
-  machine_gun: `<svg ${SVG_ATTRS}><path ${BODY} d="M3 13H48V10H58V17H50V22H38L35 34H28L30 22H22L19 29H13L15 22H3Z"/><path ${BODY} d="M24 22h7l-1 9h-6z"/></svg>`,
-  flamethrower: `<svg ${SVG_ATTRS}><path ${BODY} d="M4 15H40L48 11H56V23H48L40 19H28L25 32H18L20 19H4Z"/><circle ${BODY} cx="12" cy="24" r="5"/><path fill="#ffd60a" stroke="#0a0b10" stroke-width="1.5" d="M57 17c5-5 2-9 6-11-1 5 2 7 0 12-2 4-6 3-6-1z"/></svg>`,
-  grenade_launcher: `<svg ${SVG_ATTRS}><path ${BODY} d="M4 12H50V22H38L35 34H26L28 22H18V20H4Z"/><circle ${BODY} cx="38" cy="17" r="9"/><circle fill="#0a0b10" cx="38" cy="17" r="3"/></svg>`,
-  shotgun: `<svg ${SVG_ATTRS}><path ${BODY} d="M2 14H61V20H26L14 31H4L11 20H2Z"/><path ${BODY} d="M30 20h12v4H30z"/></svg>`,
-  railgun: `<svg ${SVG_ATTRS}><path ${BODY} d="M2 12H55L62 15V19L55 22H30L26 33H18L20 22H2Z"/><path fill="none" stroke="#2ee6ff" stroke-width="2.5" d="M8 17H52"/></svg>`,
-  arc_coil: `<svg ${SVG_ATTRS}><path ${BODY} d="M5 12H34V22H25L22 33H14L16 22H5Z"/><path fill="none" stroke="#ffd60a" stroke-width="3" stroke-linejoin="round" d="M36 17l4-7 4 12 4-12 4 12 4-12 4 7"/></svg>`
-};
-
 const LOCK_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M4 7V5a4 4 0 0 1 8 0v2h1v8H3V7zm2 0h4V5a2 2 0 0 0-4 0z"/></svg>';
 
-/** Two-letter monogram for sticker badges (e.g. "Nitro Syringe" -> "NS"). */
-function monogram(name: string): string {
-  const words = name.replace(/[^A-Za-z0-9\s-]/g, '').split(/[\s-]+/).filter(Boolean);
-  if (words.length === 0) return '?';
-  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
-  return (words[0][0] + words[1][0]).toUpperCase();
+/** Boss metadata & custom cel-shaded vehicle/mech emblem SVGs by bossVariant (0..5) */
+interface BossMetaProfile {
+  subtitle: string;
+  accent: string;
+  svg: string;
+}
+
+const BOSS_META_PROFILES: Record<number, BossMetaProfile> = {
+  0: {
+    subtitle: 'THE RUSTYARD JUGGERNAUT — SHRAPNEL NOVA & RAM CHARGE',
+    accent: '#ff4d6d',
+    svg: `<svg viewBox="0 0 140 100" aria-hidden="true" focusable="false">
+      <!-- Spiked Dozer-Rig Juggernaut -->
+      <path d="M12 68 L28 32 L112 32 L128 68 L116 86 L24 86 Z" fill="#3a1018" stroke="#0a0b10" stroke-width="4" stroke-linejoin="round"/>
+      <!-- Twin Heavy Treads -->
+      <rect x="8" y="56" width="22" height="34" rx="5" fill="#1e202b" stroke="#0a0b10" stroke-width="3.5"/>
+      <rect x="110" y="56" width="22" height="34" rx="5" fill="#1e202b" stroke="#0a0b10" stroke-width="3.5"/>
+      <!-- Armored Hull & Hazard Plow -->
+      <path d="M24 62 L116 62 L106 84 L34 84 Z" fill="#ff2a4b" stroke="#0a0b10" stroke-width="3.5" stroke-linejoin="round"/>
+      <path d="M32 68 L42 68 L36 80 L26 80 Z M56 68 L66 68 L60 80 L50 80 Z M80 68 L90 68 L84 80 L74 80 Z M102 68 L112 68 L106 80 L96 80 Z" fill="#ffd60a"/>
+      <!-- Front Ram Spikes -->
+      <path d="M32 84 L26 98 L40 84 Z M55 84 L52 99 L64 84 Z M76 84 L88 99 L85 84 Z M100 84 L114 98 L108 84 Z" fill="#e0e6f5" stroke="#0a0b10" stroke-width="2.5" stroke-linejoin="round"/>
+      <!-- Central Supercharged Skull Core & Rotary Cannons -->
+      <circle cx="70" cy="44" r="20" fill="#232634" stroke="#0a0b10" stroke-width="3.5"/>
+      <circle cx="70" cy="44" r="12" fill="#ff9f1c" stroke="#0a0b10" stroke-width="2.5"/>
+      <path d="M62 40 L67 45 L62 49 M78 40 L73 45 L78 49" stroke="#0a0b10" stroke-width="3" stroke-linecap="round" fill="none"/>
+      <rect x="34" y="16" width="12" height="28" fill="#6c758c" stroke="#0a0b10" stroke-width="3"/>
+      <rect x="94" y="16" width="12" height="28" fill="#6c758c" stroke="#0a0b10" stroke-width="3"/>
+    </svg>`
+  },
+  1: {
+    subtitle: 'ARMORED ARTILLERY CRAWLER — NAPALM MORTARS & SHOCKWAVE',
+    accent: '#ff9f1c',
+    svg: `<svg viewBox="0 0 140 100" aria-hidden="true" focusable="false">
+      <!-- Siege Behemoth Hexagonal Tank Chassis -->
+      <polygon points="30,18 110,18 130,52 110,86 30,86 10,52" fill="#2b2118" stroke="#0a0b10" stroke-width="4" stroke-linejoin="round"/>
+      <polygon points="36,26 104,26 120,52 104,78 36,78 20,52" fill="#d97706" stroke="#0a0b10" stroke-width="3.2" stroke-linejoin="round"/>
+      <!-- Twin Heavy Siege Mortar Tubes -->
+      <rect x="32" y="8" width="20" height="36" rx="4" fill="#4f566b" stroke="#0a0b10" stroke-width="3.2"/>
+      <rect x="88" y="8" width="20" height="36" rx="4" fill="#4f566b" stroke="#0a0b10" stroke-width="3.2"/>
+      <ellipse cx="42" cy="12" rx="7" ry="3.5" fill="#ff5400"/>
+      <ellipse cx="98" cy="12" rx="7" ry="3.5" fill="#ff5400"/>
+      <!-- Reactive Armor Plates & Core Turret -->
+      <circle cx="70" cy="54" r="22" fill="#1e2230" stroke="#0a0b10" stroke-width="3.5"/>
+      <circle cx="70" cy="54" r="11" fill="#ffd60a" stroke="#0a0b10" stroke-width="2.5"/>
+      <path d="M54 54 H86 M70 38 V70" stroke="#0a0b10" stroke-width="3"/>
+    </svg>`
+  },
+  2: {
+    subtitle: 'CYBER-VALKYRIE INTERCEPTOR — SOLAR SPREAD & PLASMA SWEEP',
+    accent: '#c77dff',
+    svg: `<svg viewBox="0 0 140 100" aria-hidden="true" focusable="false">
+      <!-- Overlord Helion Swept Cyber-Wings -->
+      <path d="M70 8 L134 38 L108 88 L84 68 L70 94 L56 68 L32 88 L6 38 Z" fill="#3c1654" stroke="#0a0b10" stroke-width="4" stroke-linejoin="round"/>
+      <path d="M70 16 L120 40 L102 74 L82 58 L70 82 L58 58 L38 74 L20 40 Z" fill="#9d4edd" stroke="#0a0b10" stroke-width="3" stroke-linejoin="round"/>
+      <!-- Glowing Cyan / Gold Energy Blades -->
+      <path d="M18 42 L50 28 L42 54 Z M122 42 L90 28 L98 54 Z" fill="#00f5d4" stroke="#0a0b10" stroke-width="2.5"/>
+      <!-- Helion Solar Core -->
+      <circle cx="70" cy="48" r="16" fill="#ffd60a" stroke="#0a0b10" stroke-width="3.5"/>
+      <circle cx="70" cy="48" r="7" fill="#ffffff"/>
+    </svg>`
+  },
+  3: {
+    subtitle: 'SUB-ZERO DREADNOUGHT — FROST TURBINES & SHATTER LANCE',
+    accent: '#00f5d4',
+    svg: `<svg viewBox="0 0 140 100" aria-hidden="true" focusable="false">
+      <path d="M20 50 L48 16 L92 16 L120 50 L96 86 L44 86 Z" fill="#0b3948" stroke="#0a0b10" stroke-width="4" stroke-linejoin="round"/>
+      <path d="M32 50 L54 24 L86 24 L108 50 L88 78 L52 78 Z" fill="#00bbf9" stroke="#0a0b10" stroke-width="3" stroke-linejoin="round"/>
+      <polygon points="70,12 84,48 70,88 56,48" fill="#e0fbfc" stroke="#0a0b10" stroke-width="3"/>
+      <circle cx="70" cy="48" r="10" fill="#00f5d4" stroke="#0a0b10" stroke-width="2.5"/>
+    </svg>`
+  },
+  4: {
+    subtitle: 'HIGH-VOLTAGE HEX-MECH — TESLA PYLONS & ARC MATRIX',
+    accent: '#ffd60a',
+    svg: `<svg viewBox="0 0 140 100" aria-hidden="true" focusable="false">
+      <path d="M12 24 L42 42 M128 24 L98 42 M10 76 L42 58 M130 76 L98 58" stroke="#ffd60a" stroke-width="6" stroke-linecap="round"/>
+      <polygon points="45,20 95,20 112,50 95,80 45,80 28,50" fill="#2d2342" stroke="#0a0b10" stroke-width="4" stroke-linejoin="round"/>
+      <circle cx="52" cy="48" r="12" fill="#7bdff2" stroke="#0a0b10" stroke-width="3"/>
+      <circle cx="88" cy="48" r="12" fill="#7bdff2" stroke="#0a0b10" stroke-width="3"/>
+      <path d="M52 48 L64 36 L76 60 L88 48" fill="none" stroke="#ffd60a" stroke-width="3.5" stroke-linejoin="round"/>
+    </svg>`
+  },
+  5: {
+    subtitle: 'TWIN-REACTOR DOOM CHOPPER — HELLFIRE NOVA & ORBITAL BEAM',
+    accent: '#ff2a4b',
+    svg: `<svg viewBox="0 0 140 100" aria-hidden="true" focusable="false">
+      <path d="M8 48 L38 14 L102 14 L132 48 L104 86 L36 86 Z" fill="#2b0912" stroke="#0a0b10" stroke-width="4" stroke-linejoin="round"/>
+      <path d="M22 48 L46 22 L94 22 L118 48 L96 76 L44 76 Z" fill="#e5203a" stroke="#0a0b10" stroke-width="3" stroke-linejoin="round"/>
+      <circle cx="48" cy="50" r="14" fill="#ff9f1c" stroke="#0a0b10" stroke-width="3"/>
+      <circle cx="92" cy="50" r="14" fill="#ff9f1c" stroke="#0a0b10" stroke-width="3"/>
+      <polygon points="70,18 82,50 70,82 58,50" fill="#ffd60a" stroke="#0a0b10" stroke-width="3"/>
+    </svg>`
+  }
+};
+
+function getBossProfile(boss: Boss): BossMetaProfile {
+  const variant = typeof boss.bossVariant === 'number' ? boss.bossVariant : 0;
+  if (BOSS_META_PROFILES[variant]) return BOSS_META_PROFILES[variant];
+  const upper = (boss.name || '').toUpperCase();
+  if (upper.includes('BEHEMOTH')) return BOSS_META_PROFILES[1];
+  if (upper.includes('HELION')) return BOSS_META_PROFILES[2];
+  return BOSS_META_PROFILES[0];
 }
 
 export class HUDController {
@@ -124,6 +215,11 @@ export class HUDController {
   private lastNosKey = '';
   private lastNosValue = -1;
   private lastHullMax = -1;
+
+  /** Boss Intro Banner state */
+  private bossIntroActive = false;
+  private bossIntroTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  private bossIntroDismissHandler: ((e: Event) => void) | null = null;
 
   constructor(callbacks?: { onSelectWeapon?: (id: WeaponId) => void }) {
     this.onSelectWeapon = callbacks?.onSelectWeapon;
@@ -234,9 +330,13 @@ export class HUDController {
   }
 
   /**
-   * Draws the floor minimap centered on player's current room.
-   * The canvas backing store is sized to its CSS box x devicePixelRatio so the
-   * neon map stays crisp inside the responsive minimap panel.
+   * Draws the floor minimap as an Isometric 2.5D Tilted Diamond Holomap
+   * matching mockup_2_anime_fighter_1793946285714.jpg:
+   * - Subtle dark isometric grid lines in background
+   * - Glowing Cyan (#2ee6ff) diamond rooms & corridors for cleared/visited rooms
+   * - Glowing Magenta/Pink (#ff2e93) diamond rooms & corridors for unvisited/combat rooms
+   * - Glowing Yellow (#ffd60a) diamond room with beacon icon for the current room
+   * - 3D bottom thickness lip on every diamond tile
    */
   public drawMinimap(dungeon: Dungeon, curRoomX: number, curRoomY: number): void {
     if (!this.minimapCanvas || !this.minimapCtx) return;
@@ -257,105 +357,211 @@ export class HUDController {
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, mw, mh);
 
-    // Dynamic cell size scaled to fill the minimap panel
-    const cellSize = Math.min(28, Math.max(14, Math.round(Math.min(mw, mh) * 0.16)));
-    const gap = Math.max(4, Math.round(cellSize * 0.32));
+    // Deep dark isometric void background
+    g.fillStyle = '#08070f';
+    g.fillRect(0, 0, mw, mh);
+
+    const cx = mw / 2;
+    const cy = mh / 2 - 2;
+
+    // Isometric tile dimensions & grid step
+    const scale = Math.min(mw / 230, mh / 140);
+    const tileW = Math.max(12, Math.round(17 * scale));
+    const tileH = Math.max(7, Math.round(10 * scale));
+    const stepX = Math.round(tileW * 1.52);
+    const stepY = Math.round(tileH * 1.52);
+    const lipDepth = Math.max(2.5, Math.round(3.5 * scale));
 
     const CYAN = '#2ee6ff';
     const MAGENTA = '#ff2e93';
     const YELLOW = '#ffd60a';
 
-    // Tactical neon grid background (faint cyber lines)
-    g.strokeStyle = 'rgba(46, 230, 255, 0.06)';
+    // 1. Subtle dark isometric background grid lines (matching concept art)
+    g.save();
+    g.strokeStyle = 'rgba(255, 46, 147, 0.08)';
     g.lineWidth = 1;
-    for (let x = 0; x <= mw; x += 18) {
+    const slope = stepY / stepX;
+    for (let i = -8; i <= 8; i++) {
+      const offset = i * stepY * 2;
+      // Down-right iso lines
       g.beginPath();
-      g.moveTo(x, 0);
-      g.lineTo(x, mh);
+      g.moveTo(0, cy + offset - cx * slope);
+      g.lineTo(mw, cy + offset + (mw - cx) * slope);
+      g.stroke();
+      // Up-right iso lines
+      g.beginPath();
+      g.moveTo(0, cy + offset + cx * slope);
+      g.lineTo(mw, cy + offset - (mw - cx) * slope);
       g.stroke();
     }
-    for (let y = 0; y <= mh; y += 18) {
-      g.beginPath();
-      g.moveTo(0, y);
-      g.lineTo(mw, y);
-      g.stroke();
-    }
+    g.restore();
 
-    for (const key in dungeon) {
-      const r = dungeon[key];
-      const { rx, ry, cell, visible } = calcMinimapRoomCoords(r.x, r.y, curRoomX, curRoomY, mw, mh, cellSize, gap);
-      if (!visible) continue;
+    const projectIso = (rx: number, ry: number): { x: number; y: number } => {
+      const dx = rx - curRoomX;
+      const dy = ry - curRoomY;
+      return {
+        x: cx + (dx - dy) * stepX,
+        y: cy + (dx + dy) * stepY
+      };
+    };
 
-      // Draw corridor connections between adjacent rooms (neon glow)
-      if (r.doors && (r.visited || (r.x === curRoomX && r.y === curRoomY))) {
-        g.strokeStyle = r.cleared ? CYAN : MAGENTA;
-        g.shadowColor = g.strokeStyle;
+    const rooms = Object.values(dungeon);
+    // Sort rooms back-to-front by (x + y) so isometric 2.5D lips layer cleanly
+    rooms.sort((a, b) => (a.x + a.y) - (b.x + b.y));
+
+    // 2. First pass: Draw isometric corridor bridges between rooms
+    for (const r of rooms) {
+      if (!r.doors) continue;
+      const p1 = projectIso(r.x, r.y);
+      if (p1.x < -tileW || p1.x > mw + tileW || p1.y < -tileH || p1.y > mh + tileH) continue;
+
+      const neighbors: Array<{ dir: 'N' | 'S' | 'E' | 'W'; nx: number; ny: number }> = [
+        { dir: 'N', nx: r.x, ny: r.y - 1 },
+        { dir: 'S', nx: r.x, ny: r.y + 1 },
+        { dir: 'E', nx: r.x + 1, ny: r.y },
+        { dir: 'W', nx: r.x - 1, ny: r.y }
+      ];
+
+      for (const nb of neighbors) {
+        if (!r.doors[nb.dir]) continue;
+        // Draw each undirected edge once
+        if (nb.dir === 'N' || nb.dir === 'W') continue;
+        const target = dungeon[`${nb.nx},${nb.ny}`];
+        const p2 = projectIso(nb.nx, nb.ny);
+
+        const bothCleared = (r.cleared || (r.x === curRoomX && r.y === curRoomY)) &&
+          Boolean(target && (target.cleared || target.visited));
+        const corrColor = bothCleared ? CYAN : MAGENTA;
+
+        g.save();
+        // Dark corridor backing
+        g.strokeStyle = '#120e1c';
+        g.lineWidth = Math.max(4, tileH * 0.55);
+        g.lineCap = 'round';
+        g.beginPath();
+        g.moveTo(p1.x, p1.y);
+        g.lineTo(p2.x, p2.y);
+        g.stroke();
+
+        // Neon glowing corridor line
+        g.strokeStyle = corrColor;
+        g.shadowColor = corrColor;
         g.shadowBlur = 6;
-        g.lineWidth = 2.5;
-        if (r.doors.N) {
-          g.beginPath();
-          g.moveTo(rx + cell / 2, ry);
-          g.lineTo(rx + cell / 2, ry - gap);
-          g.stroke();
-        }
-        if (r.doors.S) {
-          g.beginPath();
-          g.moveTo(rx + cell / 2, ry + cell);
-          g.lineTo(rx + cell / 2, ry + cell + gap);
-          g.stroke();
-        }
-        if (r.doors.W) {
-          g.beginPath();
-          g.moveTo(rx, ry + cell / 2);
-          g.lineTo(rx - gap, ry + cell / 2);
-          g.stroke();
-        }
-        if (r.doors.E) {
-          g.beginPath();
-          g.moveTo(rx + cell, ry + cell / 2);
-          g.lineTo(rx + cell + gap, ry + cell / 2);
-          g.stroke();
-        }
+        g.lineWidth = 2;
+        g.beginPath();
+        g.moveTo(p1.x, p1.y);
+        g.lineTo(p2.x, p2.y);
+        g.stroke();
+        g.restore();
+      }
+    }
+
+    // 3. Second pass: Draw 2.5D Isometric Diamond Room Tiles + Vector Icons
+    for (const r of rooms) {
+      const { x: isoX, y: isoY } = projectIso(r.x, r.y);
+      if (isoX < -tileW * 0.8 || isoX > mw + tileW * 0.8 || isoY < -tileH * 0.8 || isoY > mh + tileH * 0.8) {
+        continue;
       }
 
-      // Room block fill + neon outline
-      const isCurrent = (r.x === curRoomX && r.y === curRoomY);
-      let fill: string;
+      const isCurrent = r.x === curRoomX && r.y === curRoomY;
       let stroke: string;
+      let topFill: string;
+      let lipFill: string;
+
       if (isCurrent) {
-        fill = 'rgba(255, 214, 10, 0.35)';
         stroke = YELLOW;
-      } else if (r.visited) {
-        fill = r.cleared ? 'rgba(46, 230, 255, 0.14)' : 'rgba(255, 46, 147, 0.22)';
-        stroke = r.cleared ? CYAN : MAGENTA;
+        topFill = 'rgba(255, 214, 10, 0.34)';
+        lipFill = '#9e7800';
+      } else if (r.visited && r.cleared) {
+        stroke = CYAN;
+        topFill = 'rgba(46, 230, 255, 0.22)';
+        lipFill = '#0b5c6b';
       } else {
-        fill = '#151320';
-        stroke = '#4a3f5e';
+        stroke = MAGENTA;
+        topFill = r.visited ? 'rgba(255, 46, 147, 0.28)' : 'rgba(255, 46, 147, 0.14)';
+        lipFill = '#590d34';
       }
 
-      g.shadowBlur = isCurrent ? 12 : (r.visited ? 6 : 0);
+      g.save();
+
+      // 3A. 3D Bottom Thickness Lip
+      g.beginPath();
+      g.moveTo(isoX - tileW, isoY);
+      g.lineTo(isoX, isoY + tileH);
+      g.lineTo(isoX + tileW, isoY);
+      g.lineTo(isoX + tileW, isoY + lipDepth);
+      g.lineTo(isoX, isoY + tileH + lipDepth);
+      g.lineTo(isoX - tileW, isoY + lipDepth);
+      g.closePath();
+      g.fillStyle = lipFill;
+      g.fill();
+      g.strokeStyle = '#0a0b10';
+      g.lineWidth = 1.2;
+      g.stroke();
+
+      // 3B. Top Isometric Diamond Platform
+      g.beginPath();
+      g.moveTo(isoX, isoY - tileH);
+      g.lineTo(isoX + tileW, isoY);
+      g.lineTo(isoX, isoY + tileH);
+      g.lineTo(isoX - tileW, isoY);
+      g.closePath();
+
       g.shadowColor = stroke;
-      g.fillStyle = fill;
-      g.fillRect(rx, ry, cell, cell);
+      g.shadowBlur = isCurrent ? 14 : 7;
+      g.fillStyle = '#0c0b16';
+      g.fill();
+      g.fillStyle = topFill;
+      g.fill();
+
+      g.lineWidth = isCurrent ? 2.4 : 1.7;
       g.strokeStyle = stroke;
-      g.lineWidth = isCurrent ? 2.5 : 1.75;
-      g.strokeRect(rx, ry, cell, cell);
+      g.stroke();
       g.shadowBlur = 0;
 
-      // Special room markers: Boss ☠, Mod ★, Shop $
+      // 3C. Inner Isometric Frame Line (matches concept art double-lined rooms)
+      const iw = tileW * 0.72;
+      const ih = tileH * 0.72;
+      g.beginPath();
+      g.moveTo(isoX, isoY - ih);
+      g.lineTo(isoX + iw, isoY);
+      g.lineTo(isoX, isoY + ih);
+      g.lineTo(isoX - iw, isoY);
+      g.closePath();
+      g.strokeStyle = isCurrent ? 'rgba(255, 255, 255, 0.55)' : 'rgba(255, 255, 255, 0.18)';
+      g.lineWidth = 0.9;
+      g.stroke();
+
+      // 3D. Crisp Special Room / Current Room Vector Emblems
       if (r.type === 'boss' || r.type === 'treasure' || r.type === 'shop') {
-        g.fillStyle = r.type === 'boss'
-          ? MAGENTA
+        const iconColor = r.type === 'boss'
+          ? (isCurrent ? '#ffffff' : MAGENTA)
           : (r.type === 'treasure' ? YELLOW : CYAN);
-        const iconSize = Math.round(cell * 0.6);
-        g.font = `bold ${iconSize}px sans-serif`;
+        g.fillStyle = iconColor;
+        g.shadowColor = iconColor;
+        g.shadowBlur = 6;
+        const iconSize = Math.max(9, Math.round(tileH * 1.15));
+        g.font = `900 ${iconSize}px sans-serif`;
         g.textAlign = 'center';
         g.textBaseline = 'middle';
         const icon = r.type === 'boss'
           ? '☠'
           : (r.type === 'treasure' ? '★' : '$');
-        g.fillText(icon, rx + cell / 2, ry + cell / 2);
+        g.fillText(icon, isoX, isoY - 0.5);
+      } else if (isCurrent) {
+        // Glowing yellow/white rider beacon marker in current room
+        g.fillStyle = '#ffffff';
+        g.shadowColor = YELLOW;
+        g.shadowBlur = 8;
+        g.beginPath();
+        g.arc(isoX, isoY - 1, Math.max(2.8, tileH * 0.34), 0, Math.PI * 2);
+        g.fill();
+        g.strokeStyle = '#0a0b10';
+        g.lineWidth = 1.2;
+        g.stroke();
       }
+
+      g.restore();
     }
   }
 
@@ -435,8 +641,152 @@ export class HUDController {
   }
 
   /**
-   * Updates HUD DOM widgets: Hull meter, NOS meter, stats, currency, weapon cards, and mod stickers.
-   * (Name kept for API compatibility with main.ts.)
+   * Updates the top-spanning Boss Health Bar (#boss-hud).
+   * Shows the bar when a living boss is present in the room, or hides it when null/dead.
+   */
+  public updateBossBar(boss: Boss | null, floorNum: number = 1): void {
+    if (typeof document === 'undefined') return;
+    const bossHud = document.getElementById('boss-hud');
+    if (!bossHud) return;
+
+    if (!boss || boss.hp <= 0) {
+      bossHud.classList.remove('is-visible');
+      bossHud.hidden = true;
+      return;
+    }
+
+    const profile = getBossProfile(boss);
+    bossHud.hidden = false;
+    bossHud.classList.add('is-visible');
+    bossHud.style.setProperty('--boss-accent', profile.accent);
+
+    const nameEl = document.getElementById('boss-hud-name');
+    if (nameEl) nameEl.textContent = boss.name || 'SCRAP GOLIATH';
+
+    const subEl = document.getElementById('boss-hud-sub');
+    if (subEl) subEl.textContent = `FLOOR ${floorNum} // ${profile.subtitle.split('—')[0].trim()}`;
+
+    const hpEl = document.getElementById('boss-hud-hp');
+    const curHp = Math.max(0, Math.ceil(boss.hp));
+    const maxHp = Math.max(1, Math.ceil(boss.maxHp));
+    if (hpEl) {
+      hpEl.textContent = `${curHp.toLocaleString('en-US')} / ${maxHp.toLocaleString('en-US')}`;
+    }
+
+    const pct = Math.max(0, Math.min(100, (boss.hp / maxHp) * 100));
+    const fillEl = document.getElementById('boss-bar-fill');
+    if (fillEl) fillEl.style.width = `${pct}%`;
+
+    const lagEl = document.getElementById('boss-bar-lag');
+    if (lagEl) lagEl.style.width = `${pct}%`;
+  }
+
+  /**
+   * Triggers the Guilty Gear / Persona 5 style VS Boss Intro Banner (#boss-intro-banner)
+   * when entering an uncleared boss room.
+   */
+  public showBossIntro(boss: Boss, floorNum: number, onComplete?: () => void): void {
+    if (typeof document === 'undefined') {
+      onComplete?.();
+      return;
+    }
+
+    this.updateBossBar(boss, floorNum);
+
+    const banner = document.getElementById('boss-intro-banner');
+    if (!banner) {
+      onComplete?.();
+      return;
+    }
+
+    // Clear any existing intro timer/listeners
+    if (this.bossIntroTimeoutId !== null) {
+      clearTimeout(this.bossIntroTimeoutId);
+      this.bossIntroTimeoutId = null;
+    }
+    if (this.bossIntroDismissHandler && typeof window !== 'undefined') {
+      window.removeEventListener('keydown', this.bossIntroDismissHandler);
+      banner.removeEventListener('click', this.bossIntroDismissHandler);
+      this.bossIntroDismissHandler = null;
+    }
+
+    const profile = getBossProfile(boss);
+    banner.style.setProperty('--boss-accent', profile.accent);
+
+    const artEl = document.getElementById('boss-intro-art');
+    if (artEl) artEl.innerHTML = profile.svg;
+
+    const kickerEl = document.getElementById('boss-intro-kicker');
+    if (kickerEl) kickerEl.textContent = `FLOOR ${floorNum} // BOSS ENCOUNTER`;
+
+    const nameEl = document.getElementById('boss-intro-name');
+    if (nameEl) nameEl.textContent = boss.name || 'SCRAP GOLIATH';
+
+    const subEl = document.getElementById('boss-intro-sub');
+    if (subEl) subEl.textContent = profile.subtitle;
+
+    const timerFill = document.getElementById('boss-intro-timer-fill');
+    if (timerFill) {
+      timerFill.style.transition = 'none';
+      timerFill.style.width = '100%';
+      // Trigger reflow so the countdown bar animates smoothly from 100% to 0%
+      void timerFill.offsetWidth;
+      timerFill.style.transition = 'width 2.35s linear';
+      timerFill.style.width = '0%';
+    }
+
+    this.bossIntroActive = true;
+    banner.setAttribute('aria-hidden', 'false');
+    banner.classList.add('is-open');
+
+    const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+
+    const finish = (): void => {
+      if (!this.bossIntroActive) return;
+      this.bossIntroActive = false;
+      if (this.bossIntroTimeoutId !== null) {
+        clearTimeout(this.bossIntroTimeoutId);
+        this.bossIntroTimeoutId = null;
+      }
+      if (this.bossIntroDismissHandler && typeof window !== 'undefined') {
+        window.removeEventListener('keydown', this.bossIntroDismissHandler);
+        banner.removeEventListener('click', this.bossIntroDismissHandler);
+        this.bossIntroDismissHandler = null;
+      }
+      banner.classList.remove('is-open');
+      banner.setAttribute('aria-hidden', 'true');
+      onComplete?.();
+    };
+
+    this.bossIntroDismissHandler = (e: Event): void => {
+      const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      if (now - startedAt < 450) return; // Prevent accidental instant skip on entry frame
+      if (e.type === 'keydown') {
+        const ke = e as KeyboardEvent;
+        if (ke.code !== 'Space' && ke.code !== 'Enter' && ke.code !== 'Escape') return;
+        ke.preventDefault();
+      }
+      finish();
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('keydown', this.bossIntroDismissHandler);
+      banner.addEventListener('click', this.bossIntroDismissHandler);
+    }
+
+    this.bossIntroTimeoutId = setTimeout(finish, 2400);
+  }
+
+  /**
+   * Returns true while the Boss Intro Banner overlay is active on screen.
+   */
+  public isBossIntroActive(): boolean {
+    return this.bossIntroActive;
+  }
+
+  /**
+   * Updates HUD DOM widgets: Hull meter, NOS meter, LV badge, stats, currency,
+   * high-fidelity weapon cards, die-cut mod stickers, boss bar, and isometric minimap.
    */
   public updateSidebar(
     player: PlayerState,
@@ -454,10 +804,13 @@ export class HUDController {
     if (hpText) hpText.textContent = `${player.hp} / ${player.maxHp}`;
     this.updateHull(player.hp, player.maxHp);
 
-    // 2. NOS meter (+ per-frame sync loop)
+    // 2. NOS meter (+ per-frame sync loop) & Concept-Art LV. Badge
     this.trackedPlayer = player;
     this.updateNos(player.nos, player.nosMax, player.nosLock);
     this.ensureNosLoop();
+
+    const lvBadge = document.getElementById('hud-lv-badge');
+    if (lvBadge) lvBadge.textContent = `LV. ${floorNum}`;
 
     // 3. Currency & Floor
     const coinCount = document.getElementById('coin-count');
@@ -469,7 +822,7 @@ export class HUDController {
     const floorNumEl = document.getElementById('floor-num');
     if (floorNumEl) floorNumEl.textContent = `${floorNum}`;
 
-    // 4. Weapon card bar
+    // 4. Weapon card bar (High-Fidelity Cel-Shaded SVGs from src/ui/icons.ts)
     const bar = document.getElementById('weapon-bar');
     if (bar) {
       bar.innerHTML = '';
@@ -501,7 +854,7 @@ export class HUDController {
           <span class="wcard-flame" aria-hidden="true"></span>
           <span class="wcard-key">${w.key}</span>
           ${isRunOnly ? '<span class="wcard-run">RUN</span>' : ''}
-          <span class="wcard-icon">${WEAPON_ICON[w.id]}</span>
+          <span class="wcard-icon">${WEAPON_HI_FI_SVG[w.id]}</span>
           <span class="wcard-name">${WEAPON_CARD_LABEL[w.id]}</span>
           ${avail ? '' : `<span class="wcard-lock">${LOCK_ICON}<span>${w.cost}</span></span>`}
         `;
@@ -526,7 +879,7 @@ export class HUDController {
       `;
     }
 
-    // 6. Installed Run Mods & RoR2 Item Stacks (sticker badges)
+    // 6. Installed Run Mods & RoR2 Item Stacks (High-Fidelity Die-Cut Vinyl Stickers)
     const itemsEl = document.getElementById('items-list');
     if (itemsEl) {
       const stackBadges = Object.keys(player.itemStacks)
@@ -535,15 +888,16 @@ export class HUDController {
           const it = DROP_ITEMS[id as DropItemId];
           const n = player.itemStacks[id];
           if (!it) return '';
-          const glyph = it.icon || monogram(it.name);
+          const svgIcon = DROP_ITEM_HI_FI_SVG[id as DropItemId] || it.icon;
           const rotClass = `rot-${(index % 6) + 1}`;
-          return `<span class="item-badge sticker ${rotClass}" style="--ic:${it.color}" aria-label="${it.name} x${n}" data-tip="<b style='color:${it.color}'>${it.name} x${n}</b><br/>${it.desc}<br/><i>Stacks with duplicates</i>"><span class="sticker-glyph">${glyph}</span><span class="sticker-count">x${n}</span><span class="sticker-peel" aria-hidden="true"></span></span>`;
+          return `<span class="item-badge sticker ${rotClass}" style="--ic:${it.color}" aria-label="${it.name} x${n}" data-tip="<b style='color:${it.color}'>${it.name} x${n}</b><br/>${it.desc}<br/><i>Stacks with duplicates</i>"><span class="sticker-glyph">${svgIcon}</span><span class="sticker-count">x${n}</span><span class="sticker-peel" aria-hidden="true"></span></span>`;
         });
 
       const modBadges = player.items.map((name, index) => {
         const m = RUN_MOD_POOL.find(x => x.name === name);
+        const svgIcon = getModIconSvg(m ? m.id : name);
         const rotClass = `rot-${((index + 3) % 6) + 1}`;
-        return `<span class="item-badge sticker is-mod ${rotClass}" style="--ic:#ffd60a" aria-label="${name}" data-tip="<b style='color:#ffd166'>${name}</b><br/>${m ? m.desc : ''}"><span class="sticker-glyph">${monogram(name)}</span><span class="sticker-peel" aria-hidden="true"></span></span>`;
+        return `<span class="item-badge sticker is-mod ${rotClass}" style="--ic:#ffd60a" aria-label="${name}" data-tip="<b style='color:#ffd166'>${name}</b><br/>${m ? m.desc : ''}"><span class="sticker-glyph">${svgIcon}</span><span class="sticker-peel" aria-hidden="true"></span></span>`;
       });
 
       const all = stackBadges.concat(modBadges).filter(Boolean);
@@ -553,9 +907,12 @@ export class HUDController {
         : all.join('');
     }
 
-    // 7. Minimap
+    // 7. Minimap & Automatic Boss Bar Sync
     if (dungeon && curRoomX !== undefined && curRoomY !== undefined) {
       this.drawMinimap(dungeon, curRoomX, curRoomY);
+      const curRoom = dungeon[`${curRoomX},${curRoomY}`];
+      const activeBoss = curRoom?.enemies?.find((e): e is Boss => e.type === 'boss' && e.hp > 0) ?? null;
+      this.updateBossBar(activeBoss, floorNum);
     }
   }
 }

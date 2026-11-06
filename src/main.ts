@@ -21,7 +21,8 @@ import {
   UnlockableWeaponId,
   MetaUpgradeId,
   Room,
-  Pickup
+  Pickup,
+  Boss
 } from './types/game';
 
 import { StateManager } from './core/state';
@@ -319,6 +320,7 @@ export class MotoRogueApp {
     player.vy = 0;
 
     this.combatState = createCombatState();
+    this.hud.updateBossBar(null, this.stateManager.floorNum);
     this.updateHUD();
   }
 
@@ -446,9 +448,13 @@ export class MotoRogueApp {
       this.shopModal.isOpen() ||
       this.portalModal.isOpen() ||
       this.settings.isOpen() ||
+      this.hud.isBossIntroActive() ||
       this.stateManager.gameOver;
     const player = this.stateManager.player;
     const room = this.getCurrentRoom();
+
+    const activeBoss = room ? (room.enemies.find((e): e is Boss => e.type === 'boss' && e.hp > 0) || null) : null;
+    this.hud.updateBossBar(activeBoss, this.stateManager.floorNum);
 
     // Call inputManager.update(player.x, player.y) at the start of every frame
     this.inputManager.update(player.x, player.y);
@@ -475,13 +481,7 @@ export class MotoRogueApp {
     const { boosting } = updateNos(player, isShiftHeld, isMoving, dt);
 
     // Per-frame NOS bar visual update
-    const nosFill = document.getElementById('nos-fill');
-    if (nosFill) {
-      nosFill.style.width = `${(player.nos / player.nosMax) * 100}%`;
-      nosFill.style.background = player.nosLock
-        ? '#e63946'
-        : (boosting ? 'linear-gradient(90deg,#4cc9f0,#fff)' : 'linear-gradient(90deg,#4895ef,#4cc9f0)');
-    }
+    this.hud.updateNos(player.nos, player.nosMax, player.nosLock, boosting);
 
     updateBikeKinematics(player, ix, iy, boosting, dt, room);
 
@@ -512,6 +512,16 @@ export class MotoRogueApp {
       const nextRoom = this.getCurrentRoom();
       if (nextRoom) {
         nextRoom.visited = true;
+      }
+      if (nextRoom && nextRoom.type === 'boss' && !nextRoom.cleared && !nextRoom.bossIntroShown) {
+        const boss = nextRoom.enemies.find((e): e is Boss => e.type === 'boss');
+        if (boss) {
+          nextRoom.bossIntroShown = true;
+          this.inputManager.reset();
+          this.hud.showBossIntro(boss, this.stateManager.floorNum, () => {
+            this.inputManager.reset();
+          });
+        }
       }
       this.audio.doorTransition();
       this.dismissedPickup = null;
