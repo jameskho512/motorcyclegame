@@ -573,6 +573,41 @@ export class MotoRogueApp {
 
     updateBikeKinematics(player, ix, iy, boosting, dt, room);
 
+    if ((player.driftCharge || 0) >= 0.85) {
+      player.driftCharge = 0;
+      player.driftBoostTimer = 2.2;
+
+      for (let i = 0; i < 6; i++) {
+        const a = (i * Math.PI) / 3;
+        this.combatState.bullets.push({
+          x: player.x,
+          y: player.y,
+          vx: Math.cos(a) * 420,
+          vy: Math.sin(a) * 420,
+          radius: 4.5,
+          dmg: 14 * player.dmgMult,
+          pierceLeft: 1,
+          bounceLeft: 1,
+          hitIds: new Set(),
+          color: '#ffd60a',
+          life: 0.45
+        });
+      }
+
+      this.combatState.damageNumbers.push({
+        x: player.x,
+        y: player.y - 26,
+        text: 'DRIFT OVERCHARGE! +FIRE RATE!',
+        color: '#ffd60a',
+        life: 1.0,
+        maxLife: 1.0
+      });
+    }
+
+    if ((player.driftBoostTimer || 0) > 0) {
+      player.fireTimer = Math.max(0, player.fireTimer - dt * 0.35);
+    }
+
     // Apply movement displacement
     player.x += player.vx * dt;
     player.y += player.vy * dt;

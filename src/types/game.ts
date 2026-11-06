@@ -241,6 +241,9 @@ export interface PlayerState {
   nosMax: number;
   nosLock: boolean;
   nosDelay: number;
+  isBoosting?: boolean;
+  driftCharge?: number;
+  driftBoostTimer?: number;
   // Bike livery & meta modifiers
   livery?: BikeLiveryId;
   heatLevel?: number;

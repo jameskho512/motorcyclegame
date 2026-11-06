@@ -104,6 +104,7 @@ export function updateNos(
     }
   }
 
+  player.isBoosting = boosting;
   return { boosting };
 }
 
@@ -130,6 +131,11 @@ export function updateBikeKinematics(
   let diff = 0;
 
   let effSpeed = calculateEffectiveSpeed(player, boosting);
+
+  if ((player.driftBoostTimer || 0) > 0) {
+    player.driftBoostTimer = Math.max(0, (player.driftBoostTimer || 0) - dt);
+    effSpeed *= 1.22;
+  }
 
   // Biome zone effects
   const pRadius = player.radius || PLAYER_RADIUS;
@@ -191,6 +197,12 @@ export function updateBikeKinematics(
     const frictionFactor = Math.pow(PASSIVE_FRICTION_BASE, dt);
     player.vx *= frictionFactor;
     player.vy *= frictionFactor;
+  }
+
+  if (Math.abs(diff) > SKID_MARK_THRESHOLD) {
+    player.driftCharge = Math.min(1.0, (player.driftCharge || 0) + dt * 1.35);
+  } else {
+    player.driftCharge = Math.max(0, (player.driftCharge || 0) - dt * 0.55);
   }
 
   return { moved, skidCreated, diff };

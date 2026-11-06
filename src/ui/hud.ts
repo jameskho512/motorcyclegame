@@ -20,7 +20,7 @@ import {
   Boss
 } from '../types/game';
 
-import { WEAPONS } from '../data/weapons';
+import { WEAPONS, isWeaponEvolved } from '../data/weapons';
 import { DROP_ITEMS, RUN_MOD_POOL } from '../data/upgrades';
 import {
   WEAPON_HI_FI_SVG,
@@ -876,6 +876,57 @@ export class HUDController {
   }
 
   /**
+   * Updates weapon selection deck cards with evolution badges and status.
+   */
+  public updateWeapons(player: PlayerState, unlockedWeapons: Record<string, boolean>): void {
+    const bar = document.getElementById('weapon-bar');
+    if (!bar) return;
+    bar.innerHTML = '';
+    Object.values(WEAPONS).forEach(w => {
+      const isPermanentlyUnlocked = unlockedWeapons[w.id] || w.id === 'pistol';
+      const isRunOnly = !isPermanentlyUnlocked && !!player.runWeapons[w.id];
+      const isAvail = isPermanentlyUnlocked || isRunOnly;
+      const isActive = player.weapon === w.id;
+      const evolved = isAvail && isWeaponEvolved(w.id, player);
+
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = [
+        'wcard',
+        'weapon-slot',
+        'w-slot',
+        isAvail ? 'unlocked' : 'locked is-locked',
+        isActive ? 'active is-active' : '',
+        isRunOnly ? 'is-run' : '',
+        evolved ? 'is-evolved' : ''
+      ].filter(Boolean).join(' ');
+      card.dataset.weapon = w.id;
+      card.style.setProperty('--wc', `var(--w-${w.id}, ${w.color})`);
+      card.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+      card.setAttribute(
+        'aria-label',
+        `[${w.key}] ${w.name}${isRunOnly ? ' (run only)' : ''}${evolved ? ' ★ EVOLVED' : ''}${isAvail ? '' : ` — locked, ${w.cost} scrap in Garage`}`
+      );
+      if (!isAvail) card.setAttribute('aria-disabled', 'true');
+
+      card.innerHTML = `
+        <span class="wcard-flame" aria-hidden="true"></span>
+        <span class="wcard-key">${w.key}</span>
+        ${isRunOnly ? '<span class="wcard-run">RUN</span>' : ''}
+        ${evolved ? '<span class="w-evo-badge">★ EVO</span>' : ''}
+        <span class="wcard-icon">${WEAPON_HI_FI_SVG[w.id]}</span>
+        <span class="wcard-name">${WEAPON_CARD_LABEL[w.id]}</span>
+        ${isAvail ? '' : `<span class="wcard-lock">${LOCK_ICON}<span>${w.cost}</span></span>`}
+      `;
+      if (isAvail && this.onSelectWeapon) {
+        card.onclick = () => this.onSelectWeapon!(w.id);
+      }
+      card.dataset.tip = `<b style="color:${w.color}">${w.name}</b>${evolved ? ' <span style="color:#00f5d4">★ EVOLVED</span>' : ''}<br/>${w.desc}<br/>Damage ${w.baseDmg} | Cooldown ${w.cooldown}s${isAvail ? '' : `<br/>🔒 Unlock in Garage: ${w.cost} scrap`}`;
+      bar.appendChild(card);
+    });
+  }
+
+  /**
    * Updates HUD DOM widgets: Hull meter, NOS meter, LV badge, stats, currency,
    * high-fidelity weapon cards, die-cut mod stickers, boss bar, and isometric minimap.
    */
@@ -914,48 +965,7 @@ export class HUDController {
     if (floorNumEl) floorNumEl.textContent = `${floorNum}`;
 
     // 4. Weapon card bar (High-Fidelity Cel-Shaded SVGs from src/ui/icons.ts)
-    const bar = document.getElementById('weapon-bar');
-    if (bar) {
-      bar.innerHTML = '';
-      Object.values(WEAPONS).forEach(w => {
-        const isPermanentlyUnlocked = unlockedWeapons[w.id] || w.id === 'pistol';
-        const isRunOnly = !isPermanentlyUnlocked && !!player.runWeapons[w.id];
-        const avail = isPermanentlyUnlocked || isRunOnly;
-        const isActive = player.weapon === w.id;
-
-        const card = document.createElement('button');
-        card.type = 'button';
-        card.className = [
-          'wcard',
-          'weapon-slot',
-          avail ? 'unlocked' : 'locked is-locked',
-          isActive ? 'active is-active' : '',
-          isRunOnly ? 'is-run' : ''
-        ].filter(Boolean).join(' ');
-        card.dataset.weapon = w.id;
-        card.style.setProperty('--wc', `var(--w-${w.id}, ${w.color})`);
-        card.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-        card.setAttribute(
-          'aria-label',
-          `[${w.key}] ${w.name}${isRunOnly ? ' (run only)' : ''}${avail ? '' : ` — locked, ${w.cost} scrap in Garage`}`
-        );
-        if (!avail) card.setAttribute('aria-disabled', 'true');
-
-        card.innerHTML = `
-          <span class="wcard-flame" aria-hidden="true"></span>
-          <span class="wcard-key">${w.key}</span>
-          ${isRunOnly ? '<span class="wcard-run">RUN</span>' : ''}
-          <span class="wcard-icon">${WEAPON_HI_FI_SVG[w.id]}</span>
-          <span class="wcard-name">${WEAPON_CARD_LABEL[w.id]}</span>
-          ${avail ? '' : `<span class="wcard-lock">${LOCK_ICON}<span>${w.cost}</span></span>`}
-        `;
-        if (avail && this.onSelectWeapon) {
-          card.onclick = () => this.onSelectWeapon!(w.id);
-        }
-        card.dataset.tip = `<b style="color:${w.color}">${w.name}</b><br/>${w.desc}<br/>Damage ${w.baseDmg} | Cooldown ${w.cooldown}s${avail ? '' : `<br/>🔒 Unlock in Garage: ${w.cost} scrap`}`;
-        bar.appendChild(card);
-      });
-    }
+    this.updateWeapons(player, unlockedWeapons);
 
     // 5. Live Stats strip
     const statsGrid = document.getElementById('stats-grid');

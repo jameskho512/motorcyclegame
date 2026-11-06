@@ -196,3 +196,92 @@ export function getWeaponDef(id: string): WeaponDef {
   }
   return WEAPONS.pistol;
 }
+
+// ============================================================================
+// WEAPON EVOLUTIONS (OVERCLOCK PROTOCOL)
+// ============================================================================
+
+export interface WeaponEvolutionDef {
+  weaponId: WeaponId;
+  evolvedName: string;
+  signatureModName: string;
+  evolvedColor: string;
+  desc: string;
+}
+
+export const WEAPON_EVOLUTIONS: Record<WeaponId, WeaponEvolutionDef> = {
+  pistol: {
+    weaponId: 'pistol',
+    evolvedName: 'RICOCHET REVOLVER',
+    signatureModName: 'Ricochet Rounds',
+    evolvedColor: '#ffd60a',
+    desc: '+2 Bounces, +35% Damage & Golden Tracer Rounds'
+  },
+  machine_gun: {
+    weaponId: 'machine_gun',
+    evolvedName: 'HYPER-VULCAN GATLING',
+    signatureModName: 'Hair Trigger',
+    evolvedColor: '#00f5d4',
+    desc: 'Twin Parallel Streams & Tightened Spread'
+  },
+  flamethrower: {
+    weaponId: 'flamethrower',
+    evolvedName: 'PLASMA MELTDOWN TORCH',
+    signatureModName: 'High Explosive',
+    evolvedColor: '#72efdd',
+    desc: 'Blue-White Plasma Cone & +45% Burn Power'
+  },
+  grenade_launcher: {
+    weaponId: 'grenade_launcher',
+    evolvedName: 'CARPET CLUSTER MORTAR',
+    signatureModName: 'High Explosive',
+    evolvedColor: '#ff0055',
+    desc: 'Spawns 3 Secondary Cluster Bomblets on Impact'
+  },
+  shotgun: {
+    weaponId: 'shotgun',
+    evolvedName: 'HELLFIRE FLAK CANNON',
+    signatureModName: 'Split Chamber',
+    evolvedColor: '#ff5400',
+    desc: '10 Incendiary Pellets & 20px Blast Knockback'
+  },
+  railgun: {
+    weaponId: 'railgun',
+    evolvedName: 'ORBITAL ION LANCE',
+    signatureModName: 'Piercing Core',
+    evolvedColor: '#ffbe0b',
+    desc: 'Hyper-Wide Golden Ion Lance & +35% Damage'
+  },
+  arc_coil: {
+    weaponId: 'arc_coil',
+    evolvedName: 'THUNDERLORD STORM COIL',
+    signatureModName: 'Vampiric Siphon',
+    evolvedColor: '#e0aaff',
+    desc: 'Chains to 6 Targets for 85% Damage'
+  }
+};
+
+/**
+ * Returns true if the player's build has unlocked the weapon evolution:
+ * Either possesses the weapon's signature upgrade item/mod, OR has >= 3 total item stacks.
+ */
+export function isWeaponEvolved(
+  weaponId: WeaponId,
+  player: { items?: string[]; itemStacks?: Record<string, number> }
+): boolean {
+  if (!weaponId || !WEAPON_EVOLUTIONS[weaponId]) return false;
+  if (player.items?.includes(WEAPON_EVOLUTIONS[weaponId].signatureModName)) {
+    return true;
+  }
+  if (player.itemStacks) {
+    let sum = 0;
+    for (const val of Object.values(player.itemStacks)) {
+      if (typeof val === 'number') {
+        sum += val;
+      }
+    }
+    if (sum >= 3) return true;
+  }
+  return false;
+}
+

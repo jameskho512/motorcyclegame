@@ -35,7 +35,7 @@ import {
   AudioService,
   MetaSaveState
 } from '../types/game';
-import { WEAPONS, WeaponDef } from '../data/weapons';
+import { WEAPONS, WeaponDef, isWeaponEvolved } from '../data/weapons';
 import { DROP_ITEM_IDS } from '../data/upgrades';
 import { genLoot } from '../data/equipment';
 
@@ -296,6 +296,7 @@ export function fireWeapon({
   const mx = player.x + Math.cos(player.aimAngle) * 20;
   const my = player.y + Math.sin(player.aimAngle) * 20;
   const shots = player.weapon === 'grenade_launcher' ? 1 : Math.max(1, player.multiShot || 1);
+  const evolved = isWeaponEvolved(player.weapon, player);
 
   for (let s = 0; s < shots; s++) {
     const multiOffset = calcMultiShotOffset(shots, s);
@@ -305,62 +306,91 @@ export function fireWeapon({
       case 'pistol': {
         const ang = baseAngle + (rng() - 0.5) * 0.04; // ±0.02 rad
         const spd = w.projSpeed * player.projSpeedMult;
+        const bulletColor = evolved ? '#ffd60a' : w.color;
         state.bullets.push({
           x: mx,
           y: my,
           vx: Math.cos(ang) * spd,
           vy: Math.sin(ang) * spd,
-          radius: 5,
-          dmg: w.baseDmg * player.dmgMult,
+          radius: evolved ? 6.5 : 5,
+          dmg: w.baseDmg * player.dmgMult * (evolved ? 1.35 : 1),
           pierceLeft: player.pierce,
-          bounceLeft: player.bounce,
+          bounceLeft: evolved ? player.bounce + 2 : player.bounce,
           hitIds: new Set(),
-          color: w.color,
+          color: bulletColor,
           life: 1.15
         });
-        spawnMuzzleParticles(state, mx, my, ang, w.color, 3, rng);
+        spawnMuzzleParticles(state, mx, my, ang, bulletColor, evolved ? 5 : 3, rng);
         break;
       }
 
       case 'machine_gun': {
-        const ang = baseAngle + (rng() - 0.5) * 0.18; // ±0.09 rad
         const spd = w.projSpeed * player.projSpeedMult;
-        state.bullets.push({
-          x: mx,
-          y: my,
-          vx: Math.cos(ang) * spd,
-          vy: Math.sin(ang) * spd,
-          radius: 4,
-          dmg: w.baseDmg * player.dmgMult,
-          pierceLeft: player.pierce,
-          bounceLeft: player.bounce,
-          hitIds: new Set(),
-          color: w.color,
-          life: 0.95
-        });
-        state.screenShake = Math.max(state.screenShake, 1.2);
-        spawnMuzzleParticles(state, mx, my, ang, w.color, 2, rng);
+        if (evolved) {
+          // Hyper-Vulcan Gatling: twin parallel bullet streams offset perpendicular by -4px and +4px
+          const perpX = -Math.sin(baseAngle);
+          const perpY = Math.cos(baseAngle);
+          const offsets = [-4, 4];
+          for (const off of offsets) {
+            const ang = baseAngle + (rng() - 0.5) * 0.08;
+            state.bullets.push({
+              x: mx + perpX * off,
+              y: my + perpY * off,
+              vx: Math.cos(ang) * spd,
+              vy: Math.sin(ang) * spd,
+              radius: 4,
+              dmg: w.baseDmg * player.dmgMult,
+              pierceLeft: player.pierce,
+              bounceLeft: player.bounce,
+              hitIds: new Set(),
+              color: '#00f5d4',
+              life: 0.95
+            });
+          }
+          state.screenShake = Math.max(state.screenShake, 1.5);
+          spawnMuzzleParticles(state, mx, my, baseAngle, '#00f5d4', 3, rng);
+        } else {
+          const ang = baseAngle + (rng() - 0.5) * 0.18; // ±0.09 rad
+          state.bullets.push({
+            x: mx,
+            y: my,
+            vx: Math.cos(ang) * spd,
+            vy: Math.sin(ang) * spd,
+            radius: 4,
+            dmg: w.baseDmg * player.dmgMult,
+            pierceLeft: player.pierce,
+            bounceLeft: player.bounce,
+            hitIds: new Set(),
+            color: w.color,
+            life: 0.95
+          });
+          state.screenShake = Math.max(state.screenShake, 1.2);
+          spawnMuzzleParticles(state, mx, my, ang, w.color, 2, rng);
+        }
         break;
       }
 
       case 'flamethrower': {
-        // Balanced Flamethrower: short-range cone; each flame puff hits a given enemy at most ONCE
+        // Balanced Flamethrower / Plasma Meltdown Torch: short-range cone; each flame puff hits a given enemy at most ONCE
         // and applies a 2.4s non-stacking Burn DoT.
         const ang = baseAngle + (rng() - 0.5) * 0.34; // ±0.17 rad
         const spd = (240 + rng() * 85) * player.projSpeedMult;
+        const flameColor = evolved
+          ? (rng() < 0.5 ? '#00f5d4' : '#72efdd')
+          : (rng() < 0.5 ? '#ff6b2b' : '#ffd166');
         state.bullets.push({
           x: mx,
           y: my,
           vx: Math.cos(ang) * spd + player.vx * 0.2,
           vy: Math.sin(ang) * spd + player.vy * 0.2,
           radius: 6,
-          maxRadius: 17,
-          dmg: w.baseDmg * player.dmgMult * player.blastMult,
+          maxRadius: evolved ? 23 : 17,
+          dmg: w.baseDmg * player.dmgMult * player.blastMult * (evolved ? 1.45 : 1),
           isFlame: true,
           pierceLeft: 99,
           bounceLeft: player.bounce,
           hitIds: new Set(),
-          color: rng() < 0.5 ? '#ff6b2b' : '#ffd166',
+          color: flameColor,
           life: 0.36,
           maxLife: 0.36
         });
@@ -380,7 +410,7 @@ export function fireWeapon({
           Math.min(ARENA_HEIGHT - WALL_THICKNESS - 20, my + Math.sin(baseAngle) * dist)
         );
 
-        state.grenades.push({
+        const grenade: Grenade = {
           x: mx,
           y: my,
           startX: mx,
@@ -390,19 +420,25 @@ export function fireWeapon({
           t: 0,
           duration: travelTime,
           radius: 8,
-          blastRadius: 92 * player.blastMult,
-          dmg: w.baseDmg * player.dmgMult * player.blastMult
-        });
-        state.screenShake = Math.max(state.screenShake, 2.5);
-        spawnMuzzleParticles(state, mx, my, baseAngle, w.color, 6, rng);
+          blastRadius: (evolved ? 112 : 92) * player.blastMult,
+          dmg: w.baseDmg * player.dmgMult * player.blastMult * (evolved ? 1.25 : 1)
+        };
+        if (evolved) {
+          (grenade as any).cluster = true;
+        }
+        state.grenades.push(grenade);
+        state.screenShake = Math.max(state.screenShake, evolved ? 3.5 : 2.5);
+        spawnMuzzleParticles(state, mx, my, baseAngle, evolved ? '#ff0055' : w.color, 6, rng);
         break;
       }
 
       case 'shotgun': {
-        // Sawed-Off Shotgun: 6 buckshot pellets in a 0.34 rad cone with 11px physics knockback
-        const pellets = 6;
+        // Sawed-Off Shotgun / Hellfire Flak Cannon: 6 (or 10 evolved) buckshot pellets
+        const pellets = evolved ? 10 : 6;
+        const pelletColor = evolved ? '#ff5400' : w.color;
+        const knockback = evolved ? 20 : 11;
         for (let p = 0; p < pellets; p++) {
-          const spread = (p / (pellets - 1) - 0.5) * 0.34 + (rng() - 0.5) * 0.06;
+          const spread = (p / (pellets - 1) - 0.5) * (evolved ? 0.40 : 0.34) + (rng() - 0.5) * 0.06;
           const ang = baseAngle + spread;
           const spd = (w.projSpeed + (rng() - 0.5) * 70) * player.projSpeedMult;
           state.bullets.push({
@@ -412,47 +448,49 @@ export function fireWeapon({
             vy: Math.sin(ang) * spd,
             radius: 4.5,
             dmg: w.baseDmg * player.dmgMult,
-            knockback: 11,
+            knockback,
             pierceLeft: player.pierce,
             bounceLeft: player.bounce,
             hitIds: new Set(),
-            color: w.color,
+            color: pelletColor,
             life: 0.46
           });
         }
-        state.screenShake = Math.max(state.screenShake, 3.2);
-        spawnMuzzleParticles(state, mx, my, baseAngle, w.color, 8, rng);
+        state.screenShake = Math.max(state.screenShake, evolved ? 4.2 : 3.2);
+        spawnMuzzleParticles(state, mx, my, baseAngle, pelletColor, evolved ? 12 : 8, rng);
         break;
       }
 
       case 'railgun': {
-        // Plasma Railgun: hyper-velocity slug, pierce 99, leaves persistent cyan ion beam trail
+        // Plasma Railgun / Orbital Ion Lance: hyper-velocity slug, pierce 99, leaves persistent ion beam trail
         const ang = baseAngle;
         const spd = w.projSpeed * player.projSpeedMult;
+        const railColor = evolved ? '#ffbe0b' : w.color;
         state.bullets.push({
           x: mx,
           y: my,
           vx: Math.cos(ang) * spd,
           vy: Math.sin(ang) * spd,
-          radius: 6.5,
-          dmg: w.baseDmg * player.dmgMult,
+          radius: evolved ? 8.5 : 6.5,
+          dmg: w.baseDmg * player.dmgMult * (evolved ? 1.35 : 1),
           isRail: true,
           pierceLeft: 99,
           bounceLeft: player.bounce,
           hitIds: new Set(),
-          color: w.color,
+          color: railColor,
           life: 0.85
         });
-        state.screenShake = Math.max(state.screenShake, 4.0);
-        spawnMuzzleParticles(state, mx, my, ang, w.color, 10, rng);
+        state.screenShake = Math.max(state.screenShake, evolved ? 5.5 : 4.0);
+        spawnMuzzleParticles(state, mx, my, ang, railColor, evolved ? 14 : 10, rng);
         break;
       }
 
       case 'arc_coil': {
-        // Arc Tesla Coil: lightning orb, on hit chains to up to 3 nearby enemies within 155px
+        // Arc Tesla Coil / Thunderlord Storm Coil: lightning orb, on hit chains to nearby enemies
         const ang = baseAngle + (rng() - 0.5) * 0.06;
         const spd = w.projSpeed * player.projSpeedMult;
-        state.bullets.push({
+        const arcColor = evolved ? '#e0aaff' : w.color;
+        const bullet: PlayerBullet = {
           x: mx,
           y: my,
           vx: Math.cos(ang) * spd,
@@ -463,11 +501,15 @@ export function fireWeapon({
           pierceLeft: player.pierce,
           bounceLeft: player.bounce,
           hitIds: new Set(),
-          color: w.color,
+          color: arcColor,
           life: 1.0
-        });
-        state.screenShake = Math.max(state.screenShake, 1.8);
-        spawnMuzzleParticles(state, mx, my, ang, w.color, 5, rng);
+        };
+        if (evolved) {
+          (bullet as any).evolvedArc = true;
+        }
+        state.bullets.push(bullet);
+        state.screenShake = Math.max(state.screenShake, evolved ? 2.4 : 1.8);
+        spawnMuzzleParticles(state, mx, my, ang, arcColor, evolved ? 8 : 5, rng);
         break;
       }
     }
@@ -778,15 +820,15 @@ export function updatePlayerBullets(
       b.radius = 6 + (1 - b.life / b.maxLife) * (b.maxRadius - 6);
     }
 
-    // Railgun cyan ion beam trail
+    // Railgun cyan or golden ion beam trail
     if (b.isRail) {
       state.beamEffects.push({
         x1: prevX,
         y1: prevY,
         x2: b.x,
         y2: b.y,
-        color: '#00f5d4',
-        width: 4,
+        color: b.color || '#00f5d4',
+        width: b.radius ? Math.round(b.radius * 0.8) : 4,
         life: 0.22,
         maxLife: 0.22
       });
@@ -875,11 +917,17 @@ export function updatePlayerBullets(
           en.y += (b.vy / bSpd) * b.knockback;
         }
 
-        // Arc Tesla Coil: chains lightning to up to 3 nearby enemies within 155px for 0.65x damage
+        // Arc Tesla Coil: chains lightning to up to 3 nearby enemies (or 6 for Thunderlord Storm Coil)
         if (b.isArc) {
+          const isEvolvedArc = !!(b as any).evolvedArc;
+          const chainLimit = isEvolvedArc ? 6 : 3;
+          const chainRange = isEvolvedArc ? 195 : 155;
+          const chainDmgMult = isEvolvedArc ? 0.85 : 0.65;
+          const beamColor = isEvolvedArc ? '#e0aaff' : '#c77dff';
+
           const chainTargets = room.enemies
-            .filter(other => other.id !== en.id && other.hp > 0 && Math.hypot(other.x - en.x, other.y - en.y) <= 155)
-            .slice(0, 3);
+            .filter(other => other.id !== en.id && other.hp > 0 && Math.hypot(other.x - en.x, other.y - en.y) <= chainRange)
+            .slice(0, chainLimit);
 
           if (chainTargets.length > 0 && audio) {
             audio.arcChain();
@@ -888,15 +936,15 @@ export function updatePlayerBullets(
           let fromX = en.x;
           let fromY = en.y;
           for (const ct of chainTargets) {
-            damageEnemy(ct, dmg * 0.65, false, state);
+            damageEnemy(ct, dmg * chainDmgMult, false, state);
             state.beamEffects.push({
               x1: fromX,
               y1: fromY,
               x2: ct.x,
               y2: ct.y,
-              color: '#c77dff',
+              color: beamColor,
               isLightning: true,
-              width: 2.5,
+              width: isEvolvedArc ? 3.5 : 2.5,
               life: 0.24,
               maxLife: 0.24
             });
@@ -940,6 +988,24 @@ export function updateGrenades(
       g.x = g.targetX;
       g.y = g.targetY;
       triggerExplosion(g.targetX, g.targetY, g.blastRadius, g.dmg, room, state, audio, rng);
+
+      // Carpet Cluster Mortar: trigger 3 cluster explosions at 120deg offsets
+      if ((g as any).cluster) {
+        for (let c = 0; c < 3; c++) {
+          const clusterAngle = c * (Math.PI * 2 / 3);
+          const clusterDist = 42;
+          const cx = Math.max(
+            WALL_THICKNESS + 15,
+            Math.min(ARENA_WIDTH - WALL_THICKNESS - 15, g.targetX + Math.cos(clusterAngle) * clusterDist)
+          );
+          const cy = Math.max(
+            WALL_THICKNESS + 15,
+            Math.min(ARENA_HEIGHT - WALL_THICKNESS - 15, g.targetY + Math.sin(clusterAngle) * clusterDist)
+          );
+          triggerExplosion(cx, cy, 46, g.dmg * 0.4, room, state, audio, rng);
+        }
+      }
+
       grenades.splice(i, 1);
     } else {
       g.x = g.startX + (g.targetX - g.startX) * g.t;
@@ -1056,6 +1122,8 @@ export function updateEnemyCollisions(
   state: CombatState,
   onPlayerHurt?: (dmg: number) => void
 ): void {
+  const isBoosting = !!(player as any).isBoosting && player.nos > 0 && !player.nosLock;
+
   for (const en of room.enemies) {
     if (en.hp <= 0) continue;
     const dx = player.x - en.x;
@@ -1068,6 +1136,16 @@ export function updateEnemyCollisions(
       const overlap = minDist - dist;
       const playerMass = player.radius || 17;
       const enemyMass = getEnemyMass(en);
+
+      // NOS Battering Ram: high-speed ram flings lighter/equal enemies back, deals heavy damage, 0 hurt to player
+      if (en.type !== 'boss' && isBoosting && enemyMass <= playerMass * 1.2) {
+        en.x -= nx * (overlap + 26);
+        en.y -= ny * (overlap + 26);
+        damageEnemy(en, 35 * player.dmgMult, true, state);
+        addFloatingText(state, en.x, en.y - 20, 'NOS RAM!!', '#ffd60a');
+        state.screenShake = Math.max(state.screenShake, 6);
+        continue;
+      }
 
       if (en.type === 'boss') {
         player.x += nx * (overlap + 4);
