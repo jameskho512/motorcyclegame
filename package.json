@@ -1,0 +1,26 @@
+{
+  "name": "moto-rogue",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "pixi.js": "^8.22.0",
+    "pixi-filters": "^6.1.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "happy-dom": "^21.0.4",
+    "typescript": "^5.8.2",
+    "vite": "^6.4.5",
+    "vitest": "^5.1.0"
+  }
+}

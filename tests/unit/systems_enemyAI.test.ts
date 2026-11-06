@@ -1,0 +1,578 @@
+/**
+ * Unit Tests for Enemy AI & Boss Systems (`src/systems/enemyAI.ts`)
+ *
+ * Verifies:
+ * - Non-linear floor scaling formula getFloorScale(floor)
+ * - HP, speed, and enemy bullet speed scaling (including 1.65x HP & 1.15x speed for elites)
+ * - Charger 3-state machine transitions (idle -> windup -> dashing -> idle)
+ * - Splitter death split into 2 mini_swarmers
+ * - All 10 enemy AI behaviors (Swarmer, Turret, Charger, Trishot, Bomber, Brute, Splitter, Mini Swarmer, Sniper, Pyro)
+ * - All 3 Road-Raging Boss variants (Scrap Goliath, Siege Behemoth, Overlord Helion)
+ * - Boss minion spawning (floor 1 swarmer, floor 2+ trishot)
+ * - Boss defeat reward drop tables (Coins, Scrap, Heart, Equipment loot, Mod pedestal, Trapdoor)
+ */
+
+import { describe, it, expect } from 'vitest';
+import {
+  getFloorScale,
+  calcEnemyHp,
+  calcEnemySpeed,
+  calcEnemyProjSpeedScale,
+  getEliteSpawnChance,
+  createEnemy,
+  createBoss,
+  spawnBossMinions,
+  updateEnemyAI,
+  generateBossDefeatRewards,
+  BOSS_COLORS
+} from '../../src/systems/enemyAI';
+import { handleEnemyDeath, createCombatState } from '../../src/systems/combat';
+import type {
+  Room,
+  PlayerState,
+  EnemyBullet,
+  EnemyBomb
+} from '../../src/types/game';
+
+function createMockRoom(overrides: Partial<Room> = {}): Room {
+  return {
+    x: 0,
+    y: 0,
+    type: 'combat',
+    cleared: false,
+    visited: true,
+    doors: { N: true, S: true, E: true, W: true },
+    obstacles: [],
+    enemies: [],
+    pickups: [],
+    hazards: [],
+    skids: [],
+    trapdoor: false,
+    ...overrides
+  };
+}
+
+function createMockPlayer(overrides: Partial<PlayerState> = {}): PlayerState {
+  return {
+    x: 360,
+    y: 360,
+    vx: 0,
+    vy: 0,
+    radius: 17,
+    bikeAngle: 0,
+    aimAngle: 0,
+    baseSpeed: 265,
+    hp: 6,
+    maxHp: 6,
+    coins: 0,
+    invuln: 0,
+    weapon: 'pistol',
+    runWeapons: {},
+    fireTimer: 0,
+    dmgMult: 1,
+    fireRateMult: 1,
+    speedMult: 1,
+    projSpeedMult: 1,
+    blastMult: 1,
+    pierce: 0,
+    bounce: 0,
+    multiShot: 1,
+    vampChance: 0,
+    items: [],
+    itemStacks: {},
+    killCount: 0,
+    nos: 100,
+    nosMax: 100,
+    nosLock: false,
+    nosDelay: 0,
+    ...overrides
+  };
+}
+
+describe('Systems: EnemyAI — Floor Scaling Curves', () => {
+  it('computes non-linear floor scaling curves correctly across floors 1 to 5', () => {
+    // Floor 1: 1 + 0 + 0 = 1.0
+    expect(getFloorScale(1)).toBe(1.0);
+
+    // Floor 2: 1 + (1)*0.45 + (1)^1.35 * 0.22 = 1 + 0.45 + 0.22 = 1.67
+    expect(getFloorScale(2)).toBeCloseTo(1.67, 5);
+
+    // Floor 3: 1 + (2)*0.45 + (2)^1.35 * 0.22 = 1 + 0.90 + 2.549 * 0.22 = ~2.4608
+    const expectedFloor3 = 1 + 2 * 0.45 + Math.pow(2, 1.35) * 0.22;
+    expect(getFloorScale(3)).toBeCloseTo(expectedFloor3, 5);
+
+    // Scaling is strictly monotonically increasing
+    for (let f = 1; f < 10; f++) {
+      expect(getFloorScale(f + 1)).toBeGreaterThan(getFloorScale(f));
+    }
+  });
+
+  it('scales enemy HP with floor and elite 1.65x multiplier', () => {
+    const baseHp = 100;
+    // Floor 1 regular -> 100
+    expect(calcEnemyHp(baseHp, 1, false)).toBe(100);
+
+    // Floor 1 elite -> 165
+    expect(calcEnemyHp(baseHp, 1, true)).toBe(165);
+
+    // Floor 2 regular -> 167
+    expect(calcEnemyHp(baseHp, 2, false)).toBe(167);
+
+    // Floor 2 elite -> round(100 * 1.67 * 1.65) = round(275.55) = 276
+    expect(calcEnemyHp(baseHp, 2, true)).toBe(Math.round(baseHp * getFloorScale(2) * 1.65));
+  });
+
+  it('scales enemy speed with floor (+6%/floor) and elite 1.15x multiplier', () => {
+    const baseSpeed = 100;
+    // Floor 1 regular -> 100
+    expect(calcEnemySpeed(baseSpeed, 1, false)).toBe(100);
+
+    // Floor 1 elite -> 115
+    expect(calcEnemySpeed(baseSpeed, 1, true)).toBeCloseTo(115, 5);
+
+    // Floor 3 regular -> 100 * (1 + 2 * 0.06) = 112
+    expect(calcEnemySpeed(baseSpeed, 3, false)).toBeCloseTo(112, 5);
+
+    // Floor 3 elite -> 100 * 1.12 * 1.15 = 128.8
+    expect(calcEnemySpeed(baseSpeed, 3, true)).toBeCloseTo(128.8, 5);
+  });
+
+  it('scales enemy bullet projectile speed (+8%/floor)', () => {
+    expect(calcEnemyProjSpeedScale(1)).toBe(1.0);
+    expect(calcEnemyProjSpeedScale(2)).toBeCloseTo(1.08, 5);
+    expect(calcEnemyProjSpeedScale(5)).toBeCloseTo(1.32, 5);
+  });
+
+  it('computes elite spawn chance starting at floor 2 and capping at 45%', () => {
+    expect(getEliteSpawnChance(1)).toBe(0);
+    expect(getEliteSpawnChance(2)).toBeCloseTo(0.12, 5);
+    expect(getEliteSpawnChance(4)).toBeCloseTo(0.36, 5);
+    expect(getEliteSpawnChance(5)).toBeCloseTo(0.45, 5); // capped at 0.45
+    expect(getEliteSpawnChance(10)).toBe(0.45);
+  });
+});
+
+describe('Systems: EnemyAI — Charger State Machine Transitions', () => {
+  it('progresses through idle -> windup -> dashing -> idle states with correct timings and speeds', () => {
+    const room = createMockRoom();
+    const player = createMockPlayer({ x: 450, y: 360 }); // 90px away (<340px)
+    const charger = createEnemy('charger', 360, 360, 1, false);
+    const bullets: EnemyBullet[] = [];
+    const bombs: EnemyBomb[] = [];
+
+    // State 1: IDLE
+    charger.state = 'idle';
+    charger.aiTimer = 0; // ready to windup
+
+    // Update frame -> triggers windup
+    updateEnemyAI({
+      room,
+      enemy: charger,
+      dt: 0.016,
+      player,
+      projScale: 1,
+      enemyBullets: bullets,
+      enemyBombs: bombs
+    });
+
+    expect(charger.state).toBe('windup');
+    expect(charger.aiTimer).toBe(0.45); // 0.45s telegraph
+
+    // State 2: WINDUP (stationary telegraph)
+    const posXBefore = charger.x;
+    updateEnemyAI({
+      room,
+      enemy: charger,
+      dt: 0.20,
+      player,
+      projScale: 1,
+      enemyBullets: bullets,
+      enemyBombs: bombs
+    });
+    expect(charger.state).toBe('windup');
+    expect(charger.x).toBe(posXBefore); // stays stationary during windup
+
+    // Windup finishes -> transitions to DASHING
+    updateEnemyAI({
+      room,
+      enemy: charger,
+      dt: 0.30,
+      player,
+      projScale: 1,
+      enemyBullets: bullets,
+      enemyBombs: bombs
+    });
+    expect(charger.state).toBe('dashing');
+    expect(charger.aiTimer).toBeCloseTo(0.42, 2); // 0.42s dash duration
+    // dash velocity = speed * 2.75 in +X direction
+    expect(charger.dashVx).toBeCloseTo(charger.speed * 2.75, 1);
+
+    // State 3: DASHING
+    updateEnemyAI({
+      room,
+      enemy: charger,
+      dt: 0.20,
+      player,
+      projScale: 1,
+      enemyBullets: bullets,
+      enemyBombs: bombs
+    });
+    expect(charger.state).toBe('dashing');
+    expect(charger.x).toBeGreaterThan(posXBefore);
+
+    // Dash completes -> transitions back to IDLE with 1.1s recovery
+    updateEnemyAI({
+      room,
+      enemy: charger,
+      dt: 0.25,
+      player,
+      projScale: 1,
+      enemyBullets: bullets,
+      enemyBombs: bombs
+    });
+    expect(charger.state).toBe('idle');
+    expect(charger.aiTimer).toBe(1.1);
+  });
+});
+
+describe('Systems: EnemyAI — Splitter Death Split', () => {
+  it('spawns 2 mini_swarmers at x - 14 and x + 14 on death', () => {
+    const room = createMockRoom();
+    const player = createMockPlayer();
+    const state = createCombatState();
+    const splitter = createEnemy('splitter', 360, 360, 2, false);
+    room.enemies = [splitter];
+
+    handleEnemyDeath({
+      room,
+      enemy: splitter,
+      index: 0,
+      player,
+      state,
+      floorNum: 2
+    });
+
+    // Original splitter removed
+    expect(room.enemies).not.toContain(splitter);
+    // Two mini_swarmers spawned
+    expect(room.enemies).toHaveLength(2);
+    expect(room.enemies[0].type).toBe('mini_swarmer');
+    expect(room.enemies[1].type).toBe('mini_swarmer');
+    expect(room.enemies[0].x).toBe(360 - 14);
+    expect(room.enemies[1].x).toBe(360 + 14);
+  });
+});
+
+describe('Systems: EnemyAI — All 10 Enemy Behaviors', () => {
+  it('swarmer advances with sinusoidal perpendicular wave', () => {
+    const room = createMockRoom();
+    const player = createMockPlayer({ x: 360, y: 500 }); // strictly South
+    const swarmer = createEnemy('swarmer', 360, 360, 1, false);
+    swarmer.zigPhase = 0;
+
+    updateEnemyAI({
+      room,
+      enemy: swarmer,
+      dt: 0.1,
+      player,
+      projScale: 1,
+      enemyBullets: [],
+      enemyBombs: []
+    });
+
+    expect(swarmer.y).toBeGreaterThan(360); // moved South toward player
+    expect(swarmer.zigPhase).toBeCloseTo(0.6, 5); // 0 + 0.1 * 6 = 0.6
+  });
+
+  it('turret stays stationary and fires aimed bullet every 1.35s', () => {
+    const room = createMockRoom();
+    const player = createMockPlayer({ x: 500, y: 360 }); // East
+    const turret = createEnemy('turret', 360, 360, 1, false);
+    turret.aiTimer = 0.05;
+    const bullets: EnemyBullet[] = [];
+
+    updateEnemyAI({
+      room,
+      enemy: turret,
+      dt: 0.1,
+      player,
+      projScale: 1,
+      enemyBullets: bullets,
+      enemyBombs: []
+    });
+
+    expect(turret.x).toBe(360); // stationary
+    expect(turret.y).toBe(360);
+    expect(turret.aiTimer).toBe(1.35); // timer reset
+    expect(bullets).toHaveLength(1);
+    expect(bullets[0].color).toBe('#9b5de5');
+    expect(bullets[0].vx).toBeCloseTo(245, 1);
+  });
+
+  it('trishot strafes tangentially and fires 3-bullet fan spread every 1.55s', () => {
+    const room = createMockRoom();
+    const player = createMockPlayer({ x: 360, y: 360 });
+    const trishot = createEnemy('trishot', 360, 180, 2, false); // 180px North (between 140 and 230)
+    trishot.aiTimer = 0.05;
+    const bullets: EnemyBullet[] = [];
+
+    updateEnemyAI({
+      room,
+      enemy: trishot,
+      dt: 0.1,
+      player,
+      projScale: 1,
+      enemyBullets: bullets,
+      enemyBombs: []
+    });
+
+    expect(trishot.aiTimer).toBe(1.55);
+    expect(bullets).toHaveLength(3); // 3-bullet fan
+    expect(bullets[0].color).toBe('#00f5d4');
+  });
+
+  it('bomber kites away from close player and lobs mortar bomb every 2.2s', () => {
+    const room = createMockRoom();
+    const player = createMockPlayer({ x: 360, y: 360 });
+    const bomber = createEnemy('bomber', 360, 460, 2, false); // 100px away (<190px)
+    bomber.aiTimer = 0.05;
+    const bombs: EnemyBomb[] = [];
+
+    updateEnemyAI({
+      room,
+      enemy: bomber,
+      dt: 0.1,
+      player,
+      projScale: 1,
+      enemyBullets: [],
+      enemyBombs: bombs
+    });
+
+    // Distance was 100px (<190px), so moveDir is -0.7 -> retreats further South (Y increases)
+    expect(bomber.y).toBeGreaterThan(460);
+    expect(bomber.aiTimer).toBe(2.2);
+    expect(bombs).toHaveLength(1);
+    expect(bombs[0].duration).toBe(0.95);
+  });
+
+  it('brute fires heavy cannon slug every 1.75s', () => {
+    const room = createMockRoom();
+    const player = createMockPlayer({ x: 500, y: 360 });
+    const brute = createEnemy('brute', 360, 360, 2, false);
+    brute.aiTimer = 0.05;
+    const bullets: EnemyBullet[] = [];
+
+    updateEnemyAI({
+      room,
+      enemy: brute,
+      dt: 0.1,
+      player,
+      projScale: 1,
+      enemyBullets: bullets,
+      enemyBombs: []
+    });
+
+    expect(brute.aiTimer).toBe(1.75);
+    expect(bullets).toHaveLength(1);
+    expect(bullets[0].radius).toBe(9); // heavy cannon slug
+    expect(bullets[0].color).toBe('#ff9f1c');
+  });
+
+  it('sniper fires high-velocity precision slug every 1.9s', () => {
+    const room = createMockRoom();
+    const player = createMockPlayer({ x: 500, y: 360 });
+    const sniper = createEnemy('sniper', 360, 360, 3, false);
+    sniper.aiTimer = 0.05;
+    const bullets: EnemyBullet[] = [];
+
+    updateEnemyAI({
+      room,
+      enemy: sniper,
+      dt: 0.1,
+      player,
+      projScale: 1,
+      enemyBullets: bullets,
+      enemyBombs: []
+    });
+
+    expect(sniper.aiTimer).toBe(1.9);
+    expect(bullets).toHaveLength(1);
+    expect(bullets[0].radius).toBe(5);
+    expect(bullets[0].vx).toBeCloseTo(410, 1);
+  });
+
+  it('pyro fires 6-bullet circular nova ring every 1.65s', () => {
+    const room = createMockRoom();
+    const player = createMockPlayer({ x: 360, y: 500 });
+    const pyro = createEnemy('pyro', 360, 360, 3, false);
+    pyro.aiTimer = 0.05;
+    const bullets: EnemyBullet[] = [];
+
+    updateEnemyAI({
+      room,
+      enemy: pyro,
+      dt: 0.1,
+      player,
+      projScale: 1,
+      enemyBullets: bullets,
+      enemyBombs: []
+    });
+
+    expect(pyro.aiTimer).toBe(1.65);
+    expect(bullets).toHaveLength(6); // 6-bullet circular nova
+    expect(bullets[0].color).toBe('#ff5400');
+  });
+});
+
+describe('Systems: EnemyAI — The 3 Boss Variants', () => {
+  it('creates the correct boss variant based on (floor - 1) % 3 formula', () => {
+    // Floor 1: (0) % 3 = 0 -> SCRAP GOLIATH
+    const boss1 = createBoss(1, 360, 360);
+    expect(boss1.bossVariant).toBe(0);
+    expect(boss1.name).toBe('SCRAP GOLIATH');
+    expect(boss1.color).toBe(BOSS_COLORS[0]);
+    expect(boss1.radius).toBe(34);
+    expect(boss1.speed).toBe(98 + 1 * 7); // 105
+
+    // Floor 2: (1) % 3 = 1 -> SIEGE BEHEMOTH
+    const boss2 = createBoss(2, 360, 360);
+    expect(boss2.bossVariant).toBe(1);
+    expect(boss2.name).toBe('SIEGE BEHEMOTH');
+    expect(boss2.color).toBe(BOSS_COLORS[1]);
+    expect(boss2.speed).toBe(98 + 2 * 7); // 112
+
+    // Floor 3: (2) % 3 = 2 -> OVERLORD HELION
+    const boss3 = createBoss(3, 360, 360);
+    expect(boss3.bossVariant).toBe(2);
+    expect(boss3.name).toBe('OVERLORD HELION');
+    expect(boss3.color).toBe(BOSS_COLORS[2]);
+    expect(boss3.speed).toBe(98 + 3 * 7); // 119
+
+    // Floor 4: wraps to Variant 0
+    const boss4 = createBoss(4, 360, 360);
+    expect(boss4.bossVariant).toBe(0);
+  });
+
+  it('Variant 0 (Scrap Goliath) fires circular bullet novas on primary attack', () => {
+    const room = createMockRoom();
+    const player = createMockPlayer();
+    const boss = createBoss(1, 360, 360);
+    boss.aiTimer = 0.05;
+    const bullets: EnemyBullet[] = [];
+    const bombs: EnemyBomb[] = [];
+
+    updateEnemyAI({
+      room,
+      enemy: boss,
+      dt: 0.1,
+      player,
+      projScale: 1,
+      enemyBullets: bullets,
+      enemyBombs: bombs,
+      floorNum: 1
+    });
+
+    // Floor 1 count: 8 + min(6, 2) = 10 bullets
+    expect(bullets).toHaveLength(10);
+    for (const b of bullets) {
+      expect(b.radius).toBe(7);
+      expect(b.color).toBe(boss.color);
+    }
+  });
+
+  it('Variant 1 (Siege Behemoth) lobs heavy mortar bombs on secondary attack', () => {
+    const room = createMockRoom();
+    const player = createMockPlayer({ x: 420, y: 380 });
+    const boss = createBoss(2, 360, 360); // Variant 1
+    boss.aiTimer = 10; // disable primary
+    boss.subTimer = 0.05; // trigger secondary
+    const bullets: EnemyBullet[] = [];
+    const bombs: EnemyBomb[] = [];
+
+    updateEnemyAI({
+      room,
+      enemy: boss,
+      dt: 0.1,
+      player,
+      projScale: 1,
+      enemyBullets: bullets,
+      enemyBombs: bombs,
+      floorNum: 2
+    });
+
+    expect(boss.subTimer).toBe(2.8);
+    expect(bombs).toHaveLength(1);
+    expect(bombs[0].targetX).toBe(420);
+    expect(bombs[0].targetY).toBe(380);
+    expect(bombs[0].duration).toBe(0.85);
+  });
+
+  it('Variant 2 (Overlord Helion) fires aimed 5-way spread burst on secondary attack', () => {
+    const room = createMockRoom();
+    const player = createMockPlayer({ x: 500, y: 360 });
+    const boss = createBoss(3, 360, 360); // Variant 2
+    boss.aiTimer = 10; // disable primary
+    boss.subTimer = 0.05; // trigger secondary
+    const bullets: EnemyBullet[] = [];
+    const bombs: EnemyBomb[] = [];
+
+    updateEnemyAI({
+      room,
+      enemy: boss,
+      dt: 0.1,
+      player,
+      projScale: 1,
+      enemyBullets: bullets,
+      enemyBombs: bombs,
+      floorNum: 3
+    });
+
+    expect(boss.subTimer).toBe(2.8);
+    expect(bullets).toHaveLength(5); // 5-way aimed spread
+    for (const b of bullets) {
+      expect(b.color).toBe('#00f5d4');
+      expect(b.radius).toBe(6);
+    }
+  });
+
+  it('spawns boss minions correctly based on floor (floor 1 swarmer, floor 2+ trishot)', () => {
+    // Floor 1 -> 1 swarmer
+    const minionsF1 = spawnBossMinions(1);
+    expect(minionsF1).toHaveLength(1);
+    expect(minionsF1[0].type).toBe('swarmer');
+
+    // Floor 2 -> 2 trishots
+    const minionsF2 = spawnBossMinions(2);
+    expect(minionsF2).toHaveLength(2);
+    expect(minionsF2[0].type).toBe('trishot');
+    expect(minionsF2[1].type).toBe('trishot');
+
+    // Floor 4 -> 4 trishots
+    const minionsF4 = spawnBossMinions(4);
+    expect(minionsF4).toHaveLength(4);
+
+    // Floor 10 -> capped at 4 minions
+    const minionsF10 = spawnBossMinions(10);
+    expect(minionsF10).toHaveLength(4);
+  });
+
+  it('generates complete boss defeat rewards table', () => {
+    const boss = createBoss(2, 360, 360);
+    const rewards = generateBossDefeatRewards(boss, 2);
+
+    // 8 + floor * 2 coins = 8 + 4 = 12
+    expect(rewards.coins).toBe(12);
+    // 7 + floor * 2 scrap = 7 + 4 = 11
+    expect(rewards.scrap).toBe(11);
+    // Guaranteed Jerry-can heart pickup
+    expect(rewards.heartPickup.type).toBe('heart');
+    // Guaranteed Equipment loot pickup
+    expect(rewards.lootPickup.type).toBe('loot');
+    // Guaranteed Item drop crate
+    expect(rewards.itemDropPickup.type).toBe('item_drop');
+    // Free Mod Pedestal (cost 0)
+    expect(rewards.modPedestalPickup.type).toBe('mod_pedestal');
+    // Trapdoor flag true
+    expect(rewards.trapdoor).toBe(true);
+  });
+});

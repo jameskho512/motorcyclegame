@@ -1,2 +1,5 @@
-﻿index - Copy*.html
-
+node_modules/
+dist/
+*.local
+.vite/
+index - Copy*.html
