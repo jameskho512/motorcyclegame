@@ -494,7 +494,8 @@ export function triggerExplosion(
   room: Room,
   state: CombatState,
   audio?: AudioService,
-  rng: () => number = Math.random
+  rng: () => number = Math.random,
+  isCryo: boolean = false
 ): void {
   state.screenShake = Math.max(state.screenShake, 8);
   if (audio) {
@@ -509,7 +510,7 @@ export function triggerExplosion(
     vy: 0,
     radius: 8,
     shockwaveMax: radius,
-    color: '#ff9f1c',
+    color: isCryo ? '#72efdd' : '#ff9f1c',
     life: 0.26,
     maxLife: 0.26
   });
@@ -524,7 +525,9 @@ export function triggerExplosion(
       vx: Math.cos(a) * spd,
       vy: Math.sin(a) * spd,
       radius: 3.5 + rng() * 5,
-      color: i % 2 === 0 ? '#ff5400' : '#ffbd00',
+      color: isCryo
+        ? (i % 2 === 0 ? '#72efdd' : '#48cae4')
+        : (i % 2 === 0 ? '#ff5400' : '#ffbd00'),
       life: 0.3 + rng() * 0.25,
       maxLife: 0.55
     });
@@ -537,6 +540,17 @@ export function triggerExplosion(
     if (d <= maxDist) {
       const falloff = 1 - (d / maxDist) * 0.45;
       damageEnemy(en, dmg * falloff, true, state);
+      if (isCryo) {
+        (en as any).slowTimer = 3.5;
+        state.damageNumbers.push({
+          x: en.x,
+          y: en.y - 18,
+          text: 'CRYO SLOW!',
+          color: '#72efdd',
+          life: 0.9,
+          maxLife: 0.9
+        });
+      }
     }
   }
 
@@ -545,7 +559,8 @@ export function triggerExplosion(
     const ob = room.obstacles[i];
     if (ob.type === 'barrel' && Math.hypot(ob.x - x, ob.y - y) <= radius + ob.size / 2) {
       room.obstacles.splice(i, 1);
-      triggerExplosion(ob.x, ob.y, 88, 34, room, state, audio, rng);
+      const cryo = (ob as any).variant === 'cryo_barrel';
+      triggerExplosion(ob.x, ob.y, 88, 34, room, state, audio, rng, cryo);
     }
   }
 }
@@ -817,7 +832,8 @@ export function updatePlayerBullets(
           ob.hp -= b.dmg;
           if (ob.hp <= 0) {
             room.obstacles.splice(j, 1);
-            triggerExplosion(ob.x, ob.y, 88, 34, room, state, audio, rng);
+            const cryo = (ob as any).variant === 'cryo_barrel';
+            triggerExplosion(ob.x, ob.y, 88, 34, room, state, audio, rng, cryo);
           }
         }
         if (!b.isFlame) {
@@ -1187,6 +1203,34 @@ export function updateCombatPipeline(
   onPlayerHurt?: (dmg: number) => void,
   rng: () => number = Math.random
 ): void {
+  const onPlayerHit = onPlayerHurt;
+
+  // Slow timer & enemy displacement damping
+  for (const en of room.enemies) {
+    if ((en as any).slowTimer && (en as any).slowTimer > 0) {
+      (en as any).slowTimer = Math.max(0, (en as any).slowTimer - dt);
+      en.x -= en.vx * dt * 0.45;
+      en.y -= en.vy * dt * 0.45;
+    }
+  }
+
+  // Biome zones hazards (lava vents)
+  const zones = (room as any).biomeZones;
+  if (Array.isArray(zones)) {
+    for (const z of zones) {
+      if (z.type === 'lava_vent') {
+        for (const en of room.enemies) {
+          if (!en.isDummy && Math.hypot(en.x - z.x, en.y - z.y) <= z.radius + en.radius) {
+            en.burnTimer = Math.max(en.burnTimer, 1.5);
+          }
+        }
+        if (Math.hypot(player.x - z.x, player.y - z.y) <= z.radius && player.invuln <= 0) {
+          onPlayerHit?.(1);
+        }
+      }
+    }
+  }
+
   // 1. Player bullets
   updatePlayerBullets(dt, state.bullets, room, player, state, audio, rng);
 

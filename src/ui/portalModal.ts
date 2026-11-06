@@ -51,6 +51,7 @@ const CONFIRM_KEYS = new Set(['enter', 'e', ' ', 'spacebar']);
 export class PortalModalController {
   private overlay: HTMLElement | null = null;
   private floorLabelEl: HTMLElement | null = null;
+  private warningEl: HTMLElement | null = null;
   private confirmBtn: HTMLButtonElement | null = null;
   private cancelBtn: HTMLButtonElement | null = null;
 
@@ -68,6 +69,7 @@ export class PortalModalController {
     if (typeof document !== 'undefined') {
       this.overlay = document.getElementById('portal-confirm-overlay');
       this.floorLabelEl = document.getElementById('portal-floor-label');
+      this.warningEl = document.getElementById('portal-warning');
       this.confirmBtn = document.getElementById('btn-portal-confirm') as HTMLButtonElement | null;
       this.cancelBtn = document.getElementById('btn-portal-cancel') as HTMLButtonElement | null;
 
@@ -89,8 +91,27 @@ export class PortalModalController {
     this.pendingConfirm = onConfirm;
     this.pendingCancel = onCancel || null;
 
-    if (this.floorLabelEl) {
-      this.floorLabelEl.textContent = `DESCEND TO FLOOR ${info.floorNum + 1}?`;
+    if (info.floorNum === 6) {
+      if (this.floorLabelEl) {
+        this.floorLabelEl.textContent = 'VALHALLA CONQUERED! ENTER OVERDRIVE FLR 7?';
+      }
+      if (this.warningEl) {
+        this.warningEl.textContent = 'Victory Bonus (+50 Scrap) ready! Enter Endless Overdrive for 2x Scrap & Elite swarms.';
+      }
+    } else if (info.floorNum > 6) {
+      if (this.floorLabelEl) {
+        this.floorLabelEl.textContent = `ENDLESS OVERDRIVE // FLOOR ${info.floorNum + 1}?`;
+      }
+      if (this.warningEl) {
+        this.warningEl.textContent = 'Overdrive scaling intensifies. Unbought items on this floor will be lost.';
+      }
+    } else {
+      if (this.floorLabelEl) {
+        this.floorLabelEl.textContent = `DESCEND TO FLOOR ${info.floorNum + 1}?`;
+      }
+      if (this.warningEl) {
+        this.warningEl.textContent = 'Unexplored rooms and unbought items on this floor will be lost.';
+      }
     }
 
     if (!this.visible && typeof document !== 'undefined') {

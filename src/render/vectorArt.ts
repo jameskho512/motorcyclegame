@@ -1640,42 +1640,59 @@ export function drawObstacle(g: Graphics, ob: Obstacle): void {
       .fill({ color: 0x323546 })
       .stroke({ color: 0x0a0b10, width: 1.5 });
   } else {
-    // 2.5D Standing Explosive Fuel / TNT Drum Cylinder
+    // 2.5D Standing Explosive Fuel / TNT Drum Cylinder / Sub-Zero Cryo Barrel
+    const isCryo = (ob as any).variant === 'cryo_barrel';
     const r = hs * 0.92;
     const topY = ob.y - 10;
     const botY = ob.y + 6;
 
+    const bodyColor = isCryo ? 0x00bbf9 : 0xc92a37;
+    const baseColor = isCryo ? 0x0077b6 : 0x9e1b26;
+    const shadowColor = isCryo ? 0x0077b6 : 0x80131d;
+    const highlightColor = isCryo ? 0x90e0ef : 0xff6b77;
+    const lidColor = isCryo ? 0x00bbf9 : 0xe63946;
+    const hazardColor = isCryo ? 0x72efdd : 0xffd166;
+
     // Cylinder vertical body
     g.rect(ob.x - r, topY, r * 2, botY - topY)
-      .fill({ color: 0xc92a37 })
+      .fill({ color: bodyColor })
       .stroke({ color: 0x0a0b10, width: 3 });
 
     // Bottom elliptical base of drum
     g.ellipse(ob.x, botY, r, r * 0.55)
-      .fill({ color: 0x9e1b26 })
+      .fill({ color: baseColor })
       .stroke({ color: 0x0a0b10, width: 3 });
 
     // Right-side 3D cel-shaded shadow band on cylinder wall
     g.rect(ob.x + r * 0.2, topY, r * 0.75, botY - topY)
-      .fill({ color: 0x80131d, alpha: 0.65 });
+      .fill({ color: shadowColor, alpha: 0.65 });
 
     // Left-side 3D specular highlight band
     g.rect(ob.x - r * 0.75, topY, r * 0.3, botY - topY)
-      .fill({ color: 0xff6b77, alpha: 0.65 });
+      .fill({ color: highlightColor, alpha: 0.65 });
 
-    // Curved Yellow Hazard Stripe around drum waist
+    // Curved Hazard Stripe around drum waist
     g.ellipse(ob.x, (topY + botY) / 2 + 2, r, r * 0.42)
-      .stroke({ color: 0xffd166, width: 3 });
+      .stroke({ color: hazardColor, width: 3 });
+
+    // Center Hazard Diamond
+    const midY = (topY + botY) / 2 + 2;
+    g.poly([
+      ob.x, midY - 3.5,
+      ob.x + 3.5, midY,
+      ob.x, midY + 3.5,
+      ob.x - 3.5, midY
+    ]).fill({ color: hazardColor });
 
     // 3D Elliptical Top Lid of Drum
     g.ellipse(ob.x, topY, r, r * 0.55)
-      .fill({ color: 0xe63946 })
+      .fill({ color: lidColor })
       .stroke({ color: 0x0a0b10, width: 3 });
     g.ellipse(ob.x, topY, r * 0.72, r * 0.38)
       .fill({ color: 0x242633 })
-      .stroke({ color: 0xffd166, width: 1.5 });
+      .stroke({ color: hazardColor, width: 1.5 });
     // Bung cap glint
-    g.circle(ob.x - 4, topY, 2.2).fill({ color: 0xffd166 });
+    g.circle(ob.x - 4, topY, 2.2).fill({ color: hazardColor });
   }
 }
 

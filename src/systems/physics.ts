@@ -129,7 +129,31 @@ export function updateBikeKinematics(
   let skidCreated = false;
   let diff = 0;
 
-  const effSpeed = calculateEffectiveSpeed(player, boosting);
+  let effSpeed = calculateEffectiveSpeed(player, boosting);
+
+  // Biome zone effects
+  const pRadius = player.radius || PLAYER_RADIUS;
+  let isBoostStrip = false;
+  let isIcePatch = false;
+  let isOilSlick = false;
+
+  if (room?.biomeZones) {
+    for (const z of room.biomeZones) {
+      if (Math.hypot(player.x - z.x, player.y - z.y) < z.radius + pRadius) {
+        if (z.type === 'boost_strip') isBoostStrip = true;
+        if (z.type === 'ice_patch') isIcePatch = true;
+        if (z.type === 'oil_slick') isOilSlick = true;
+      }
+    }
+  }
+
+  if (isBoostStrip) {
+    effSpeed *= 1.35;
+    player.nos = Math.min(player.nosMax, player.nos + 25 * dt);
+  }
+  if (isIcePatch) {
+    effSpeed *= 1.15;
+  }
 
   if (ix !== 0 || iy !== 0) {
     moved = true;
@@ -140,17 +164,23 @@ export function updateBikeKinematics(
     const targetVx = normIx * effSpeed;
     const targetVy = normIy * effSpeed;
 
-    const accelLerp = Math.min(1, dt * ACCEL_LERP_FACTOR);
+    let accelLerp = Math.min(1, dt * ACCEL_LERP_FACTOR);
+    if (isIcePatch) {
+      accelLerp *= 0.45;
+    }
     player.vx += (targetVx - player.vx) * accelLerp;
     player.vy += (targetVy - player.vy) * accelLerp;
 
     const targetAngle = Math.atan2(player.vy, player.vx);
     diff = getAngleDiff(targetAngle, player.bikeAngle);
 
-    const steerLerp = Math.min(1, dt * STEER_LERP_FACTOR);
+    let steerLerp = Math.min(1, dt * STEER_LERP_FACTOR);
+    if (isOilSlick) {
+      steerLerp *= 0.6;
+    }
     player.bikeAngle += diff * steerLerp;
 
-    if (Math.abs(diff) > SKID_MARK_THRESHOLD && room) {
+    if ((Math.abs(diff) > SKID_MARK_THRESHOLD || isOilSlick) && room) {
       if (room.skids.length < MAX_SKIDS_PER_ROOM) {
         room.skids.push({ x: player.x, y: player.y, angle: player.bikeAngle });
         skidCreated = true;

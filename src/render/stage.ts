@@ -219,7 +219,7 @@ export class StageManager {
     this.renderHUD(this.hudGraphics, player, room, damageNumbers, timestampMs);
   }
 
-  private renderFloor(g: Graphics, room: Room, _floorNum: number, timestampMs: number): void {
+  private renderFloor(g: Graphics, room: Room, floorNum: number, timestampMs: number): void {
     const W = ARENA_WIDTH;
     const H = ARENA_HEIGHT;
     const WALL = WALL_THICKNESS;
@@ -227,16 +227,31 @@ export class StageManager {
     // 1. Outer deep bunker hull abyss
     g.rect(0, 0, W, H).fill({ color: 0x090a10 });
 
-    // 2. Inner room floor base color by room type (warm industrial slate/brown-grey like concept art)
-    const themeColors: Record<string, { floor: number; plateHi: number; plateLo: number; accent: number }> = {
-      start:    { floor: 0x26242c, plateHi: 0x33303b, plateLo: 0x1b1920, accent: 0xff6b2b },
-      combat:   { floor: 0x25232b, plateHi: 0x312e39, plateLo: 0x19181f, accent: 0xe5203a },
-      treasure: { floor: 0x292434, plateHi: 0x373046, plateLo: 0x1c1824, accent: 0xffd60a },
-      shop:     { floor: 0x1d2a2d, plateHi: 0x27383c, plateLo: 0x141d20, accent: 0x2ee6ff },
-      boss:     { floor: 0x2c1921, plateHi: 0x3b222c, plateLo: 0x1d0f15, accent: 0xff2a55 },
-      hub:      { floor: 0x161a26, plateHi: 0x20273a, plateLo: 0x10131d, accent: 0x2ee6ff }
+    // 2. Floor Biome palettes based on floorNum (1..6)
+    const biomeIdx = ((Math.max(1, floorNum) - 1) % 6) + 1;
+    const biomePalettes: Record<number, { floor: number; plateHi: number; plateLo: number; wall: number; accent: number }> = {
+      1: { floor: 0x25232b, plateHi: 0x312e39, plateLo: 0x19181f, wall: 0x2c2836, accent: 0xff6b2b },
+      2: { floor: 0x2b1d19, plateHi: 0x382620, plateLo: 0x1c120f, wall: 0x36211c, accent: 0xff9f1c },
+      3: { floor: 0x151829, plateHi: 0x1e233a, plateLo: 0x0e101c, wall: 0x1d2238, accent: 0x00f5d4 },
+      4: { floor: 0x192533, plateHi: 0x233446, plateLo: 0x111924, wall: 0x203040, accent: 0x72efdd },
+      5: { floor: 0x261419, plateHi: 0x361c23, plateLo: 0x180c10, wall: 0x30171d, accent: 0xff2a55 },
+      6: { floor: 0x22202b, plateHi: 0x302d3d, plateLo: 0x16151d, wall: 0x2b2838, accent: 0xffd60a }
     };
-    const palette = themeColors[room.type] || themeColors.combat;
+
+    let palette = { ...(biomePalettes[biomeIdx] || biomePalettes[1]) };
+
+    if (room.type === 'hub') {
+      palette = { floor: 0x161a26, plateHi: 0x20273a, plateLo: 0x10131d, wall: 0x242a3d, accent: 0x2ee6ff };
+    } else {
+      if (room.type === 'treasure') {
+        palette.accent = 0xffd60a;
+      } else if (room.type === 'shop') {
+        palette.accent = 0x00f59b;
+      } else if (room.type === 'boss') {
+        palette.accent = 0xff1744;
+      }
+    }
+
     const innerW = W - WALL * 2;
     const innerH = H - WALL * 2;
 
@@ -253,7 +268,7 @@ export class StageManager {
 
         // Subtle alternating plate tone
         g.rect(tx + 2, ty + 2, tile - 4, tile - 4)
-          .fill({ color: checker ? palette.plateHi : palette.floor, alpha: checker ? 0.42 : 0.2 });
+          .fill({ color: checker ? palette.plateHi : palette.plateLo, alpha: checker ? 0.42 : 0.25 });
 
         // Top & Left 3D cel-shaded specular bevel
         g.moveTo(tx + 2, ty + tile - 2)
@@ -335,6 +350,63 @@ export class StageManager {
       g.moveTo(cx + 65, cy + 65).lineTo(cx + 28, cy + 28).stroke({ color: palette.accent, width: 2, alpha: 0.25 });
     }
 
+    // 5b. Biome Surface Hazard Zones (oil_slick, lava_vent, boost_strip, ice_patch)
+    const zones = (room as any).biomeZones as any[] | undefined;
+    if (Array.isArray(zones)) {
+      for (const z of zones) {
+        if (!z) continue;
+        if (z.type === 'oil_slick') {
+          // dark glossy puddle with inner iridescent ring
+          g.circle(z.x, z.y, z.radius)
+            .fill({ color: 0x0b0c12, alpha: 0.85 })
+            .stroke({ color: 0x72efdd, width: 2, alpha: 0.45 });
+          g.circle(z.x, z.y, z.radius * 0.65)
+            .stroke({ color: 0xffbe0b, width: 2, alpha: 0.3 });
+        } else if (z.type === 'lava_vent') {
+          // glowing molten grate circle and pulsing magma core
+          g.circle(z.x, z.y, z.radius)
+            .fill({ color: 0x2b0905, alpha: 0.9 })
+            .stroke({ color: 0xff5400, width: 3, alpha: 0.85 });
+          const corePulse = z.radius * (0.55 + 0.1 * Math.sin(timestampMs / 150));
+          g.circle(z.x, z.y, corePulse)
+            .fill({ color: 0xffbe0b, alpha: 0.65 });
+        } else if (z.type === 'boost_strip') {
+          // glowing neon speed pad with 3 animated cyan/gold chevrons (>>>) inside
+          const padW = z.radius * 2;
+          const padH = z.radius * 1.1;
+          g.roundRect(z.x - z.radius, z.y - z.radius * 0.55, padW, padH, 8)
+            .fill({ color: 0x0d1b2a, alpha: 0.85 })
+            .stroke({ color: 0x00f5d4, width: 2.5, alpha: 0.9 });
+
+          const chevSpacing = padW / 4;
+          for (let c = -1; c <= 1; c++) {
+            const chX = z.x + c * chevSpacing;
+            const chevPulse = Math.sin(timestampMs * 0.008 + c * 1.2);
+            const chevColor = chevPulse > 0 ? 0x00f5d4 : 0xffd60a;
+            const chevAlpha = 0.7 + Math.abs(chevPulse) * 0.3;
+            const chevH = padH * 0.3;
+            const chevW = chevSpacing * 0.45;
+            g.moveTo(chX - chevW, z.y - chevH)
+              .lineTo(chX + chevW * 0.5, z.y)
+              .lineTo(chX - chevW, z.y + chevH)
+              .stroke({ color: chevColor, width: 2.5, alpha: chevAlpha });
+          }
+        } else if (z.type === 'ice_patch') {
+          // translucent crystalline ice sheet with crisp white diagonal frost lines
+          g.circle(z.x, z.y, z.radius)
+            .fill({ color: 0x90e0ef, alpha: 0.28 })
+            .stroke({ color: 0x72efdd, width: 2, alpha: 0.7 });
+          const rIce = z.radius * 0.68;
+          g.moveTo(z.x - rIce, z.y - rIce * 0.4)
+            .lineTo(z.x + rIce * 0.8, z.y + rIce * 0.3)
+            .stroke({ color: 0xffffff, width: 1.5, alpha: 0.65 });
+          g.moveTo(z.x - rIce * 0.5, z.y + rIce * 0.5)
+            .lineTo(z.x + rIce * 0.5, z.y - rIce * 0.5)
+            .stroke({ color: 0xffffff, width: 1.2, alpha: 0.5 });
+        }
+      }
+    }
+
     // 6. 2.5D Perspective Bunker Walls (North, West, East, South)
     const parapet = 12;
 
@@ -347,7 +419,7 @@ export class StageManager {
 
     // 3D Vertical North wall face (y: parapet .. WALL)
     g.rect(parapet, parapet, W - parapet * 2, WALL - parapet)
-      .fill({ color: 0x2c2836 })
+      .fill({ color: palette.wall })
       .stroke({ color: 0x0a0b10, width: 2.5 });
 
     // North wall lower hazard skirting strip

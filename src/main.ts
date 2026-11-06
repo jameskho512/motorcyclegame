@@ -1032,9 +1032,25 @@ export class MotoRogueApp {
   public nextFloor(): void {
     this.portalDismissed = false;
     this.portalModal.close();
+    const clearedValhalla = this.stateManager.floorNum === 6;
     this.stateManager.floorNum += 1;
+    if (clearedValhalla) {
+      this.stateManager.metaSave.scrap += 50;
+      this.stateManager.saveMeta();
+    }
     this.audio.nextFloor();
     this.startNewRun(true);
+    if (clearedValhalla) {
+      this.combatState.damageNumbers.push({
+        x: this.stateManager.player.x,
+        y: this.stateManager.player.y - 38,
+        text: 'VALHALLA VICTORY! +50 SCRAP // ENDLESS OVERDRIVE!',
+        color: '#ffd60a',
+        life: 2.5,
+        maxLife: 2.5
+      });
+      this.updateHUD();
+    }
   }
 }
 

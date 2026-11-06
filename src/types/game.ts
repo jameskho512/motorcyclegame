@@ -272,6 +272,7 @@ export interface BaseEnemy {
   speed: number;
   burnTimer: number;
   burnTick: number;
+  slowTimer?: number;
   aiTimer: number;
   state: string;
   angle: number;
@@ -319,6 +320,7 @@ export interface Obstacle {
   y: number;
   size: number;
   type: ObstacleType;
+  variant?: 'explosive' | 'cryo_barrel';
   hp: number;
 }
 
@@ -327,6 +329,15 @@ export interface Obstacle {
 // ============================================================================
 
 export type RoomType = 'start' | 'combat' | 'treasure' | 'shop' | 'boss' | 'hub';
+
+export type BiomeZoneType = 'oil_slick' | 'lava_vent' | 'boost_strip' | 'ice_patch';
+
+export interface BiomeZone {
+  x: number;
+  y: number;
+  radius: number;
+  type: BiomeZoneType;
+}
 
 export interface SkidMark {
   x: number;
@@ -351,6 +362,7 @@ export interface Room {
   pickups: Pickup[];
   hazards: FloorHazard[];
   skids: SkidMark[];
+  biomeZones?: BiomeZone[];
   trapdoor: boolean;
   bossIntroShown?: boolean;
   powerUpDropQuota?: FloorPowerUpQuota;

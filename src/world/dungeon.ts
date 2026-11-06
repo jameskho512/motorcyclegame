@@ -30,10 +30,20 @@ import {
   type Boss,
   type BossVariantId,
   type BossVariantName,
-  type WeaponId
+  type WeaponId,
+  type BiomeZoneType
 } from '../types/game';
 import { RUN_MOD_POOL, type RunModDef } from '../data/upgrades';
 import { WEAPONS, UNLOCKABLE_IDS } from '../data/weapons';
+
+export const BIOME_NAMES: Record<number, string> = {
+  1: 'RUSTYARD BUNKER',
+  2: 'SMELTER FOUNDRY',
+  3: 'NEON CYBER-FREEWAY',
+  4: 'SUB-ZERO CRYO LAB',
+  5: 'MAGMA CORE',
+  6: 'CHROME CITADEL'
+};
 
 // Entity ID sequence
 let nextEntityId = 1;
@@ -350,9 +360,38 @@ export function populateRoom(
   floor: number,
   random: () => number = Math.random
 ): void {
+  room.biomeZones = [];
   if (room.type === 'start' || room.type === 'treasure' || room.type === 'shop' || room.type === 'hub') {
     return;
   }
+
+  const biomeIdx = ((Math.max(1, floor) - 1) % 6) + 1;
+
+  // Add 2 environmental BiomeZone objects
+  let zoneType: BiomeZoneType = 'oil_slick';
+  let zoneRadius = 44;
+  if (biomeIdx === 1) {
+    zoneType = 'oil_slick';
+    zoneRadius = 44;
+  } else if (biomeIdx === 2 || biomeIdx === 5) {
+    zoneType = 'lava_vent';
+    zoneRadius = 38;
+  } else if (biomeIdx === 3 || biomeIdx === 6) {
+    zoneType = 'boost_strip';
+    zoneRadius = 44;
+  } else if (biomeIdx === 4) {
+    zoneType = 'ice_patch';
+    zoneRadius = 50;
+  }
+
+  const ox1 = (random() - 0.5) * 40;
+  const oy1 = (random() - 0.5) * 40;
+  const ox2 = (random() - 0.5) * 40;
+  const oy2 = (random() - 0.5) * 40;
+  room.biomeZones.push(
+    { x: Math.round(220 + ox1), y: Math.round(220 + oy1), radius: zoneRadius, type: zoneType },
+    { x: Math.round(500 + ox2), y: Math.round(500 + oy2), radius: zoneRadius, type: zoneType }
+  );
 
   // 1. Choose obstacle pattern
   const patIndex = room.type === 'boss' ? 0 : Math.floor(random() * OBSTACLE_PATTERNS.length);
@@ -365,6 +404,7 @@ export function populateRoom(
       y: pos.y,
       size: 42,
       type: isBarrel ? 'barrel' : 'rock',
+      variant: isBarrel ? (biomeIdx === 4 ? 'cryo_barrel' : 'explosive') : undefined,
       hp: isBarrel ? 18 + floor * 6 : 99999
     };
     room.obstacles.push(obstacle);
@@ -495,6 +535,7 @@ export function generateDungeon(
       pickups: [],
       hazards: [],
       skids: [],
+      biomeZones: [],
       trapdoor: false,
       powerUpDropQuota: floorPowerUpQuota,
       powerUpDroppedInRoom: false
@@ -647,6 +688,7 @@ export function createHomeBaseRoom(): Room {
     ],
     hazards: [],
     skids: [],
+    biomeZones: [],
     trapdoor: false
   };
 }
