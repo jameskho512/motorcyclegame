@@ -20,6 +20,8 @@ import {
   calcMinimapRoomCoords,
   getMinimapFloorSummary,
   HUDController,
+  getModStackTierClass,
+  type ModStackTierClass,
   type MinimapFloorSummary
 } from '../../src/ui/hud';
 import { parseColor, drawObstacle } from '../../src/render/vectorArt';
@@ -1287,6 +1289,131 @@ describe('Render & UI Subsystems', () => {
       expect(bountyRow4.textContent).toContain('CRYO BREAKER');
       expect(bountyRow4.textContent).toContain('+18⚙️ +22🪙');
       expect(bountyRow4.getAttribute('data-tip')).toContain('CRYO BREAKER: Detonate 2 Cryo/Explosive Barrels or clear Floor 4 Boss (Reward: +18 Scrap, +22 Coins)');
+    });
+  });
+
+  describe('HUD Mod Stack Tier & Evolution Readiness (getModStackTierClass & updateMods)', () => {
+    it('returns stack-tier-1 for count 1, and handles defaults/edge cases gracefully', () => {
+      expect(getModStackTierClass(1)).toBe('stack-tier-1');
+      expect(getModStackTierClass(0)).toBe('stack-tier-1');
+      expect(getModStackTierClass(-2)).toBe('stack-tier-1');
+      expect(getModStackTierClass(undefined)).toBe('stack-tier-1');
+      expect(getModStackTierClass(NaN as any)).toBe('stack-tier-1');
+    });
+
+    it('returns stack-tier-2 for count 2', () => {
+      expect(getModStackTierClass(2)).toBe('stack-tier-2');
+      expect(getModStackTierClass(2.7)).toBe('stack-tier-2');
+    });
+
+    it('returns stack-tier-evo for count 3 and higher (count 3, count 5)', () => {
+      const evoTier: ModStackTierClass = getModStackTierClass(3);
+      expect(evoTier).toBe('stack-tier-evo');
+      expect(getModStackTierClass(5)).toBe('stack-tier-evo');
+      expect(getModStackTierClass(10)).toBe('stack-tier-evo');
+    });
+
+    it('applies stack-tier classes and data-stack-tier attribute to #mod-list elements when updating mods', () => {
+      document.body.innerHTML = `
+        <div id="mod-list"></div>
+      `;
+
+      const hud = new HUDController();
+      const dummyPlayer: any = {
+        items: [],
+        itemStacks: {
+          nitro_syringe: 3,
+          gasoline: 2,
+          chrome_lens: 1
+        }
+      };
+
+      hud.updateMods(dummyPlayer);
+
+      const list = document.getElementById('mod-list')!;
+      expect(list).not.toBeNull();
+      const chips = list.querySelectorAll('[data-stack-tier]');
+      expect(chips.length).toBe(3);
+
+      const evoChip = list.querySelector('[aria-label*="Nitro Syringe x3"]') || list.children[0];
+      expect(evoChip.getAttribute('data-stack-tier')).toBe('stack-tier-evo');
+      expect(evoChip.classList.contains('stack-tier-evo')).toBe(true);
+
+      const tier2Chip = list.querySelector('[aria-label*="Gasoline x2"]') || list.children[1];
+      expect(tier2Chip.getAttribute('data-stack-tier')).toBe('stack-tier-2');
+      expect(tier2Chip.classList.contains('stack-tier-2')).toBe(true);
+
+      const tier1Chip = list.querySelector('[aria-label*="Chrome Lens x1"]') || list.children[2];
+      expect(tier1Chip.getAttribute('data-stack-tier')).toBe('stack-tier-1');
+      expect(tier1Chip.classList.contains('stack-tier-1')).toBe(true);
+    });
+
+    it('sets data-stack-tier="stack-tier-evo" on #mod-list elements when stacked 3+ times via updateSidebar', () => {
+      document.body.innerHTML = `
+        <div id="mod-list"></div>
+        <div id="items-list"></div>
+      `;
+
+      const hud = new HUDController();
+      const dummyPlayer: any = {
+        hp: 6,
+        maxHp: 6,
+        coins: 10,
+        nos: 100,
+        nosMax: 100,
+        nosLock: false,
+        items: [],
+        itemStacks: {
+          nitro_syringe: 5
+        },
+        weapon: 'pistol',
+        runWeapons: {}
+      };
+
+      hud.updateSidebar(dummyPlayer, 1);
+
+      const modList = document.getElementById('mod-list')!;
+      const evoMod = modList.querySelector('[data-stack-tier="stack-tier-evo"]');
+      expect(evoMod).not.toBeNull();
+      expect(evoMod?.classList.contains('stack-tier-evo')).toBe(true);
+
+      const itemsList = document.getElementById('items-list')!;
+      const evoItem = itemsList.querySelector('[data-stack-tier="stack-tier-evo"]');
+      expect(evoItem).not.toBeNull();
+      expect(evoItem?.classList.contains('stack-tier-evo')).toBe(true);
+    });
+
+    it('updates pre-existing #mod-list elements preserving existing classes and text', () => {
+      document.body.innerHTML = `
+        <div id="mod-list">
+          <span class="custom-chip existing-badge" data-count="3">Nitro Syringe x3</span>
+          <span class="custom-chip existing-badge" data-count="2">Speed x2</span>
+          <span class="custom-chip existing-badge" data-count="1">Plating x1</span>
+        </div>
+      `;
+
+      const hud = new HUDController();
+      hud.updateMods();
+
+      const chips = document.querySelectorAll('#mod-list .custom-chip');
+      expect(chips.length).toBe(3);
+
+      // Verify chip 0 (count 3)
+      expect(chips[0].getAttribute('data-stack-tier')).toBe('stack-tier-evo');
+      expect(chips[0].classList.contains('stack-tier-evo')).toBe(true);
+      expect(chips[0].classList.contains('custom-chip')).toBe(true);
+      expect(chips[0].classList.contains('existing-badge')).toBe(true);
+      expect(chips[0].textContent).toBe('Nitro Syringe x3');
+
+      // Verify chip 1 (count 2)
+      expect(chips[1].getAttribute('data-stack-tier')).toBe('stack-tier-2');
+      expect(chips[1].classList.contains('stack-tier-2')).toBe(true);
+      expect(chips[1].classList.contains('custom-chip')).toBe(true);
+
+      // Verify chip 2 (count 1)
+      expect(chips[2].getAttribute('data-stack-tier')).toBe('stack-tier-1');
+      expect(chips[2].classList.contains('stack-tier-1')).toBe(true);
+      expect(chips[2].classList.contains('custom-chip')).toBe(true);
     });
   });
 });

@@ -37,6 +37,15 @@ export interface MinimapCoord {
   visible: boolean;
 }
 
+export type ModStackTierClass = 'stack-tier-1' | 'stack-tier-2' | 'stack-tier-evo';
+
+export function getModStackTierClass(count: number = 1): ModStackTierClass {
+  const safeCount = Math.max(1, Math.floor(Number(count) || 1));
+  if (safeCount >= 3) return 'stack-tier-evo';
+  if (safeCount === 2) return 'stack-tier-2';
+  return 'stack-tier-1';
+}
+
 /**
  * Pure calculation: determines if fuel is at or below the low threshold (<= 34%).
  */
@@ -1146,6 +1155,114 @@ export class HUDController {
   }
 
   /**
+   * Updates installed run mods & RoR2 item stack chips in #mod-list and #items-list.
+   * Computes getModStackTierClass(count) and applies the stack tier class
+   * ('stack-tier-1' | 'stack-tier-2' | 'stack-tier-evo') and setAttribute('data-stack-tier', stackClass)
+   * while preserving all existing classes and text.
+   */
+  public updateMods(player?: PlayerState): void {
+    if (typeof document === 'undefined') return;
+
+    const containers = [
+      document.getElementById('mod-list'),
+      document.getElementById('items-list')
+    ].filter((el, idx, arr) => Boolean(el) && arr.indexOf(el) === idx) as HTMLElement[];
+
+    if (containers.length === 0) return;
+
+    if (!player) {
+      for (const container of containers) {
+        Array.from(container.children).forEach(child => {
+          if (child.classList.contains('items-empty')) return;
+          const countAttr = child.getAttribute('data-count') || child.getAttribute('data-stacks');
+          let count = 1;
+          if (countAttr) {
+            count = Number(countAttr) || 1;
+          } else {
+            const text = child.textContent || '';
+            const match = text.match(/x\s*(\d+)/i);
+            if (match) count = Number(match[1]) || 1;
+          }
+          const stackClass = getModStackTierClass(count);
+          child.classList.add(stackClass);
+          child.setAttribute('data-stack-tier', stackClass);
+        });
+      }
+      return;
+    }
+
+    const itemStacks = player.itemStacks || {};
+    const items = player.items || [];
+
+    const stackBadges = Object.keys(itemStacks)
+      .filter(id => (itemStacks[id] || 0) > 0)
+      .map((id, index) => {
+        const it = DROP_ITEMS[id as DropItemId];
+        const n = itemStacks[id];
+        const stackClass = getModStackTierClass(n);
+        const rotClass = `rot-${(index % 6) + 1}`;
+
+        if (it) {
+          const svgIcon = DROP_ITEM_HI_FI_SVG[id as DropItemId] || it.icon;
+          return `<span class="item-badge mod-chip sticker ${rotClass} ${stackClass}" data-stack-tier="${stackClass}" style="--ic:${it.color}" aria-label="${it.name} x${n}" data-tip="<b style='color:${it.color}'>${it.name} x${n}</b><br/>${it.desc}<br/><i>Stacks with duplicates</i>"><span class="sticker-glyph">${svgIcon}</span><span class="sticker-count">x${n}</span><span class="sticker-peel" aria-hidden="true"></span></span>`;
+        }
+
+        const m = (ALL_RUN_MOD_POOL || RUN_MOD_POOL).find(x => x.name === id || x.id === id);
+        const svgIcon = getModIconSvg(m ? m.id : id);
+        const modName = m ? m.name : id;
+        const modDesc = m ? m.desc : '';
+        return `<span class="item-badge mod-chip sticker is-mod ${rotClass} ${stackClass}" data-stack-tier="${stackClass}" style="--ic:#ffd60a" aria-label="${modName} x${n}" data-tip="<b style='color:#ffd166'>${modName} x${n}</b><br/>${modDesc}"><span class="sticker-glyph">${svgIcon}</span><span class="sticker-count">x${n}</span><span class="sticker-peel" aria-hidden="true"></span></span>`;
+      });
+
+    const modBadges = items.map((name, index) => {
+      const m = (ALL_RUN_MOD_POOL || RUN_MOD_POOL).find(x => x.name === name || x.id === name);
+      const svgIcon = getModIconSvg(m ? m.id : name);
+      const rotClass = `rot-${((index + 3) % 6) + 1}`;
+      const count = (itemStacks[m ? m.id : name] || itemStacks[name])
+        || items.filter(x => x === name).length
+        || 1;
+      const stackClass = getModStackTierClass(count);
+      return `<span class="item-badge mod-chip sticker is-mod ${rotClass} ${stackClass}" data-stack-tier="${stackClass}" style="--ic:#ffd60a" aria-label="${name}" data-tip="<b style='color:#ffd166'>${name}</b><br/>${m ? m.desc : ''}"><span class="sticker-glyph">${svgIcon}</span><span class="sticker-peel" aria-hidden="true"></span></span>`;
+    });
+
+    const all = stackBadges.concat(modBadges).filter(Boolean);
+
+    for (const container of containers) {
+      if (all.length === 0 && container.children.length > 0 && !container.querySelector('.items-empty')) {
+        Array.from(container.children).forEach(child => {
+          const countAttr = child.getAttribute('data-count') || child.getAttribute('data-stacks');
+          let count = 1;
+          if (countAttr) {
+            count = Number(countAttr) || 1;
+          } else {
+            const text = child.textContent || '';
+            const match = text.match(/x\s*(\d+)/i);
+            if (match) count = Number(match[1]) || 1;
+          }
+          const stackClass = getModStackTierClass(count);
+          child.classList.add(stackClass);
+          child.setAttribute('data-stack-tier', stackClass);
+        });
+      } else {
+        container.classList.toggle('is-empty', all.length === 0);
+        container.innerHTML = all.length === 0
+          ? '<span class="items-empty">No mods yet — kill enemies for toolbox drops!</span>'
+          : all.join('');
+
+        Array.from(container.children).forEach(child => {
+          if (!child.classList.contains('items-empty')) {
+            const tier = child.getAttribute('data-stack-tier') as ModStackTierClass | null;
+            if (tier) {
+              child.classList.add(tier);
+              child.setAttribute('data-stack-tier', tier);
+            }
+          }
+        });
+      }
+    }
+  }
+
+  /**
    * Updates HUD DOM widgets: Hull meter, NOS meter, LV badge, stats, currency,
    * high-fidelity weapon cards, die-cut mod stickers, boss bar, and isometric minimap.
    */
@@ -1234,32 +1351,7 @@ export class HUDController {
     }
 
     // 6. Installed Run Mods & RoR2 Item Stacks (High-Fidelity Die-Cut Vinyl Stickers)
-    const itemsEl = document.getElementById('items-list');
-    if (itemsEl) {
-      const stackBadges = Object.keys(player.itemStacks)
-        .filter(id => player.itemStacks[id] > 0)
-        .map((id, index) => {
-          const it = DROP_ITEMS[id as DropItemId];
-          const n = player.itemStacks[id];
-          if (!it) return '';
-          const svgIcon = DROP_ITEM_HI_FI_SVG[id as DropItemId] || it.icon;
-          const rotClass = `rot-${(index % 6) + 1}`;
-          return `<span class="item-badge sticker ${rotClass}" style="--ic:${it.color}" aria-label="${it.name} x${n}" data-tip="<b style='color:${it.color}'>${it.name} x${n}</b><br/>${it.desc}<br/><i>Stacks with duplicates</i>"><span class="sticker-glyph">${svgIcon}</span><span class="sticker-count">x${n}</span><span class="sticker-peel" aria-hidden="true"></span></span>`;
-        });
-
-      const modBadges = player.items.map((name, index) => {
-        const m = (ALL_RUN_MOD_POOL || RUN_MOD_POOL).find(x => x.name === name || x.id === name);
-        const svgIcon = getModIconSvg(m ? m.id : name);
-        const rotClass = `rot-${((index + 3) % 6) + 1}`;
-        return `<span class="item-badge sticker is-mod ${rotClass}" style="--ic:#ffd60a" aria-label="${name}" data-tip="<b style='color:#ffd166'>${name}</b><br/>${m ? m.desc : ''}"><span class="sticker-glyph">${svgIcon}</span><span class="sticker-peel" aria-hidden="true"></span></span>`;
-      });
-
-      const all = stackBadges.concat(modBadges).filter(Boolean);
-      itemsEl.classList.toggle('is-empty', all.length === 0);
-      itemsEl.innerHTML = all.length === 0
-        ? '<span class="items-empty">No mods yet — kill enemies for toolbox drops!</span>'
-        : all.join('');
-    }
+    this.updateMods(player);
 
     // 7. Minimap & Automatic Boss Bar Sync
     if (dun && rx !== undefined && ry !== undefined) {

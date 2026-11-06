@@ -905,3 +905,68 @@ export function getFloorBountyContract(floorNum: number = 1): FloorBountyContrac
   }
 }
 
+export interface HubNpcGreeting {
+  npcId: string;
+  speaker: string;
+  quote: string;
+  accentColor: string;
+}
+
+export function getHubNpcGreeting(
+  npcId: string,
+  bestFloor: number = 1,
+  heatLevel: number = 0
+): HubNpcGreeting {
+  const safeBest = Math.max(1, Math.floor(Number(bestFloor) || 1));
+  const safeHeat = Math.max(0, Math.floor(Number(heatLevel) || 0));
+  switch (npcId) {
+    case 'garage':
+      return {
+        npcId: 'garage',
+        speaker: 'CHIEF MECHANIC VEX',
+        quote: safeBest >= 4
+          ? `Chassis survived Sector ${safeBest}! Bolt on your finest parts, Rider.`
+          : 'Tune your V8 and equip high-grade salvage before hitting the highway.',
+        accentColor: '#ffd60a'
+      };
+    case 'blacksmith':
+      return {
+        npcId: 'blacksmith',
+        speaker: 'IRONSMITH KORR',
+        quote: '12 Scrap for a fresh black-market part! Step onto the forge.',
+        accentColor: '#2ee6ff'
+      };
+    case 'bounty':
+      return {
+        npcId: 'bounty',
+        speaker: 'VALKYRIE BROKER',
+        quote: safeHeat > 0
+          ? `HEAT ${safeHeat} ACTIVE! +${safeHeat * 25}% Scrap from all hostiles.`
+          : 'Raise the Bounty Heat for massive Scrap payouts, outlaw!',
+        accentColor: '#06d6a0'
+      };
+    case 'codex':
+      return {
+        npcId: 'codex',
+        speaker: 'DOC CULLEN',
+        quote: 'Tactical Scanner calibrated: +8% DMG & +15% Bullet Speed locked in.',
+        accentColor: '#9d4edd'
+      };
+    case 'launch':
+      return {
+        npcId: 'launch',
+        speaker: 'HIGHWAY DISPATCH',
+        quote: 'Blast doors unlocked. Hit the throttle when ready!',
+        accentColor: '#e5203a'
+      };
+    default:
+      return {
+        npcId: npcId || 'unknown',
+        speaker: 'OUTLAW DRIFTER',
+        quote: 'Keep your NOS cool and your barrels hot.',
+        accentColor: '#ffd166'
+      };
+  }
+}
+
+

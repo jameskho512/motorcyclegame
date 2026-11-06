@@ -820,7 +820,11 @@ export class MotoRogueApp {
       })) {
         this.inputManager.reset();
         this.portalModal.open(
-          { floorNum: this.stateManager.floorNum },
+          {
+            floorNum: this.stateManager.floorNum,
+            playerHp: player.hp,
+            playerMaxHp: player.maxHp
+          },
           () => this.nextFloor(),
           () => { this.portalDismissed = true; }
         );
@@ -968,6 +972,10 @@ export class MotoRogueApp {
         const tierLabel = nextWepKills >= 100 ? '★★★ MASTER III (+15% DMG)' : nextWepKills >= 40 ? '★★☆ ADEPT II (+10% DMG)' : '★☆☆ ROOKIE I (+5% DMG)';
         this.hud.showToast('★ WEAPON MASTERY UP!', `${WEAPONS[player.weapon].name.toUpperCase()}: ${tierLabel}`, '#ffd60a', 2400);
         this.audio.masteryUp?.();
+      }
+
+      if (this.stateManager.floorNum === 4) {
+        this.advanceFloorBounty(deltaKills);
       }
 
       if (this.stateManager.floorNum === 5 && this.killStreakCount >= 5) {

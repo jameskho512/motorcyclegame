@@ -16,7 +16,9 @@ import {
   enableChoicePedestalsInTreasureRooms,
   assignBiomeBarrelVariants,
   getFloorBountyContract,
-  type FloorBountyContract
+  type FloorBountyContract,
+  getHubNpcGreeting,
+  type HubNpcGreeting
 } from '../../src/world/dungeon';
 import {
   ARENA_WIDTH,
@@ -594,6 +596,112 @@ describe('World Module: Procedural Dungeon Generation (src/world/dungeon.ts)', (
         expect(contracts[i].scrapReward).toBeGreaterThan(contracts[i - 1].scrapReward);
         expect(contracts[i].coinReward).toBeGreaterThan(contracts[i - 1].coinReward);
       }
+    });
+  });
+
+  describe('Sanctuary Hub NPC Lore & Dialogue Greetings (getHubNpcGreeting)', () => {
+    it('returns standard quote for garage when bestFloor < 4', () => {
+      const g1: HubNpcGreeting = getHubNpcGreeting('garage', 1, 0);
+      expect(g1).toEqual({
+        npcId: 'garage',
+        speaker: 'CHIEF MECHANIC VEX',
+        quote: 'Tune your V8 and equip high-grade salvage before hitting the highway.',
+        accentColor: '#ffd60a'
+      });
+
+      const g3 = getHubNpcGreeting('garage', 3);
+      expect(g3.quote).toBe('Tune your V8 and equip high-grade salvage before hitting the highway.');
+    });
+
+    it('returns veteran quote for garage when bestFloor >= 4', () => {
+      const g4 = getHubNpcGreeting('garage', 4);
+      expect(g4).toEqual({
+        npcId: 'garage',
+        speaker: 'CHIEF MECHANIC VEX',
+        quote: 'Chassis survived Sector 4! Bolt on your finest parts, Rider.',
+        accentColor: '#ffd60a'
+      });
+
+      const g5 = getHubNpcGreeting('garage', 5);
+      expect(g5.quote).toBe('Chassis survived Sector 5! Bolt on your finest parts, Rider.');
+    });
+
+    it('returns ironsmith greeting for blacksmith', () => {
+      const b = getHubNpcGreeting('blacksmith');
+      expect(b).toEqual({
+        npcId: 'blacksmith',
+        speaker: 'IRONSMITH KORR',
+        quote: '12 Scrap for a fresh black-market part! Step onto the forge.',
+        accentColor: '#2ee6ff'
+      });
+    });
+
+    it('returns bounty broker greeting reflecting heat level (0 vs > 0)', () => {
+      const b0 = getHubNpcGreeting('bounty', 1, 0);
+      expect(b0).toEqual({
+        npcId: 'bounty',
+        speaker: 'VALKYRIE BROKER',
+        quote: 'Raise the Bounty Heat for massive Scrap payouts, outlaw!',
+        accentColor: '#06d6a0'
+      });
+
+      const b1 = getHubNpcGreeting('bounty', 1, 1);
+      expect(b1).toEqual({
+        npcId: 'bounty',
+        speaker: 'VALKYRIE BROKER',
+        quote: 'HEAT 1 ACTIVE! +25% Scrap from all hostiles.',
+        accentColor: '#06d6a0'
+      });
+
+      const b3 = getHubNpcGreeting('bounty', 1, 3);
+      expect(b3).toEqual({
+        npcId: 'bounty',
+        speaker: 'VALKYRIE BROKER',
+        quote: 'HEAT 3 ACTIVE! +75% Scrap from all hostiles.',
+        accentColor: '#06d6a0'
+      });
+    });
+
+    it('returns doc cullen greeting for codex', () => {
+      const c = getHubNpcGreeting('codex');
+      expect(c).toEqual({
+        npcId: 'codex',
+        speaker: 'DOC CULLEN',
+        quote: 'Tactical Scanner calibrated: +8% DMG & +15% Bullet Speed locked in.',
+        accentColor: '#9d4edd'
+      });
+    });
+
+    it('returns highway dispatch greeting for launch', () => {
+      const l = getHubNpcGreeting('launch');
+      expect(l).toEqual({
+        npcId: 'launch',
+        speaker: 'HIGHWAY DISPATCH',
+        quote: 'Blast doors unlocked. Hit the throttle when ready!',
+        accentColor: '#e5203a'
+      });
+    });
+
+    it('returns outlaw drifter fallback greeting for unknown or empty npcId', () => {
+      const unk = getHubNpcGreeting('rumor_monger');
+      expect(unk).toEqual({
+        npcId: 'rumor_monger',
+        speaker: 'OUTLAW DRIFTER',
+        quote: 'Keep your NOS cool and your barrels hot.',
+        accentColor: '#ffd166'
+      });
+
+      const empty = getHubNpcGreeting('');
+      expect(empty.npcId).toBe('unknown');
+      expect(empty.speaker).toBe('OUTLAW DRIFTER');
+    });
+
+    it('safely sanitizes non-positive, NaN, or non-numeric bestFloor and heatLevel', () => {
+      const gNaN = getHubNpcGreeting('garage', NaN, NaN);
+      expect(gNaN.quote).toBe('Tune your V8 and equip high-grade salvage before hitting the highway.');
+
+      const bNeg = getHubNpcGreeting('bounty', -5, -2);
+      expect(bNeg.quote).toBe('Raise the Bounty Heat for massive Scrap payouts, outlaw!');
     });
   });
 });

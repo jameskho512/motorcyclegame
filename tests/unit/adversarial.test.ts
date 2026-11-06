@@ -39,6 +39,10 @@ import {
   MAX_STASH_SIZE
 } from '@/types/game';
 import { getFloorBountyContract } from '@/world/dungeon';
+import {
+  getPortalRiskAssessment,
+  getNextSectorBriefing
+} from '@/ui/portalModal';
 
 describe('Adversarial Challenge 1: Type Strictness & Untyped Any Audit', () => {
   it('scans all src/ TypeScript files for ts-ignore, ts-expect-error, and ts-nocheck directives', () => {
@@ -583,6 +587,110 @@ describe('Adversarial Challenge 4: Stress Testing Run Mod Clamps', () => {
       expect(floorBountyProgress).toBe(contract.targetCount);
       expect(mockState.metaSave.scrap).toBe(10 + contract.scrapReward);
       expect(mockState.player.coins).toBe(5 + contract.coinReward);
+    });
+  });
+
+  describe('Adversarial Challenge 7: Sector Descent Briefing & Portal Risk Assessment Integration', () => {
+    it('correctly maps upcoming sectors, boss names, and threat multipliers across floors 1 to 6', () => {
+      // Current floor 1 -> Floor 2: SMELTER FOUNDRY / SIEGE BEHEMOTH (1.55x)
+      const b1 = getNextSectorBriefing(1);
+      expect(b1.nextFloor).toBe(2);
+      expect(b1.biomeName).toBe('SMELTER FOUNDRY');
+      expect(b1.bossName).toBe('SIEGE BEHEMOTH');
+      expect(b1.threatMult).toBe('1.55x');
+
+      // Current floor 2 -> Floor 3: NEON CYBER-FREEWAY / OVERLORD HELION (2.40x)
+      const b2 = getNextSectorBriefing(2);
+      expect(b2.nextFloor).toBe(3);
+      expect(b2.biomeName).toBe('NEON CYBER-FREEWAY');
+      expect(b2.bossName).toBe('OVERLORD HELION');
+      expect(b2.threatMult).toBe('2.40x');
+
+      // Current floor 3 -> Floor 4: SUB-ZERO CRYO LAB / CRYO VALKYRIE (3.72x)
+      const b3 = getNextSectorBriefing(3);
+      expect(b3.nextFloor).toBe(4);
+      expect(b3.biomeName).toBe('SUB-ZERO CRYO LAB');
+      expect(b3.bossName).toBe('CRYO VALKYRIE');
+      expect(b3.threatMult).toBe('3.72x');
+
+      // Current floor 4 -> Floor 5: MAGMA CORE / INFERNO COLOSSUS (5.77x)
+      const b4 = getNextSectorBriefing(4);
+      expect(b4.nextFloor).toBe(5);
+      expect(b4.biomeName).toBe('MAGMA CORE');
+      expect(b4.bossName).toBe('INFERNO COLOSSUS');
+      expect(b4.threatMult).toBe('5.77x');
+
+      // Current floor 5 -> Floor 6: CHROME CITADEL / OMEGA VALHALLA (8.95x)
+      const b5 = getNextSectorBriefing(5);
+      expect(b5.nextFloor).toBe(6);
+      expect(b5.biomeName).toBe('CHROME CITADEL');
+      expect(b5.bossName).toBe('OMEGA VALHALLA');
+      expect(b5.threatMult).toBe('8.95x');
+
+      // Current floor 6 -> Floor 7+: ENDLESS VALHALLA OVERDRIVE / OMEGA VALHALLA (13.87x)
+      const b6 = getNextSectorBriefing(6);
+      expect(b6.nextFloor).toBe(7);
+      expect(b6.biomeName).toBe('ENDLESS VALHALLA OVERDRIVE');
+      expect(b6.bossName).toBe('OMEGA VALHALLA');
+      expect(b6.threatMult).toBe('13.87x');
+    });
+
+    it('accurately evaluates hull integrity across critical, nominal, full, and edge states', () => {
+      // Critical Hull: <= 35%
+      const critical1 = getPortalRiskAssessment(1, 2, 6); // 33.3%
+      expect(critical1.isLowHullWarning).toBe(true);
+      expect(critical1.readinessLabel).toBe('⚠️ CRITICAL HULL');
+      expect(critical1.recommendation).toContain('Visit Shop or scavenge Fuel');
+
+      const criticalBoundary = getPortalRiskAssessment(4, 35, 100); // 35.0%
+      expect(criticalBoundary.isLowHullWarning).toBe(true);
+      expect(criticalBoundary.readinessLabel).toBe('⚠️ CRITICAL HULL');
+
+      const nearZero = getPortalRiskAssessment(2, 1, 10); // 10.0%
+      expect(nearZero.isLowHullWarning).toBe(true);
+      expect(nearZero.readinessLabel).toBe('⚠️ CRITICAL HULL');
+
+      // Full Integrity: hp >= maxHp
+      const full = getPortalRiskAssessment(3, 6, 6);
+      expect(full.isLowHullWarning).toBe(false);
+      expect(full.readinessLabel).toBe('★ FULL INTEGRITY');
+      expect(full.recommendation).toBe('Optimal combat readiness for descent.');
+
+      const overhealed = getPortalRiskAssessment(5, 10, 8);
+      expect(overhealed.isLowHullWarning).toBe(false);
+      expect(overhealed.readinessLabel).toBe('★ FULL INTEGRITY');
+
+      // Nominal / Combat Ready: 35% < hp < maxHp
+      const nominal = getPortalRiskAssessment(2, 4, 6); // 66.7%
+      expect(nominal.isLowHullWarning).toBe(false);
+      expect(nominal.readinessLabel).toBe('⚡ COMBAT READY');
+      expect(nominal.recommendation).toBe('Systems nominal for next sector.');
+
+      // Edge cases: missing, negative maxHp, or zero maxHp
+      const missingHp = getPortalRiskAssessment(1);
+      expect(missingHp.isLowHullWarning).toBe(false);
+      expect(missingHp.readinessLabel).toBe('⚡ COMBAT READY');
+
+      const zeroMaxHp = getPortalRiskAssessment(1, 0, 0);
+      expect(zeroMaxHp.isLowHullWarning).toBe(false);
+      expect(zeroMaxHp.readinessLabel).toBe('⚡ COMBAT READY');
+    });
+
+    it('validates integrated sector briefing and portal readiness synthesis across all floors', () => {
+      for (let floor = 1; floor <= 6; floor++) {
+        const briefing = getNextSectorBriefing(floor);
+        expect(briefing.nextFloor).toBe(floor + 1);
+        expect(briefing.threatMult).toMatch(/^\d+\.\d{2}x$/);
+
+        // In critical condition
+        const riskCritical = getPortalRiskAssessment(floor, 1, 6);
+        expect(riskCritical.isLowHullWarning).toBe(true);
+
+        // In full health condition
+        const riskFull = getPortalRiskAssessment(floor, 6, 6);
+        expect(riskFull.isLowHullWarning).toBe(false);
+        expect(riskFull.readinessLabel).toBe('★ FULL INTEGRITY');
+      }
     });
   });
 });
