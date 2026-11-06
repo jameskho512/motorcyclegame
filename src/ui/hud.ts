@@ -1211,22 +1211,22 @@ export class HUDController {
 
       if (isEvo) {
         rows.push(
-          `<div class="synergy-pill" style="--syn-color:#00f5d4"><span>★ ${evoDef.evolvedName}</span><small>ACTIVE</small></div>`
+          `<div class="synergy-pill" style="--syn-color:#00f5d4" data-tip="<b style='color:#00f5d4'>★ ${evoDef.evolvedName}</b><br/>${evoDef.desc}"><span style="pointer-events:none">★ ${evoDef.evolvedName}</span><small style="pointer-events:none">ACTIVE</small></div>`
         );
       } else {
         rows.push(
-          `<div class="synergy-pill" style="--syn-color:#ffd60a"><span>${activeWep.name} → ${evoDef.evolvedName}</span><small>${evoDef.signatureModName} or ${totalStacks}/3 Stacks</small></div>`
+          `<div class="synergy-pill" style="--syn-color:#ffd60a" data-tip="<b style='color:#ffd60a'>${evoDef.evolvedName}</b><br/>${evoDef.desc}<br/><i>Unlock: ${evoDef.signatureModName} or 3+ Item Stacks</i>"><span style="pointer-events:none">${activeWep.name} → ${evoDef.evolvedName}</span><small style="pointer-events:none">${evoDef.signatureModName} or ${totalStacks}/3 Stacks</small></div>`
         );
       }
 
       if ((player as any).scannerBuff) {
         rows.push(
-          `<div class="synergy-pill" style="--syn-color:#72efdd"><span>DOC TACTICAL SCANNER</span><small>+8% DMG / +15% SPD</small></div>`
+          `<div class="synergy-pill" style="--syn-color:#72efdd" data-tip="<b style='color:#72efdd'>Doc Tactical Scanner</b><br/>+8% Weapon Damage &amp; +15% Projectile Speed"><span style="pointer-events:none">DOC TACTICAL SCANNER</span><small style="pointer-events:none">+8% DMG / +15% SPD</small></div>`
         );
       }
       if ((player.heatLevel || 0) > 0) {
         rows.push(
-          `<div class="synergy-pill" style="--syn-color:#ff4d6d"><span>VALKYRIE BOUNTY PACT</span><small>+${(player.heatLevel || 0) * 25}% SCRAP</small></div>`
+          `<div class="synergy-pill" style="--syn-color:#ff4d6d" data-tip="<b style='color:#ff4d6d'>Valkyrie Bounty Heat ${player.heatLevel}</b><br/>+${(player.heatLevel || 0) * 25}% Bonus Scrap &amp; Elevated Enemy Threat"><span style="pointer-events:none">VALKYRIE BOUNTY PACT</span><small style="pointer-events:none">+${(player.heatLevel || 0) * 25}% SCRAP</small></div>`
         );
       }
       synListEl.innerHTML = rows.join('');

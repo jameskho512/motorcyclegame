@@ -312,15 +312,21 @@
 /* --------------------------------------------------------------------------
    LEFT PANEL: TUNING Upgrades with Rank Pips & Slanted UPGRADE Buttons
    -------------------------------------------------------------------------- */
+.gx-tuning .unlock-list.gx-scroll {
+  justify-content: space-between;
+  gap: 10px;
+}
+
 .unlock-item.gx-upgrade {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 6px 8px;
-  background: rgba(10, 11, 16, 0.72);
-  border: 1.5px solid #2a2d3a;
-  border-radius: 2px;
+  gap: 10px;
+  padding: 10px 12px;
+  flex: 1;
+  background: rgba(10, 11, 16, 0.78);
+  border: 1.5px solid #2e3242;
+  border-radius: 3px;
   transition: border-color 0.12s, background 0.12s;
 }
 
@@ -332,7 +338,7 @@
 .unlock-item.gx-upgrade .info {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   flex: 1;
   min-width: 0;
 }
@@ -340,7 +346,7 @@
 .unlock-item.gx-upgrade .info strong {
   font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
   font-style: italic;
-  font-size: 14px;
+  font-size: 16px;
   letter-spacing: 1px;
   color: #ffffff;
   text-transform: uppercase;
@@ -351,20 +357,20 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  margin: 1px 0;
+  margin: 2px 0;
 }
 
 /* Slanted rectangular rank pips (active: glowing yellow/orange) */
 .gx-pips {
   display: inline-flex;
-  gap: 3px;
+  gap: 4px;
   align-items: center;
 }
 
 .gx-pip {
   display: inline-block;
-  width: 14px;
-  height: 8px;
+  width: 18px;
+  height: 10px;
   transform: skewX(-15deg);
   background: #242632;
   border: 1px solid var(--ink, #0a0b10);
@@ -379,19 +385,17 @@
 
 .gx-rank-txt {
   font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
-  font-size: 10px;
-  letter-spacing: 0.5px;
-  color: #9da3b2;
+  font-size: 11px;
+  letter-spacing: 0.6px;
+  color: #adb5bd;
   text-transform: uppercase;
 }
 
 .unlock-item.gx-upgrade .info span:last-child {
-  font-size: 9.5px;
-  color: #838896;
-  line-height: 1.15;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 11px;
+  color: #a4aab8;
+  line-height: 1.22;
+  white-space: normal;
 }
 
 /* Slanted Trapezoid UPGRADE Button */
@@ -454,12 +458,17 @@
 /* --------------------------------------------------------------------------
    RIGHT PANEL: ARMORY Weapon Cards with Lock Icons & Scrap Prices
    -------------------------------------------------------------------------- */
+.gx-armory .unlock-list.gx-scroll {
+  justify-content: space-between;
+}
+
 .unlock-item.gx-weapon {
   position: relative;
   display: grid;
   grid-template-columns: 54px 1fr auto;
   align-items: center;
   padding: 5px 8px;
+  flex: 1;
   background: #14151e;
   border: 2px solid #36394a;
   border-radius: 2px;
@@ -518,12 +527,10 @@
 }
 
 .unlock-item.gx-weapon .info span {
-  font-size: 9.5px;
-  color: #888d9c;
-  line-height: 1.15;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 10px;
+  color: #a4aab8;
+  line-height: 1.22;
+  white-space: normal;
 }
 
 /* Cel-Shaded Weapon Illustration Box & Corner Status Badge */

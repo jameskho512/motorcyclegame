@@ -106,11 +106,20 @@ export class PortalModalController {
         this.warningEl.textContent = 'Overdrive scaling intensifies. Unbought items on this floor will be lost.';
       }
     } else {
+      const nextFloor = info.floorNum + 1;
+      const biomePreviews: Record<number, string> = {
+        2: 'NEXT SECTOR: SMELTER FOUNDRY (Molten Lava Vents & Boost Strips).',
+        3: 'NEXT SECTOR: NEON CYBER-FREEWAY (High-Speed Boost Strips & Oil Slicks).',
+        4: 'NEXT SECTOR: SUB-ZERO CRYO LAB (Crystalline Ice Patches & Cryo Barrels).',
+        5: 'NEXT SECTOR: MAGMA CORE (Volatile Magma Grates & Elite Convoys).',
+        6: 'NEXT SECTOR: CHROME CITADEL (Final Valhalla Boss Encounter!).'
+      };
       if (this.floorLabelEl) {
-        this.floorLabelEl.textContent = `DESCEND TO FLOOR ${info.floorNum + 1}?`;
+        this.floorLabelEl.textContent = `DESCEND TO FLOOR ${nextFloor}?`;
       }
       if (this.warningEl) {
-        this.warningEl.textContent = 'Unexplored rooms and unbought items on this floor will be lost.';
+        const preview = biomePreviews[nextFloor] ? `${biomePreviews[nextFloor]} ` : '';
+        this.warningEl.textContent = `${preview}Unexplored rooms and unbought items on this floor will be lost.`;
       }
     }
 
