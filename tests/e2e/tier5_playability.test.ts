@@ -13,10 +13,29 @@ import {
   WeaponId,
   PlayerState,
   EquipmentItem,
+  Pickup,
+  MetaSaveState,
   SAVE_KEY_META,
   SAVE_KEY_RUN,
   SAVE_KEY_MUTED
 } from '../../src/types/game';
+
+import {
+  GarageController,
+  getWeaponMasteryTier,
+  GarageCallbacks
+} from '../../src/ui/garage';
+
+import {
+  ShopModalController,
+  getShopItemAppraisal
+} from '../../src/ui/shopModal';
+
+import {
+  SettingsController,
+  SettingsAudioPort,
+  ScreenShakeLevel
+} from '../../src/ui/settings';
 
 import { InputManager } from '../../src/core/input';
 import {
@@ -32,7 +51,8 @@ import {
 
 import {
   SoundSynthesizer,
-  calculateEngineParams
+  calculateEngineParams,
+  DEFAULT_VOLUME_SETTINGS
 } from '../../src/audio/sfx';
 
 import {
@@ -1061,6 +1081,261 @@ describe('Tier 5: Playability Verification & End-to-End Simulation', () => {
       expect(wrapper.classList.contains('is-low-hull')).toBe(false);
 
       app.inputManager.destroy();
+    });
+  });
+
+  // ==========================================================================
+  // 6. TIER 5 PLAYABILITY, MASTERY PROGRESSION, APPRAISAL & SETTINGS
+  // ==========================================================================
+  describe('6. Tier 5 Playability Verification (Mastery Tiers, Shop Appraisal & Screen Shake)', () => {
+    it('verifies getWeaponMasteryTier progression across 0, 10, 40, 100 kills and DOM rendering in GarageController', () => {
+      // 1. Pure function progression verification across 0, 10, 40, 100 kills
+      expect(getWeaponMasteryTier(0)).toEqual({ tier: 0, label: 'UNRANKED', stars: '☆☆☆', dmgBonusPct: 0, kills: 0 });
+      expect(getWeaponMasteryTier(9)).toEqual({ tier: 0, label: 'UNRANKED', stars: '☆☆☆', dmgBonusPct: 0, kills: 9 });
+      expect(getWeaponMasteryTier(10)).toEqual({ tier: 1, label: 'ROOKIE I', stars: '★☆☆', dmgBonusPct: 5, kills: 10 });
+      expect(getWeaponMasteryTier(39)).toEqual({ tier: 1, label: 'ROOKIE I', stars: '★☆☆', dmgBonusPct: 5, kills: 39 });
+      expect(getWeaponMasteryTier(40)).toEqual({ tier: 2, label: 'ADEPT II', stars: '★★☆', dmgBonusPct: 10, kills: 40 });
+      expect(getWeaponMasteryTier(99)).toEqual({ tier: 2, label: 'ADEPT II', stars: '★★☆', dmgBonusPct: 10, kills: 99 });
+      expect(getWeaponMasteryTier(100)).toEqual({ tier: 3, label: 'MASTER III', stars: '★★★', dmgBonusPct: 15, kills: 100 });
+      expect(getWeaponMasteryTier(250)).toEqual({ tier: 3, label: 'MASTER III', stars: '★★★', dmgBonusPct: 15, kills: 250 });
+
+      // Negative kills clamp to 0
+      expect(getWeaponMasteryTier(-5)).toEqual({ tier: 0, label: 'UNRANKED', stars: '☆☆☆', dmgBonusPct: 0, kills: 0 });
+
+      // 2. DOM Rendering in GarageController
+      document.body.innerHTML = `
+        <div id="garage-overlay">
+          <h1 id="modal-title">MOTO-GARAGE</h1>
+          <p id="modal-subtitle">Sub</p>
+          <span id="modal-scrap">500</span>
+          <canvas id="bike-canvas" width="300" height="190"></canvas>
+          <div id="slots-left"></div>
+          <div id="slots-right"></div>
+          <div id="eq-totals"></div>
+          <div id="stash-list"></div>
+          <div id="unlock-list"></div>
+          <div id="meta-upgrade-list"></div>
+          <button id="btn-resume">Resume</button>
+          <button id="btn-new-run">New Run</button>
+          <button id="btn-reset-save">Reset</button>
+        </div>
+      `;
+
+      const meta: MetaSaveState = createDefaultMetaSave();
+      meta.scrap = 500;
+      (meta as any).weaponKills = {
+        machine_gun: 0,
+        shotgun: 10,
+        flamethrower: 40,
+        railgun: 100
+      };
+
+      const callbacks: GarageCallbacks = {
+        onEquipItem: vi.fn(),
+        onUnequipSlot: vi.fn(),
+        onSellItem: vi.fn(),
+        onUnlockWeapon: vi.fn(),
+        onEquipWeapon: vi.fn(),
+        onBuyUpgrade: vi.fn(),
+        onResumeRun: vi.fn(),
+        onNewRun: vi.fn(),
+        onResetSave: vi.fn()
+      };
+
+      const garage = new GarageController(callbacks);
+      garage.open(false, 1, meta, player);
+
+      const unlockList = document.getElementById('unlock-list');
+      expect(unlockList).not.toBeNull();
+
+      const items = Array.from(unlockList!.querySelectorAll<HTMLElement>('.unlock-item.gx-weapon'));
+      expect(items.length).toBeGreaterThanOrEqual(4);
+
+      // Verify machine_gun: 0 kills -> data-mastery-tier="0", UNRANKED
+      const mgItem = items.find(el => el.innerHTML.includes('MACHINE GUN'))!;
+      expect(mgItem).toBeDefined();
+      expect(mgItem.getAttribute('data-mastery-tier')).toBe('0');
+      const mgMastery = mgItem.querySelector('.gx-weapon-mastery');
+      expect(mgMastery?.textContent).toContain('☆☆☆ UNRANKED · 0 KILLS');
+
+      // Verify shotgun: 10 kills -> data-mastery-tier="1", ROOKIE I (+5% DMG)
+      const sgItem = items.find(el => el.innerHTML.includes('SHOTGUN'))!;
+      expect(sgItem).toBeDefined();
+      expect(sgItem.getAttribute('data-mastery-tier')).toBe('1');
+      const sgMastery = sgItem.querySelector('.gx-weapon-mastery');
+      expect(sgMastery?.textContent).toContain('★☆☆ ROOKIE I (+5% DMG) · 10 KILLS');
+
+      // Verify flamethrower: 40 kills -> data-mastery-tier="2", ADEPT II (+10% DMG)
+      const ftItem = items.find(el => el.innerHTML.includes('FLAMETHROWER'))!;
+      expect(ftItem).toBeDefined();
+      expect(ftItem.getAttribute('data-mastery-tier')).toBe('2');
+      const ftMastery = ftItem.querySelector('.gx-weapon-mastery');
+      expect(ftMastery?.textContent).toContain('★★☆ ADEPT II (+10% DMG) · 40 KILLS');
+
+      // Verify railgun: 100 kills -> data-mastery-tier="3", MASTER III (+15% DMG)
+      const rgItem = items.find(el => el.innerHTML.includes('RAILGUN'))!;
+      expect(rgItem).toBeDefined();
+      expect(rgItem.getAttribute('data-mastery-tier')).toBe('3');
+      const rgMastery = rgItem.querySelector('.gx-weapon-mastery');
+      expect(rgMastery?.textContent).toContain('★★★ MASTER III (+15% DMG) · 100 KILLS');
+
+      garage.close();
+    });
+
+    it('verifies getShopItemAppraisal and ShopModalController.open rendering .shop-appraisal-pill and data-appraisal-tier', () => {
+      // 1. Pure function appraisal tests across bargain, standard issue, and high-grade
+      const bargainPickup: Pickup = {
+        x: 100,
+        y: 100,
+        radius: 16,
+        type: 'shop_heart',
+        name: 'Spare Parts Pack',
+        cost: 12
+      };
+      const standardPickup: Pickup = {
+        x: 100,
+        y: 100,
+        radius: 16,
+        type: 'shop_heart',
+        name: 'Standard Armor Plating',
+        cost: 20
+      };
+      const highGradePickup: Pickup = {
+        x: 100,
+        y: 100,
+        radius: 16,
+        type: 'mod_pedestal',
+        cost: 32,
+        mod: {
+          id: 'plasma_cap',
+          name: 'Plasma Capacitor Overdrive',
+          desc: 'Overdrives projectile damage by +40%',
+          cost: 32,
+          apply: (p: PlayerState) => { p.dmgMult += 0.4; }
+        }
+      };
+
+      // Bargain tests: cost <= 14
+      const appBargainSurplus = getShopItemAppraisal(bargainPickup, 30);
+      expect(appBargainSurplus.tierLabel).toBe('🔥 BLACK MARKET BARGAIN');
+      expect(appBargainSurplus.isBargain).toBe(true);
+      expect(appBargainSurplus.valueVerdict).toBe('SURPLUS FUNDS');
+
+      const appBargainShort = getShopItemAppraisal(bargainPickup, 5);
+      expect(appBargainShort.valueVerdict).toBe('SHORT 7 COINS');
+
+      // Standard issue tests: cost between 15 and 24
+      const appStandardAffordable = getShopItemAppraisal(standardPickup, 25);
+      expect(appStandardAffordable.tierLabel).toBe('★ STANDARD ISSUE');
+      expect(appStandardAffordable.isBargain).toBe(false);
+      expect(appStandardAffordable.valueVerdict).toBe('AFFORDABLE');
+
+      // High-grade ordnance tests: cost >= 25
+      const appHighGradeShort = getShopItemAppraisal(highGradePickup, 12);
+      expect(appHighGradeShort.tierLabel).toBe('⚡ HIGH-GRADE ORDNANCE');
+      expect(appHighGradeShort.isBargain).toBe(false);
+      expect(appHighGradeShort.valueVerdict).toBe('SHORT 20 COINS');
+
+      // 2. DOM Rendering in ShopModalController
+      document.body.innerHTML = `
+        <div id="shop-confirm-overlay">
+          <div class="shop-name-panel">
+            <div id="shop-modal-name">Item Name</div>
+          </div>
+          <div id="shop-modal-desc">Item Description</div>
+          <div id="shop-modal-cost">12</div>
+          <div id="shop-modal-type">MOD</div>
+          <div id="shop-modal-quote">Quote</div>
+          <button id="btn-confirm-buy">[E] Confirm Purchase</button>
+          <button id="btn-cancel-buy">[ESC] Cancel</button>
+        </div>
+      `;
+
+      const overlay = document.getElementById('shop-confirm-overlay')!;
+      const descEl = document.getElementById('shop-modal-desc')!;
+      const modal = new ShopModalController();
+
+      // Open with bargain pickup & surplus funds
+      modal.open(bargainPickup, vi.fn(), vi.fn(), 30);
+
+      expect(overlay.getAttribute('data-appraisal-tier')).toBe('🔥 BLACK MARKET BARGAIN');
+      expect(overlay.getAttribute('data-is-bargain')).toBe('true');
+
+      const pill1 = descEl.querySelector('.shop-appraisal-pill');
+      expect(pill1).not.toBeNull();
+      expect(pill1?.textContent).toBe('🔥 BLACK MARKET BARGAIN · SURPLUS FUNDS');
+
+      modal.cancel();
+
+      // Open with high-grade ordnance pickup & short funds
+      modal.open(highGradePickup, vi.fn(), vi.fn(), 12);
+
+      expect(overlay.getAttribute('data-appraisal-tier')).toBe('⚡ HIGH-GRADE ORDNANCE');
+      expect(overlay.getAttribute('data-is-bargain')).toBe('false');
+
+      const pill2 = descEl.querySelector('.shop-appraisal-pill');
+      expect(pill2).not.toBeNull();
+      expect(pill2?.textContent).toBe('⚡ HIGH-GRADE ORDNANCE · SHORT 20 COINS');
+
+      modal.cancel();
+    });
+
+    it('verifies SettingsController screen shake toggle cycling (1 -> 0.5 -> 0 -> 1)', () => {
+      document.body.innerHTML = `
+        <button id="btn-open-settings">Settings</button>
+        <div id="settings-overlay"></div>
+      `;
+
+      const mockAudio: SettingsAudioPort = {
+        getVolumes: () => ({ ...DEFAULT_VOLUME_SETTINGS }),
+        setVolume: vi.fn(),
+        resetVolumes: vi.fn(),
+        isMuted: () => false,
+        setMuted: vi.fn(),
+        playTest: vi.fn()
+      };
+
+      const recordedShakeLevels: ScreenShakeLevel[] = [];
+      const settings = new SettingsController({
+        audio: mockAudio,
+        onShakeChange: (level) => recordedShakeLevels.push(level)
+      });
+
+      settings.mount();
+
+      const shakeBtn = document.getElementById('btn-settings-shake') as HTMLButtonElement;
+      expect(shakeBtn).not.toBeNull();
+
+      // Default level is 1
+      expect(settings.getScreenShake()).toBe(1);
+      expect(shakeBtn.getAttribute('data-shake')).toBe('100');
+      expect(shakeBtn.textContent).toBe('SHAKE: 100%');
+
+      // 1st click: 1 -> 0.5
+      shakeBtn.click();
+      expect(settings.getScreenShake()).toBe(0.5);
+      expect(shakeBtn.getAttribute('data-shake')).toBe('50');
+      expect(shakeBtn.textContent).toBe('SHAKE: 50%');
+
+      // 2nd click: 0.5 -> 0
+      shakeBtn.click();
+      expect(settings.getScreenShake()).toBe(0);
+      expect(shakeBtn.getAttribute('data-shake')).toBe('0');
+      expect(shakeBtn.textContent).toBe('SHAKE: OFF');
+
+      // 3rd click: 0 -> 1 (wrap around)
+      shakeBtn.click();
+      expect(settings.getScreenShake()).toBe(1);
+      expect(shakeBtn.getAttribute('data-shake')).toBe('100');
+      expect(shakeBtn.textContent).toBe('SHAKE: 100%');
+
+      // 4th click: 1 -> 0.5 again
+      shakeBtn.click();
+      expect(settings.getScreenShake()).toBe(0.5);
+      expect(shakeBtn.getAttribute('data-shake')).toBe('50');
+      expect(shakeBtn.textContent).toBe('SHAKE: 50%');
+
+      expect(recordedShakeLevels).toEqual([0.5, 0, 1, 0.5]);
     });
   });
 });

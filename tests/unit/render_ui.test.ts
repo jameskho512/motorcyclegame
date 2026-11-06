@@ -17,14 +17,17 @@ import { Graphics } from 'pixi.js';
 import {
   isLowFuel,
   calcNeedleAngle,
-  calcMinimapRoomCoords
+  calcMinimapRoomCoords,
+  getMinimapFloorSummary,
+  HUDController,
+  type MinimapFloorSummary
 } from '../../src/ui/hud';
 import { parseColor, drawObstacle } from '../../src/render/vectorArt';
 import { TooltipManager } from '../../src/ui/tooltip';
 import { ShopModalController } from '../../src/ui/shopModal';
 import { FilterManager } from '../../src/render/shaders';
 import { StageManager, getFloorMoteColor, getEliteAffixColor } from '../../src/render/stage';
-import { Pickup, MetaSaveState, PlayerState, Obstacle } from '../../src/types/game';
+import { Pickup, MetaSaveState, PlayerState, Obstacle, Dungeon, Room } from '../../src/types/game';
 import { GarageController, getWeaponMasteryTier } from '../../src/ui/garage';
 
 describe('Render & UI Subsystems', () => {
@@ -86,6 +89,137 @@ describe('Render & UI Subsystems', () => {
     it('marks distant rooms as not visible when clipped outside minimap boundaries', () => {
       const distant = calcMinimapRoomCoords(20, 20, 0, 0, 240, 145, 18, 3);
       expect(distant.visible).toBe(false);
+    });
+  });
+
+  describe('Minimap Tactical Telemetry & Sector Radar', () => {
+    const makeDoors = (d: Partial<Record<'N' | 'S' | 'E' | 'W', boolean>> = {}) => ({
+      N: false,
+      S: false,
+      E: false,
+      W: false,
+      ...d
+    });
+
+    const makeRoom = (overrides: Partial<Room> & { x: number; y: number; type: Room['type'] }): Room => ({
+      cleared: false,
+      visited: false,
+      doors: makeDoors(),
+      obstacles: [],
+      enemies: [],
+      pickups: [],
+      hazards: [],
+      skids: [],
+      trapdoor: false,
+      ...overrides
+    });
+
+    it('computes default summary for empty dungeons', () => {
+      const emptyDungeon = {} as Dungeon;
+      const summary: MinimapFloorSummary = getMinimapFloorSummary(emptyDungeon);
+      expect(summary).toEqual({
+        totalRooms: 0,
+        visitedRooms: 0,
+        clearedRooms: 0,
+        completionPct: 0,
+        hasVisitedBoss: false,
+        hasVisitedShop: false
+      });
+    });
+
+    it('computes completion percentage and shop/boss visited status for partially cleared dungeons', () => {
+      const dungeon: Dungeon = {
+        '0,0': makeRoom({ x: 0, y: 0, type: 'combat', cleared: true, visited: true, doors: makeDoors({ E: true }) }),
+        '1,0': makeRoom({ x: 1, y: 0, type: 'shop', cleared: false, visited: true, doors: makeDoors({ W: true, S: true }) }),
+        '0,1': makeRoom({ x: 0, y: 1, type: 'combat', cleared: false, visited: false, doors: makeDoors({ N: true }) }),
+        '1,1': makeRoom({ x: 1, y: 1, type: 'boss', cleared: false, visited: false, doors: makeDoors({ N: true }) })
+      };
+
+      const summary: MinimapFloorSummary = getMinimapFloorSummary(dungeon);
+      expect(summary.totalRooms).toBe(4);
+      expect(summary.visitedRooms).toBe(2);
+      expect(summary.clearedRooms).toBe(1);
+      expect(summary.completionPct).toBe(25); // 1 / 4 = 25%
+      expect(summary.hasVisitedShop).toBe(true);
+      expect(summary.hasVisitedBoss).toBe(false);
+    });
+
+    it('computes 100% completion when all rooms are cleared with boss & shop visited', () => {
+      const dungeon: Dungeon = {
+        '0,0': makeRoom({ x: 0, y: 0, type: 'combat', cleared: true, visited: true, doors: makeDoors({ E: true }) }),
+        '1,0': makeRoom({ x: 1, y: 0, type: 'shop', cleared: true, visited: true, doors: makeDoors({ W: true, E: true }) }),
+        '2,0': makeRoom({ x: 2, y: 0, type: 'boss', cleared: true, visited: true, doors: makeDoors({ W: true }) })
+      };
+
+      const summary: MinimapFloorSummary = getMinimapFloorSummary(dungeon);
+      expect(summary.totalRooms).toBe(3);
+      expect(summary.visitedRooms).toBe(3);
+      expect(summary.clearedRooms).toBe(3);
+      expect(summary.completionPct).toBe(100);
+      expect(summary.hasVisitedBoss).toBe(true);
+      expect(summary.hasVisitedShop).toBe(true);
+    });
+
+    it('updates minimapCanvas DOM attributes and renders telemetry pill in drawMinimap', () => {
+      document.body.innerHTML = `
+        <div id="game-wrapper">
+          <canvas id="minimap-canvas" width="240" height="150"></canvas>
+          <canvas id="fuel-gauge" width="240" height="120"></canvas>
+          <div id="boss-hud"></div>
+          <div id="boss-hud-sub"></div>
+        </div>
+      `;
+
+      const canvas = document.getElementById('minimap-canvas') as HTMLCanvasElement;
+      const mockCtx = {
+        setTransform: vi.fn(),
+        clearRect: vi.fn(),
+        fillRect: vi.fn(),
+        save: vi.fn(),
+        restore: vi.fn(),
+        beginPath: vi.fn(),
+        moveTo: vi.fn(),
+        lineTo: vi.fn(),
+        stroke: vi.fn(),
+        fill: vi.fn(),
+        closePath: vi.fn(),
+        arc: vi.fn(),
+        fillText: vi.fn(),
+        strokeText: vi.fn(),
+        measureText: vi.fn().mockReturnValue({ width: 24 }),
+        rect: vi.fn(),
+        roundRect: vi.fn(),
+        fillStyle: '',
+        strokeStyle: '',
+        lineWidth: 1,
+        lineCap: 'round',
+        shadowColor: '',
+        shadowBlur: 0,
+        font: '',
+        textAlign: 'left',
+        textBaseline: 'alphabetic',
+        lineJoin: 'miter'
+      };
+      vi.spyOn(canvas, 'getContext').mockReturnValue(mockCtx as any);
+
+      const hud = new HUDController();
+      const dungeon: Dungeon = {
+        '0,0': makeRoom({ x: 0, y: 0, type: 'combat', cleared: true, visited: true, doors: makeDoors({ E: true }) }),
+        '1,0': makeRoom({ x: 1, y: 0, type: 'shop', cleared: true, visited: true, doors: makeDoors({ W: true, E: true }) }),
+        '2,0': makeRoom({ x: 2, y: 0, type: 'boss', cleared: false, visited: false, doors: makeDoors({ W: true }) }),
+        '0,1': makeRoom({ x: 0, y: 1, type: 'combat', cleared: false, visited: false, doors: makeDoors({}) })
+      };
+
+      hud.drawMinimap(dungeon, 0, 0);
+
+      // Verify DOM attributes on minimap canvas
+      expect(canvas.getAttribute('data-completion-pct')).toBe('50');
+      expect(canvas.getAttribute('data-cleared-rooms')).toBe('2/4');
+      expect(canvas.getAttribute('aria-label')).toBe('Sector Radar: 2 of 4 rooms cleared (50%)');
+
+      // Verify telemetry pill text was drawn
+      expect(mockCtx.strokeText).toHaveBeenCalledWith('2/4 (50%)', 8, 14);
+      expect(mockCtx.fillText).toHaveBeenCalledWith('2/4 (50%)', 8, 14);
     });
   });
 

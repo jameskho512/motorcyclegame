@@ -230,6 +230,7 @@ export interface PlayerState {
   fireTimer: number;
   // Multipliers & modifiers
   dmgMult: number;
+  dmg?: number;
   fireRateMult: number;
   speedMult: number;
   projSpeedMult: number;
@@ -580,6 +581,7 @@ export interface MetaSaveState {
   totalKills?: number;
   bestFloor?: number;
   bossesSlain?: number;
+  weaponKills?: Partial<Record<WeaponId, number>>;
 }
 
 export interface RunSaveState {

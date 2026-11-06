@@ -16,6 +16,7 @@ import {
   getStartingWeapon,
   isWeaponAvailable,
   resetPlayerStatsForRun,
+  applyMetaStats,
   applyItemStats,
   equipItem,
   unequipSlot,
@@ -68,6 +69,7 @@ describe('Core State Management & Persistence', () => {
       expect(meta.unlocked.arc_coil).toBe(false);
       expect(meta.stash).toEqual([]);
       expect(meta.equipped).toEqual({});
+      expect(meta.weaponKills).toEqual({});
     });
   });
 
@@ -219,6 +221,56 @@ describe('Core State Management & Persistence', () => {
       expect(player.speedMult).toBeCloseTo(1.24);
       expect(player.maxHp).toBe(8);
       expect(player.hp).toBe(8);
+    });
+
+    it('applies weapon mastery damage bonus via applyMetaStats across kill tiers', () => {
+      // 0 kills: +0% bonus (exact parity)
+      const p0 = createDefaultPlayerState();
+      p0.weapon = 'pistol';
+      const m0 = createDefaultMetaSave();
+      m0.weaponKills = { pistol: 0 };
+      applyMetaStats(p0, m0);
+      expect(p0.dmg).toBe(1.0);
+      expect(p0.dmgMult).toBe(1.0);
+
+      // 10 kills: +5% bonus
+      const p10 = createDefaultPlayerState();
+      p10.weapon = 'pistol';
+      const m10 = createDefaultMetaSave();
+      m10.weaponKills = { pistol: 10 };
+      applyMetaStats(p10, m10);
+      expect(p10.dmg).toBe(1.05);
+      expect(p10.dmgMult).toBe(1.05);
+
+      // 40 kills: +10% bonus
+      const p40 = createDefaultPlayerState();
+      p40.weapon = 'pistol';
+      const m40 = createDefaultMetaSave();
+      m40.weaponKills = { pistol: 40 };
+      applyMetaStats(p40, m40);
+      expect(p40.dmg).toBe(1.10);
+      expect(p40.dmgMult).toBe(1.10);
+
+      // 100 kills: +15% bonus
+      const p100 = createDefaultPlayerState();
+      p100.weapon = 'pistol';
+      const m100 = createDefaultMetaSave();
+      m100.weaponKills = { pistol: 100 };
+      applyMetaStats(p100, m100);
+      expect(p100.dmg).toBe(1.15);
+      expect(p100.dmgMult).toBe(1.15);
+    });
+
+    it('multiplies custom player.dmg baseline correctly on mastery rank thresholds', () => {
+      const player = createDefaultPlayerState();
+      player.weapon = 'shotgun';
+      player.dmg = 20;
+
+      const meta = createDefaultMetaSave();
+      meta.weaponKills = { shotgun: 100 };
+
+      applyMetaStats(player, meta);
+      expect(player.dmg).toBe(23); // 20 * 1.15 = 23
     });
 
     it('applies and unapplies equipment stats cleanly', () => {

@@ -82,6 +82,29 @@ export function calcMinimapRoomCoords(
   return { rx, ry, cell: cellSize, visible };
 }
 
+export interface MinimapFloorSummary {
+  totalRooms: number;
+  visitedRooms: number;
+  clearedRooms: number;
+  completionPct: number;
+  hasVisitedBoss: boolean;
+  hasVisitedShop: boolean;
+}
+
+export function getMinimapFloorSummary(dungeon: Dungeon): MinimapFloorSummary {
+  const rooms = Object.values(dungeon || {});
+  const totalRooms = rooms.length;
+  if (totalRooms === 0) {
+    return { totalRooms: 0, visitedRooms: 0, clearedRooms: 0, completionPct: 0, hasVisitedBoss: false, hasVisitedShop: false };
+  }
+  const visitedRooms = rooms.filter(r => r.visited).length;
+  const clearedRooms = rooms.filter(r => r.cleared).length;
+  const completionPct = Math.round((clearedRooms / totalRooms) * 100);
+  const hasVisitedBoss = rooms.some(r => r.type === 'boss' && r.visited);
+  const hasVisitedShop = rooms.some(r => r.type === 'shop' && r.visited);
+  return { totalRooms, visitedRooms, clearedRooms, completionPct, hasVisitedBoss, hasVisitedShop };
+}
+
 /** Short card labels matching anime fighting-game HUD mockup (all uppercase). */
 const WEAPON_CARD_LABEL: Record<WeaponId, string> = {
   pistol: 'PISTOL',
@@ -387,6 +410,11 @@ export class HUDController {
     if (!this.minimapCanvas || !this.minimapCtx) return;
     const mc = this.minimapCanvas;
     const g = this.minimapCtx;
+
+    const summary = getMinimapFloorSummary(dungeon);
+    mc.setAttribute('data-completion-pct', String(summary.completionPct));
+    mc.setAttribute('data-cleared-rooms', `${summary.clearedRooms}/${summary.totalRooms}`);
+    mc.setAttribute('aria-label', `Sector Radar: ${summary.clearedRooms} of ${summary.totalRooms} rooms cleared (${summary.completionPct}%)`);
 
     const dpr = typeof window !== 'undefined' ? Math.min(3, window.devicePixelRatio || 1) : 1;
     const mw = Math.max(120, Math.round(mc.clientWidth || 240));
@@ -748,6 +776,20 @@ export class HUDController {
 
       g.restore();
     }
+
+    // 4. Compact HUD telemetry pill in the top-left corner
+    const telemetryText = `${summary.clearedRooms}/${summary.totalRooms} (${summary.completionPct}%)`;
+    g.save();
+    g.font = '900 10px monospace, sans-serif';
+    g.textAlign = 'left';
+    g.textBaseline = 'middle';
+    g.strokeStyle = '#0a0b10';
+    g.lineWidth = 3;
+    g.lineJoin = 'round';
+    g.strokeText(telemetryText, 8, 14);
+    g.fillStyle = '#2ee6ff';
+    g.fillText(telemetryText, 8, 14);
+    g.restore();
   }
 
   /**

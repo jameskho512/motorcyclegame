@@ -912,6 +912,17 @@ export class MotoRogueApp {
       this.styleGraceTimer = 2.6;
       player.styleScore = Math.min(100, (player.styleScore || 12) + deltaKills * 9);
 
+      // Weapon Mastery Progression Tracking
+      const meta = this.stateManager.metaSave;
+      if (!meta.weaponKills) meta.weaponKills = {};
+      const prevWepKills = meta.weaponKills[player.weapon] || 0;
+      const nextWepKills = prevWepKills + deltaKills;
+      meta.weaponKills[player.weapon] = nextWepKills;
+      if ((prevWepKills < 10 && nextWepKills >= 10) || (prevWepKills < 40 && nextWepKills >= 40) || (prevWepKills < 100 && nextWepKills >= 100)) {
+        const tierLabel = nextWepKills >= 100 ? '★★★ MASTER III (+15% DMG)' : nextWepKills >= 40 ? '★★☆ ADEPT II (+10% DMG)' : '★☆☆ ROOKIE I (+5% DMG)';
+        this.hud.showToast('★ WEAPON MASTERY UP!', `${WEAPONS[player.weapon].name.toUpperCase()}: ${tierLabel}`, '#ffd60a', 2400);
+      }
+
       if (boosting && this.hitStopCooldown <= 0) {
         this.hitStopTimer = 0.035;
         this.hitStopCooldown = 0.45;
@@ -1286,6 +1297,11 @@ export class MotoRogueApp {
   public render(timestampMs: number): void {
     const room = this.getCurrentRoom();
     if (!room) return;
+
+    const shakeScale = this.settings.getScreenShake?.() ?? 1;
+    if (shakeScale < 1) {
+      this.combatState.screenShake *= shakeScale;
+    }
 
     this.stage.render(
       this.stateManager.player,

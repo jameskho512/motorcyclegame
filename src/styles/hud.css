@@ -1873,3 +1873,170 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
     opacity: 0.95;
   }
 }
+
+/* --------------------------------------------------------------------------
+   6. Outlaw HUD Style Rank Badges & Shop Appraisal Pill Polish
+   -------------------------------------------------------------------------- */
+.hud-style-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  font-weight: 900;
+  font-style: italic;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  padding: 4px 10px;
+  background: #14141f;
+  border: 2px solid #0a0b10;
+  box-shadow: 3px 3px 0 #0a0b10;
+  color: #ffffff;
+  transform: skewX(-8deg);
+  transition: transform 0.15s ease-out, box-shadow 0.15s ease-out;
+}
+
+.hud-style-badge[data-style-rank="S"] {
+  color: #ff5400;
+  border-color: #ff5400;
+  background: linear-gradient(135deg, rgba(255, 84, 0, 0.28) 0%, rgba(20, 10, 5, 0.96) 100%);
+  box-shadow:
+    0 0 0 2px #0a0b10,
+    3px 3px 0 #0a0b10,
+    0 0 14px rgba(255, 84, 0, 0.6);
+  animation: hudStyleRankPulseS 1.6s ease-in-out infinite alternate;
+}
+
+.hud-style-badge[data-style-rank="SS"] {
+  color: #ffd60a;
+  border-color: #ffd60a;
+  background: linear-gradient(135deg, rgba(255, 214, 10, 0.32) 0%, rgba(30, 24, 6, 0.96) 100%);
+  box-shadow:
+    0 0 0 2px #0a0b10,
+    4px 4px 0 #0a0b10,
+    0 0 18px rgba(255, 214, 10, 0.75);
+  animation: hudStyleRankPulseSS 1.2s ease-in-out infinite alternate;
+}
+
+.hud-style-badge[data-style-rank="SSS"] {
+  color: #00f5d4;
+  border-color: #ffd60a;
+  background: linear-gradient(135deg, rgba(0, 245, 212, 0.32) 0%, rgba(229, 32, 58, 0.3) 50%, rgba(10, 11, 16, 0.98) 100%);
+  box-shadow:
+    0 0 0 2.5px #0a0b10,
+    4px 5px 0 #0a0b10,
+    0 0 24px rgba(255, 214, 10, 0.85),
+    0 0 32px rgba(229, 32, 58, 0.7);
+  animation: hudStyleRankPulseSSS 0.85s ease-in-out infinite alternate;
+}
+
+@keyframes hudStyleRankPulseS {
+  0% {
+    box-shadow:
+      0 0 0 2px #0a0b10,
+      3px 3px 0 #0a0b10,
+      0 0 10px rgba(255, 84, 0, 0.45);
+    border-color: #ff5400;
+  }
+  100% {
+    box-shadow:
+      0 0 0 2px #0a0b10,
+      3px 3px 0 #0a0b10,
+      0 0 20px rgba(255, 84, 0, 0.85),
+      0 0 26px rgba(229, 32, 58, 0.55);
+    border-color: #ffd60a;
+  }
+}
+
+@keyframes hudStyleRankPulseSS {
+  0% {
+    box-shadow:
+      0 0 0 2px #0a0b10,
+      4px 4px 0 #0a0b10,
+      0 0 14px rgba(255, 214, 10, 0.55);
+    border-color: #ffd60a;
+  }
+  100% {
+    box-shadow:
+      0 0 0 2px #0a0b10,
+      4px 4px 0 #0a0b10,
+      0 0 24px rgba(255, 214, 10, 0.95),
+      0 0 30px rgba(229, 32, 58, 0.65);
+    border-color: #e5203a;
+  }
+}
+
+@keyframes hudStyleRankPulseSSS {
+  0% {
+    box-shadow:
+      0 0 0 2.5px #0a0b10,
+      4px 5px 0 #0a0b10,
+      0 0 18px rgba(255, 214, 10, 0.75),
+      0 0 26px rgba(229, 32, 58, 0.55);
+    border-color: #ffd60a;
+  }
+  100% {
+    box-shadow:
+      0 0 0 2.5px #0a0b10,
+      5px 6px 0 #0a0b10,
+      0 0 30px rgba(0, 245, 212, 0.95),
+      0 0 40px rgba(229, 32, 58, 0.95);
+    border-color: #e5203a;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hud-style-badge[data-style-rank="S"],
+  .hud-style-badge[data-style-rank="SS"],
+  .hud-style-badge[data-style-rank="SSS"] {
+    animation: none !important;
+  }
+}
+
+/* Shop Item Appraisal Pill Badge */
+#shop-modal-desc .shop-appraisal-pill,
+.shop-appraisal-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 8px;
+  padding: 4px 12px;
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  font-size: 11px;
+  font-weight: 900;
+  font-style: italic;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  line-height: 1.2;
+  color: #00f5d4;
+  background: linear-gradient(135deg, rgba(0, 245, 212, 0.18) 0%, rgba(10, 11, 16, 0.95) 100%);
+  border: 2px solid #0a0b10;
+  outline: 1.5px solid #00f5d4;
+  outline-offset: -1px;
+  border-radius: 999px;
+  box-shadow:
+    3px 3px 0 #0a0b10,
+    0 0 12px rgba(0, 245, 212, 0.35);
+  text-shadow:
+    -1px -1px 0 #0a0b10,
+     1px -1px 0 #0a0b10,
+    -1px  1px 0 #0a0b10,
+     1px  1px 0 #0a0b10,
+     0 0 8px rgba(0, 245, 212, 0.6);
+  user-select: none;
+}
+
+#shop-confirm-overlay[data-is-bargain="true"] #shop-modal-desc .shop-appraisal-pill,
+#shop-confirm-overlay[data-is-bargain="true"] .shop-appraisal-pill {
+  color: #ffd60a;
+  outline-color: #ffd60a;
+  background: linear-gradient(135deg, rgba(255, 214, 10, 0.24) 0%, rgba(229, 32, 58, 0.16) 50%, rgba(10, 11, 16, 0.95) 100%);
+  box-shadow:
+    3px 3px 0 #0a0b10,
+    0 0 14px rgba(255, 214, 10, 0.45);
+  text-shadow:
+    -1px -1px 0 #0a0b10,
+     1px -1px 0 #0a0b10,
+    -1px  1px 0 #0a0b10,
+     1px  1px 0 #0a0b10,
+     0 0 8px rgba(255, 214, 10, 0.7);
+}

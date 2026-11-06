@@ -137,7 +137,8 @@ export function createDefaultMetaSave(): MetaSaveState {
     totalRuns: 0,
     totalKills: 0,
     bestFloor: 1,
-    bossesSlain: 0
+    bossesSlain: 0,
+    weaponKills: {}
   };
 }
 
@@ -237,6 +238,9 @@ export function loadMetaSave(storage: StorageDriver = defaultStorage): MetaSaveS
       }
       if (typeof parsed.bossesSlain === 'number' && !isNaN(parsed.bossesSlain)) {
         saveState.bossesSlain = parsed.bossesSlain;
+      }
+      if (parsed.weaponKills && typeof parsed.weaponKills === 'object') {
+        saveState.weaponKills = parsed.weaponKills;
       }
     }
   } catch {
@@ -432,24 +436,51 @@ export function applyItemStats(
 }
 
 /**
+ * Applies persistent garage meta ranks and weapon mastery bonuses to player stats.
+ */
+export function applyMetaStats(
+  player: PlayerState,
+  metaSave: MetaSaveState
+): void {
+  player.dmgMult = 1 + (metaSave.ranks?.dmg || 0) * 0.10;
+  player.fireRateMult = 1 + (metaSave.ranks?.fireRate || 0) * 0.08;
+  player.speedMult = 1 + (metaSave.ranks?.speed || 0) * 0.06;
+  player.maxHp = 6 + (metaSave.ranks?.maxHp || 0);
+  player.hp = player.maxHp;
+
+  if (player.dmg === undefined) {
+    player.dmg = player.dmgMult;
+  }
+
+  const weaponId = player.weapon || getStartingWeapon(metaSave);
+  const kills = metaSave.weaponKills?.[weaponId] || 0;
+  if (kills >= 100) {
+    player.dmg = Number((player.dmg * 1.15).toFixed(2));
+    player.dmgMult = Number((player.dmgMult * 1.15).toFixed(2));
+  } else if (kills >= 40) {
+    player.dmg = Number((player.dmg * 1.10).toFixed(2));
+    player.dmgMult = Number((player.dmgMult * 1.10).toFixed(2));
+  } else if (kills >= 10) {
+    player.dmg = Number((player.dmg * 1.05).toFixed(2));
+    player.dmgMult = Number((player.dmgMult * 1.05).toFixed(2));
+  }
+}
+
+/**
  * Completely resets player stats for a new run, applying meta ranks and equipped items.
  */
 export function resetPlayerStatsForRun(
   player: PlayerState,
   save: MetaSaveState
 ): void {
-  player.dmgMult = 1 + (save.ranks.dmg || 0) * 0.10;
-  player.fireRateMult = 1 + (save.ranks.fireRate || 0) * 0.08;
-  player.speedMult = 1 + (save.ranks.speed || 0) * 0.06;
+  player.weapon = getStartingWeapon(save);
+  applyMetaStats(player, save);
   player.projSpeedMult = 1;
   player.blastMult = 1;
   player.pierce = 0;
   player.bounce = 0;
   player.multiShot = 1;
   player.vampChance = 0;
-
-  player.maxHp = 6 + (save.ranks.maxHp || 0);
-  player.hp = player.maxHp;
 
   // Apply all equipped equipment pieces
   for (const slotDef of EQUIP_SLOTS) {
@@ -470,7 +501,6 @@ export function resetPlayerStatsForRun(
   player.nosLock = false;
   player.nosDelay = 0;
   player.invuln = 0;
-  player.weapon = getStartingWeapon(save);
   player.livery = save.livery || 'crimson_kaneda';
   player.heatLevel = save.heatLevel || 0;
 }
