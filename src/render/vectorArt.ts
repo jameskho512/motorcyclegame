@@ -694,7 +694,7 @@ export function drawBossCar(g: Graphics, boss: Boss, timestampMs: number = 0): v
   const by = boss.y;
   const angle = boss.angle;
   const variant = boss.bossVariant ?? 0;
-  const raging = boss.aiTimer < 0.4 || boss.state === 'windup' || boss.state === 'dashing';
+  const raging = boss.aiTimer < 0.4 || boss.state === 'windup' || boss.state === 'dashing' || Boolean((boss as any).enraged) || boss.hp <= boss.maxHp * 0.5;
   const bodyColor = boss.burnTimer > 0
     ? 0xff6b2b
     : parseColor(boss.color, 0xe63946);
@@ -1054,6 +1054,25 @@ export function drawBossCar(g: Graphics, boss: Boss, timestampMs: number = 0): v
 
 export function drawEnemy(g: Graphics, en: Enemy, timestampMs: number = 0): void {
   if (en.type === 'boss') {
+    if ((en as any).enraged || en.hp <= en.maxHp * 0.5) {
+      const cx = en.x;
+      const cy = en.y;
+      const r = en.radius;
+      // Pulsing Phase-2 Overdrive Enrage Aura
+      g.circle(cx, cy, r + 10 + Math.sin(timestampMs / 90) * 4).stroke({ color: 0xff1744, width: 3, alpha: 0.75 });
+      g.circle(cx, cy, r + 5).stroke({ color: 0xffd60a, width: 2, alpha: 0.65 });
+
+      // Jagged 12-point crimson/gold energy star
+      const starPts: number[] = [];
+      const numPoints = 12;
+      const rot = timestampMs / 600;
+      for (let i = 0; i < numPoints * 2; i++) {
+        const rad = i % 2 === 0 ? r + 15 + Math.sin(timestampMs / 90) * 3 : r + 7;
+        const a = rot + (i * Math.PI) / numPoints;
+        starPts.push(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad);
+      }
+      g.poly(starPts).stroke({ color: 0xff1744, width: 1.8, alpha: 0.7 });
+    }
     drawBossCar(g, en as Boss, timestampMs);
     return;
   }

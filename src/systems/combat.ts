@@ -712,6 +712,13 @@ export function handleEnemyDeath({
     addFloatingText(state, player.x, player.y - 18, `+${inf} MAX FUEL`, '#9d4edd');
   }
 
+  // Adrenaline Injector: restore +20 NOS per stack on kill
+  const adren = player.itemStacks?.adrenaline_injector ?? 0;
+  if (adren > 0) {
+    player.nos = Math.min((player as any).maxNos || 100, player.nos + 20 * adren);
+    player.nosLock = false;
+  }
+
   // RoR2 Stacking Item Toolbox Drop: Boss guaranteed, Elites 30%, Regulars 4% (mini_swarmer yields nothing)
   // Capped at maximum 1 power-up item per 2 rooms in a floor (and max 1 per room).
   const quota = room.powerUpDropQuota;
@@ -915,6 +922,33 @@ export function updatePlayerBullets(
           const bSpd = Math.hypot(b.vx, b.vy) || 1;
           en.x += (b.vx / bSpd) * b.knockback;
           en.y += (b.vy / bSpd) * b.knockback;
+        }
+
+        // Cryo-Jacketed Shells: slow enemy on hit
+        if (Array.isArray((player as any).mods) && (player as any).mods.includes('cryo_rounds')) {
+          (en as any).slowTimer = Math.max((en as any).slowTimer || 0, 2.0);
+        }
+
+        // Tesla Capacitor: 20% chance on hit to chain lightning to a nearby enemy
+        const teslaStacks = player.itemStacks?.tesla_capacitor ?? 0;
+        if (teslaStacks > 0 && !b.isArc && rng() < 0.20) {
+          const nearTarget = room.enemies.find(
+            other => other.id !== en.id && other.hp > 0 && Math.hypot(other.x - en.x, other.y - en.y) <= 150
+          );
+          if (nearTarget) {
+            damageEnemy(nearTarget, dmg * 0.35 * teslaStacks, false, state);
+            state.beamEffects.push({
+              x1: en.x,
+              y1: en.y,
+              x2: nearTarget.x,
+              y2: nearTarget.y,
+              color: '#00f5d4',
+              isLightning: true,
+              width: 2.2,
+              life: 0.2,
+              maxLife: 0.2
+            });
+          }
         }
 
         // Arc Tesla Coil: chains lightning to up to 3 nearby enemies (or 6 for Thunderlord Storm Coil)
@@ -1141,7 +1175,9 @@ export function updateEnemyCollisions(
       if (en.type !== 'boss' && isBoosting && enemyMass <= playerMass * 1.2) {
         en.x -= nx * (overlap + 26);
         en.y -= ny * (overlap + 26);
-        damageEnemy(en, 35 * player.dmgMult, true, state);
+        const spikeStacks = player.itemStacks?.titanium_spikes ?? 0;
+        const ramDmg = 35 * player.dmgMult * (1 + 0.45 * spikeStacks);
+        damageEnemy(en, ramDmg, true, state);
         addFloatingText(state, en.x, en.y - 20, 'NOS RAM!!', '#ffd60a');
         state.screenShake = Math.max(state.screenShake, 6);
         continue;
@@ -1281,7 +1317,50 @@ export function updateCombatPipeline(
   onPlayerHurt?: (dmg: number) => void,
   rng: () => number = Math.random
 ): void {
-  const onPlayerHit = onPlayerHurt;
+  const onPlayerHit = (dmg: number) => {
+    const rpStacks = player.itemStacks?.reactive_plating ?? 0;
+    if (rpStacks > 0 && player.invuln <= 0) {
+      triggerExplosion(player.x, player.y, 75 + rpStacks * 15, 18 * rpStacks * player.dmgMult, room, state, audio, rng);
+    }
+    onPlayerHurt?.(dmg);
+  };
+
+  // Exhaust Afterburner: leave scorching flame trail when NOS boosting
+  const afterburnerStacks = player.itemStacks?.exhaust_afterburner ?? 0;
+  if (afterburnerStacks > 0 && (player as any).isBoosting && player.nos > 0 && !player.nosLock && rng() < 0.35) {
+    const bikeAngle = (player as any).angle ?? player.aimAngle ?? 0;
+    state.bullets.push({
+      x: player.x - Math.cos(bikeAngle) * 18,
+      y: player.y - Math.sin(bikeAngle) * 18,
+      vx: (rng() - 0.5) * 35,
+      vy: (rng() - 0.5) * 35,
+      radius: 9,
+      maxRadius: 19,
+      dmg: (8 * afterburnerStacks) * player.dmgMult,
+      isFlame: true,
+      pierceLeft: 99,
+      bounceLeft: 0,
+      hitIds: new Set(),
+      color: '#ff5400',
+      life: 0.42,
+      maxLife: 0.42
+    });
+  }
+
+  // Magnet Coil: pull nearby pickups toward player
+  const magnetStacks = player.itemStacks?.magnet_coil ?? 0;
+  if (magnetStacks > 0 && Array.isArray(room.pickups)) {
+    const pullRange = 95 * magnetStacks;
+    for (const pk of room.pickups) {
+      const dx = player.x - pk.x;
+      const dy = player.y - pk.y;
+      const d = Math.hypot(dx, dy);
+      if (d > 8 && d <= pullRange) {
+        pk.x += (dx / d) * 210 * dt;
+        pk.y += (dy / d) * 210 * dt;
+      }
+    }
+  }
 
   // Slow timer & enemy displacement damping
   for (const en of room.enemies) {
@@ -1316,17 +1395,17 @@ export function updateCombatPipeline(
   updateGrenades(dt, state.grenades, room, state, audio, rng);
 
   // 3. Enemy bombs & hazards
-  updateEnemyBombs(dt, state.enemyBombs, room, player, state, onPlayerHurt);
-  updateHazards(dt, room.hazards, player, onPlayerHurt);
+  updateEnemyBombs(dt, state.enemyBombs, room, player, state, onPlayerHit);
+  updateHazards(dt, room.hazards, player, onPlayerHit);
 
   // 4. Burn DoT
   updateBurnDoT(dt, room.enemies, player, state, rng);
 
   // 5. Enemy bullets
-  updateEnemyBullets(dt, state.enemyBullets, player, onPlayerHurt);
+  updateEnemyBullets(dt, state.enemyBullets, player, onPlayerHit);
 
   // 6. Enemy body collisions
-  updateEnemyCollisions(room, player, state, onPlayerHurt);
+  updateEnemyCollisions(room, player, state, onPlayerHit);
 
   // 7. Check enemy deaths
   for (let i = room.enemies.length - 1; i >= 0; i--) {

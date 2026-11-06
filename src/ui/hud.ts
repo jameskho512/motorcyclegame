@@ -221,9 +221,14 @@ export class HUDController {
   private bossIntroTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private bossIntroDismissHandler: ((e: Event) => void) | null = null;
 
+  public bossHudEl: HTMLElement | null = null;
+  public bossSubEl: HTMLElement | null = null;
+
   constructor(callbacks?: { onSelectWeapon?: (id: WeaponId) => void }) {
     this.onSelectWeapon = callbacks?.onSelectWeapon;
     if (typeof document !== 'undefined') {
+      this.bossHudEl = document.getElementById('boss-hud');
+      this.bossSubEl = document.getElementById('boss-hud-sub');
       this.fuelGaugeCanvas = document.getElementById('fuel-gauge') as HTMLCanvasElement | null;
       if (this.fuelGaugeCanvas) {
         this.fuelGaugeCtx = this.fuelGaugeCanvas.getContext('2d');
@@ -737,11 +742,15 @@ export class HUDController {
    */
   public updateBossBar(boss: Boss | null, floorNum: number = 1): void {
     if (typeof document === 'undefined') return;
-    const bossHud = document.getElementById('boss-hud');
+    if (!this.bossHudEl) {
+      this.bossHudEl = document.getElementById('boss-hud');
+    }
+    const bossHud = this.bossHudEl;
     if (!bossHud) return;
 
     if (!boss || boss.hp <= 0) {
       bossHud.classList.remove('is-visible');
+      bossHud.classList.remove('is-enraged');
       bossHud.hidden = true;
       return;
     }
@@ -751,11 +760,22 @@ export class HUDController {
     bossHud.classList.add('is-visible');
     bossHud.style.setProperty('--boss-accent', profile.accent);
 
+    const isEnraged = boss.hp <= boss.maxHp * 0.5;
+    bossHud.classList.toggle('is-enraged', isEnraged);
+
     const nameEl = document.getElementById('boss-hud-name');
     if (nameEl) nameEl.textContent = boss.name || 'SCRAP GOLIATH';
 
-    const subEl = document.getElementById('boss-hud-sub');
-    if (subEl) subEl.textContent = `FLOOR ${floorNum} // ${profile.subtitle.split('—')[0].trim()}`;
+    if (!this.bossSubEl) {
+      this.bossSubEl = document.getElementById('boss-hud-sub');
+    }
+    if (this.bossSubEl) {
+      let subText = `FLOOR ${floorNum} // ${profile.subtitle.split('—')[0].trim()}`;
+      if (isEnraged) {
+        subText += ' // ⚡ PHASE II OVERDRIVE';
+      }
+      this.bossSubEl.textContent = subText;
+    }
 
     const hpEl = document.getElementById('boss-hud-hp');
     const curHp = Math.max(0, Math.ceil(boss.hp));

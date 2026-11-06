@@ -108,7 +108,13 @@ export type RunModId =
   | 'ricochet_mod'
   | 'vamp_siphon'
   | 'split_chamber'
-  | 'high_explosive';
+  | 'high_explosive'
+  | 'cryo_rounds'
+  | 'homing_missiles'
+  | 'overcharge_dynamo'
+  | 'executioner_optics'
+  | 'berserker_chassis'
+  | 'nanite_repair';
 
 /**
  * Minimal interface representing player stats that mods can mutate.
@@ -263,6 +269,78 @@ export const RUN_MOD_POOL: readonly RunModDef[] = [
     apply: (p: ModPlayerTarget) => {
       p.blastMult += 0.30;
     }
+  },
+  {
+    id: 'cryo_rounds',
+    name: 'Cryo-Jacketed Shells',
+    desc: 'Bullets chill enemies & +15% Damage',
+    description: 'Bullets chill enemies & +15% Damage',
+    cost: 19,
+    statDeltas: { dmgMult: 0.15 },
+    apply: (p: ModPlayerTarget) => {
+      p.dmgMult += 0.15;
+    }
+  },
+  {
+    id: 'homing_missiles',
+    name: 'Smart-Link Guidance',
+    desc: '+20% Projectile Speed & +1 Pierce',
+    description: '+20% Projectile Speed & +1 Pierce',
+    cost: 21,
+    statDeltas: { projSpeedMult: 0.20, pierce: 1 },
+    apply: (p: ModPlayerTarget) => {
+      p.projSpeedMult += 0.20;
+      p.pierce += 1;
+    }
+  },
+  {
+    id: 'overcharge_dynamo',
+    name: 'Overcharge Dynamo',
+    desc: '+18% Fire Rate & +12% Speed',
+    description: '+18% Fire Rate & +12% Speed',
+    cost: 20,
+    statDeltas: { fireRateMult: 0.18, speedMult: 0.12 },
+    apply: (p: ModPlayerTarget) => {
+      p.fireRateMult += 0.18;
+      p.speedMult += 0.12;
+    }
+  },
+  {
+    id: 'executioner_optics',
+    name: 'Executioner Optics',
+    desc: '+32% Weapon Damage',
+    description: '+32% Weapon Damage',
+    cost: 22,
+    statDeltas: { dmgMult: 0.32 },
+    apply: (p: ModPlayerTarget) => {
+      p.dmgMult += 0.32;
+    }
+  },
+  {
+    id: 'berserker_chassis',
+    name: 'Berserker Chassis',
+    desc: '+1 Max HP, Heal +1 HP & +20% Blast Damage',
+    description: '+1 Max HP, Heal +1 HP & +20% Blast Damage',
+    cost: 18,
+    statDeltas: { maxHp: 1, healHp: 1, blastMult: 0.20 },
+    apply: (p: ModPlayerTarget) => {
+      p.maxHp += 1;
+      p.hp = Math.min(p.maxHp, p.hp + 1);
+      p.blastMult += 0.20;
+    }
+  },
+  {
+    id: 'nanite_repair',
+    name: 'Nanite Hull Matrix',
+    desc: '+3 Max HP, Heal +3 HP & +10% Siphon',
+    description: '+3 Max HP, Heal +3 HP & +10% Siphon',
+    cost: 24,
+    statDeltas: { maxHp: 3, healHp: 3, vampChance: 0.10 },
+    apply: (p: ModPlayerTarget) => {
+      p.maxHp += 3;
+      p.hp = Math.min(p.maxHp, p.hp + 3);
+      p.vampChance = Math.min(0.6, p.vampChance + 0.10);
+    }
   }
 ] as const;
 
@@ -276,7 +354,13 @@ export type DropItemId =
   | 'chrome_lens'
   | 'gasoline'
   | 'racing_slicks'
-  | 'oil_infusion';
+  | 'oil_infusion'
+  | 'tesla_capacitor'
+  | 'exhaust_afterburner'
+  | 'reactive_plating'
+  | 'magnet_coil'
+  | 'adrenaline_injector'
+  | 'titanium_spikes';
 
 export interface DropItemDef {
   /** Unique drop item identifier */
@@ -352,6 +436,60 @@ export const DROP_ITEMS: Record<DropItemId, DropItemDef> = {
     color: '#9d4edd',
     icon: 'O',
     ror2Inspiration: 'Infusion'
+  },
+  tesla_capacitor: {
+    id: 'tesla_capacitor',
+    name: 'Tesla Capacitor',
+    desc: '20% chance on hit to chain lightning (+35% dmg/stack)',
+    description: '20% chance on hit to chain lightning (+35% dmg/stack)',
+    color: '#c77dff',
+    icon: 'Z',
+    ror2Inspiration: 'Ukulele'
+  },
+  exhaust_afterburner: {
+    id: 'exhaust_afterburner',
+    name: 'Exhaust Afterburner',
+    desc: 'NOS boost leaves scorching flame trail (+8 dmg/stack)',
+    description: 'NOS boost leaves scorching flame trail (+8 dmg/stack)',
+    color: '#ff5400',
+    icon: 'F',
+    ror2Inspiration: 'Frost Relic'
+  },
+  reactive_plating: {
+    id: 'reactive_plating',
+    name: 'Reactive Plating',
+    desc: 'Taking damage triggers a defensive blast wave',
+    description: 'Taking damage triggers a defensive blast wave',
+    color: '#ffd60a',
+    icon: 'P',
+    ror2Inspiration: 'Razorwire'
+  },
+  magnet_coil: {
+    id: 'magnet_coil',
+    name: 'Magnet Coil',
+    desc: 'Pulls nearby pickups toward bike (+95px range/stack)',
+    description: 'Pulls nearby pickups toward bike (+95px range/stack)',
+    color: '#00bbf9',
+    icon: 'M',
+    ror2Inspiration: 'Magnet'
+  },
+  adrenaline_injector: {
+    id: 'adrenaline_injector',
+    name: 'Adrenaline Injector',
+    desc: 'Kills restore +20 NOS charge per stack',
+    description: 'Kills restore +20 NOS charge per stack',
+    color: '#06d6a0',
+    icon: 'A',
+    ror2Inspiration: 'Bandolier'
+  },
+  titanium_spikes: {
+    id: 'titanium_spikes',
+    name: 'Titanium Ram Spikes',
+    desc: '+45% NOS Ram Damage per stack',
+    description: '+45% NOS Ram Damage per stack',
+    color: '#ef233c',
+    icon: 'K',
+    ror2Inspiration: 'Focus Crystal'
   }
 };
 
@@ -364,5 +502,11 @@ export const DROP_ITEM_IDS: readonly DropItemId[] = [
   'chrome_lens',
   'gasoline',
   'racing_slicks',
-  'oil_infusion'
+  'oil_infusion',
+  'tesla_capacitor',
+  'exhaust_afterburner',
+  'reactive_plating',
+  'magnet_coil',
+  'adrenaline_injector',
+  'titanium_spikes'
 ] as const;

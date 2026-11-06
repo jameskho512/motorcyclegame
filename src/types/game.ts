@@ -423,7 +423,13 @@ export type DropItemId =
   | 'chrome_lens'
   | 'gasoline'
   | 'racing_slicks'
-  | 'oil_infusion';
+  | 'oil_infusion'
+  | 'tesla_capacitor'
+  | 'exhaust_afterburner'
+  | 'reactive_plating'
+  | 'magnet_coil'
+  | 'adrenaline_injector'
+  | 'titanium_spikes';
 
 export interface DropItemDef {
   id: DropItemId;
@@ -442,7 +448,13 @@ export type ModId =
   | 'ricochet_mod'
   | 'vamp_siphon'
   | 'split_chamber'
-  | 'high_explosive';
+  | 'high_explosive'
+  | 'cryo_rounds'
+  | 'homing_missiles'
+  | 'overcharge_dynamo'
+  | 'executioner_optics'
+  | 'berserker_chassis'
+  | 'nanite_repair';
 
 export interface ModDef {
   id: ModId | string;

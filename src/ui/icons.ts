@@ -259,6 +259,52 @@ export const DROP_ITEM_HI_FI_SVG: Record<DropItemId, string> = {
     <circle cx="16" cy="26" r="2" fill="#ffd60a"/>
     <circle cx="21" cy="24" r="1.5" fill="#00f5d4"/>
     <circle cx="18" cy="16" r="1.6" fill="#ffd60a"/>
+  </svg>`,
+
+  tesla_capacitor: `<svg viewBox="0 0 36 36" aria-hidden="true" focusable="false">
+    <!-- High-voltage twin-coil Tesla capacitor cylinder -->
+    <rect x="9" y="8" width="18" height="22" rx="3" fill="#2d1e4a" stroke="#0a0b10" stroke-width="2.4"/>
+    <rect x="12" y="4" width="4" height="5" fill="#ffd60a" stroke="#0a0b10" stroke-width="1.8"/>
+    <rect x="20" y="4" width="4" height="5" fill="#ffd60a" stroke="#0a0b10" stroke-width="1.8"/>
+    <path d="M19 10l-5 8h5l-3 9 8-10h-5z" fill="#00f5d4" stroke="#0a0b10" stroke-width="1.5" stroke-linejoin="round"/>
+  </svg>`,
+
+  exhaust_afterburner: `<svg viewBox="0 0 36 36" aria-hidden="true" focusable="false">
+    <!-- Twin jet-afterburner exhaust nozzles with scorching plasma plume -->
+    <path d="M4 12h14l4-3v18l-4-3H4z" fill="#5c677d" stroke="#0a0b10" stroke-width="2.4" stroke-linejoin="round"/>
+    <path d="M22 10c6 1 11 4 12 8-1 4-6 7-12 8z" fill="#ff5400" stroke="#0a0b10" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M22 14c4 1 7 2 8 4-1 2-4 3-8 4z" fill="#ffd60a"/>
+  </svg>`,
+
+  reactive_plating: `<svg viewBox="0 0 36 36" aria-hidden="true" focusable="false">
+    <!-- Explosive reactive armor (ERA) hazard tile with outward shockwaves -->
+    <polygon points="18,4 31,11 31,25 18,32 5,25 5,11" fill="#ffd60a" stroke="#0a0b10" stroke-width="2.5" stroke-linejoin="round"/>
+    <polygon points="18,9 26,13.5 26,22.5 18,27 10,22.5 10,13.5" fill="#ff5400" stroke="#0a0b10" stroke-width="2" stroke-linejoin="round"/>
+    <circle cx="18" cy="18" r="3" fill="#ffffff"/>
+  </svg>`,
+
+  magnet_coil: `<svg viewBox="0 0 36 36" aria-hidden="true" focusable="false">
+    <!-- Classic U-shaped electromagnet with cyan flux waves -->
+    <path d="M8 8v11a10 10 0 0 0 20 0V8h-6v11a4 4 0 0 1-8 0V8z" fill="#e63946" stroke="#0a0b10" stroke-width="2.4" stroke-linejoin="round"/>
+    <rect x="8" y="6" width="6" height="5" fill="#cfd6e6" stroke="#0a0b10" stroke-width="2"/>
+    <rect x="22" y="6" width="6" height="5" fill="#cfd6e6" stroke="#0a0b10" stroke-width="2"/>
+    <path d="M13 3c3-2 7-2 10 0" stroke="#00f5d4" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+  </svg>`,
+
+  adrenaline_injector: `<svg viewBox="0 0 36 36" aria-hidden="true" focusable="false">
+    <!-- Neon green combat auto-injector pen -->
+    <g transform="rotate(35 18 18)">
+      <rect x="13" y="5" width="10" height="22" rx="2" fill="#06d6a0" stroke="#0a0b10" stroke-width="2.4"/>
+      <rect x="15" y="9" width="6" height="10" fill="#ffffff"/>
+      <path d="M18 11v6M15 14h6" stroke="#06d6a0" stroke-width="2.2"/>
+      <path d="M16 27h4l-2 6z" fill="#ffd60a" stroke="#0a0b10" stroke-width="1.8"/>
+    </g>
+  </svg>`,
+
+  titanium_spikes: `<svg viewBox="0 0 36 36" aria-hidden="true" focusable="false">
+    <!-- Triple-bladed crimson/steel front bumper ram spikes -->
+    <path d="M5 26l6-18 5 14 5-18 6 18 4-10v14H5z" fill="#ef233c" stroke="#0a0b10" stroke-width="2.4" stroke-linejoin="round"/>
+    <path d="M8 26l3-11 3 9 7-13 4 15z" fill="#cfd6e6"/>
   </svg>`
 };
 
@@ -333,6 +379,48 @@ export const MOD_HI_FI_SVG: Record<string, string> = {
     <path d="M18 2l4 8 9-3-5 8 8 5-9 2 3 9-8-5-5 8-2-9-9 2 6-7-6-7 9 2z" fill="#ff5400" stroke="#0a0b10" stroke-width="2.2" stroke-linejoin="round"/>
     <circle cx="18" cy="18" r="6" fill="#ffd60a"/>
     <circle cx="18" cy="18" r="2.8" fill="#ffffff"/>
+  </svg>`,
+
+  cryo_rounds: `<svg viewBox="0 0 36 36" aria-hidden="true" focusable="false">
+    <!-- Sub-zero frost crystal & ice-jacketed cartridge -->
+    <polygon points="18,3 23,11 31,11 25,18 31,25 23,25 18,33 13,25 5,25 11,18 5,11 13,11" fill="#72efdd" stroke="#0a0b10" stroke-width="2.2" stroke-linejoin="round"/>
+    <circle cx="18" cy="18" r="5" fill="#ffffff" stroke="#00bbf9" stroke-width="2"/>
+  </svg>`,
+
+  homing_missiles: `<svg viewBox="0 0 36 36" aria-hidden="true" focusable="false">
+    <!-- Smart-link radar lock reticle & micro-missile -->
+    <circle cx="18" cy="18" r="12" fill="none" stroke="#00f5d4" stroke-width="2.5" stroke-dasharray="5 3"/>
+    <path d="M18 3v6M18 27v6M3 18h6M27 18h6" stroke="#ffbe0b" stroke-width="2.4" stroke-linecap="round"/>
+    <polygon points="18,10 24,24 18,21 12,24" fill="#ef233c" stroke="#0a0b10" stroke-width="2" stroke-linejoin="round"/>
+  </svg>`,
+
+  overcharge_dynamo: `<svg viewBox="0 0 36 36" aria-hidden="true" focusable="false">
+    <!-- Spinning copper rotor dynamo with electric discharge -->
+    <circle cx="18" cy="18" r="13" fill="#3a261e" stroke="#0a0b10" stroke-width="2.5"/>
+    <circle cx="18" cy="18" r="8" fill="#ff9f1c" stroke="#0a0b10" stroke-width="2"/>
+    <path d="M19 6l-6 12h6l-2 12 9-14h-6z" fill="#00f5d4" stroke="#0a0b10" stroke-width="1.6" stroke-linejoin="round"/>
+  </svg>`,
+
+  executioner_optics: `<svg viewBox="0 0 36 36" aria-hidden="true" focusable="false">
+    <!-- Crimson sniper thermal optics scope -->
+    <circle cx="18" cy="18" r="13" fill="#181b26" stroke="#ef233c" stroke-width="2.6"/>
+    <line x1="5" y1="18" x2="31" y2="18" stroke="#ef233c" stroke-width="2"/>
+    <line x1="18" y1="5" x2="18" y2="31" stroke="#ef233c" stroke-width="2"/>
+    <circle cx="18" cy="18" r="4.5" fill="#ffd60a" stroke="#0a0b10" stroke-width="1.8"/>
+  </svg>`,
+
+  berserker_chassis: `<svg viewBox="0 0 36 36" aria-hidden="true" focusable="false">
+    <!-- Spiked war-rig skull emblem -->
+    <path d="M9 14c0-5 4-9 9-9s9 4 9 9c0 3-1.5 6-3.5 7.5V28H12.5v-6.5C10.5 20 9 17 9 14z" fill="#ff5400" stroke="#0a0b10" stroke-width="2.4" stroke-linejoin="round"/>
+    <circle cx="14.5" cy="15" r="2.5" fill="#ffd60a"/>
+    <circle cx="21.5" cy="15" r="2.5" fill="#ffd60a"/>
+    <path d="M15 24v4M18 24v4M21 24v4" stroke="#0a0b10" stroke-width="2"/>
+  </svg>`,
+
+  nanite_repair: `<svg viewBox="0 0 36 36" aria-hidden="true" focusable="false">
+    <!-- Emerald nanobot swarm matrix & repair cross -->
+    <polygon points="18,3 31,10.5 31,25.5 18,33 5,25.5 5,10.5" fill="#182a24" stroke="#06d6a0" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="M15 10h6v5h5v6h-5v5h-6v-5h-5v-6h5z" fill="#06d6a0" stroke="#0a0b10" stroke-width="2" stroke-linejoin="round"/>
   </svg>`
 };
 
@@ -397,9 +485,15 @@ export function getModIconSvg(idOrName: string): string {
   if (lower.includes('trigger') || lower.includes('hair')) return MOD_HI_FI_SVG.hair_trigger;
   if (lower.includes('nitrous') || lower.includes('turbo')) return MOD_HI_FI_SVG.turbo_charger;
   if (lower.includes('fairing') || lower.includes('armor') || lower.includes('reinforced')) return MOD_HI_FI_SVG.armor_plate;
-  if (lower.includes('pierc') || lower.includes('uranium')) return MOD_HI_FI_SVG.piercing_core;
-  if (lower.includes('ricochet') || lower.includes('deflect')) return MOD_HI_FI_SVG.ricochet_mod;
+  if (lower.includes('pierc') || lower.includes('uranium') || lower.includes('sabot')) return MOD_HI_FI_SVG.piercing_core;
+  if (lower.includes('ricochet') || lower.includes('deflect') || lower.includes('rubber')) return MOD_HI_FI_SVG.ricochet_mod;
   if (lower.includes('vamp') || lower.includes('siphon')) return MOD_HI_FI_SVG.vamp_siphon;
-  if (lower.includes('split') || lower.includes('chamber')) return MOD_HI_FI_SVG.split_chamber;
+  if (lower.includes('split') || lower.includes('chamber') || lower.includes('twin')) return MOD_HI_FI_SVG.split_chamber;
+  if (lower.includes('cryo') || lower.includes('chill')) return MOD_HI_FI_SVG.cryo_rounds;
+  if (lower.includes('homing') || lower.includes('smart')) return MOD_HI_FI_SVG.homing_missiles;
+  if (lower.includes('overcharge') || lower.includes('dynamo')) return MOD_HI_FI_SVG.overcharge_dynamo;
+  if (lower.includes('executioner') || lower.includes('optics')) return MOD_HI_FI_SVG.executioner_optics;
+  if (lower.includes('berserker')) return MOD_HI_FI_SVG.berserker_chassis;
+  if (lower.includes('nanite')) return MOD_HI_FI_SVG.nanite_repair;
   return MOD_HI_FI_SVG.high_explosive;
 }

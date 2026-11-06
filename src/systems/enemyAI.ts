@@ -510,6 +510,8 @@ export function updateEnemyAI({
     case 'boss': {
       const boss = en as Boss;
       boss.phase = (boss.phase || 0) + dt;
+      const isEnraged = boss.hp <= boss.maxHp * 0.5;
+      (boss as any).enraged = isEnraged;
 
       // Handle dash / windup state machine for ramming / jet-strafing bosses
       if (boss.state === 'windup') {
@@ -553,9 +555,10 @@ export function updateEnemyAI({
           boss.state = 'idle';
         }
       } else {
-        // Persistent advance in idle state
-        en.x += (dx / dist) * en.speed * dt;
-        en.y += (dy / dist) * en.speed * dt;
+        // Persistent advance in idle state (boosted by 1.28x when in Phase 2 Overdrive)
+        const moveMult = isEnraged ? 1.28 : 1.0;
+        en.x += (dx / dist) * en.speed * dt * moveMult;
+        en.y += (dy / dist) * en.speed * dt * moveMult;
       }
 
       en.aiTimer -= dt;
@@ -563,8 +566,10 @@ export function updateEnemyAI({
 
       // Primary Attack (aiTimer): Variant-specific signature + radial pressure
       if (en.aiTimer <= 0) {
-        en.aiTimer = Math.max(0.75, 1.35 - floorNum * 0.08);
-        const count = 8 + Math.min(6, floorNum * 2);
+        en.aiTimer = isEnraged
+          ? Math.max(0.55, (1.35 - floorNum * 0.08) * 0.72)
+          : Math.max(0.75, 1.35 - floorNum * 0.08);
+        const count = 8 + Math.min(6, floorNum * 2) + (isEnraged ? 4 : 0);
 
         // Baseline radial nova (keeps classic bullet-hell density & test compatibility)
         for (let k = 0; k < count; k++) {
@@ -670,9 +675,9 @@ export function updateEnemyAI({
         }
       }
 
-      // Secondary Attack (subTimer): every 2.8s
+      // Secondary Attack (subTimer): every 2.8s (or 2.1s in Phase 2 Overdrive)
       if (boss.subTimer <= 0) {
-        boss.subTimer = 2.8;
+        boss.subTimer = isEnraged ? 2.1 : 2.8;
         if (boss.bossVariant === 0) {
           // Scrap Goliath: Bulldozer Ram Charge
           boss.state = 'windup';
