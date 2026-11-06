@@ -38,6 +38,7 @@ import {
   getHubStationPromptInfo,
   HubStationOpenOptions
 } from '../../src/ui/hubStationModal';
+import { WEAPONS, WeaponId, getWeaponTacticalProfile } from '../../src/data/weapons';
 import { getCareerOutlawRank } from '../../src/core/state';
 import { ARENA_WIDTH, ARENA_HEIGHT, Pickup } from '../../src/types/game';
 
@@ -1065,6 +1066,16 @@ describe('HubStationModalController & getHubStationPromptInfo (Wave 14-15)', () 
       });
     });
 
+    it('returns contextual prompt info for armory station', () => {
+      const info = getHubStationPromptInfo('armory');
+      expect(info).toEqual({
+        title: '🔫 TACTICAL ARMORY & BALLISTICS',
+        summary: 'Inspect tactical combat roles, optimal ranges, and base DPS for all weapons',
+        actionLabel: 'OPEN ARMORY [E]',
+        accentColor: '#ff0055'
+      });
+    });
+
     it('returns fallback prompt info for unknown station id', () => {
       const info = getHubStationPromptInfo('unknown_station');
       expect(info).toEqual({
@@ -1587,6 +1598,94 @@ describe('HubStationModalController & getHubStationPromptInfo (Wave 14-15)', () 
       primaryBtn.click();
 
       expect(modal.isOpen()).toBe(false);
+    });
+
+    it('renders armory station with tactical roles, base DPS, and tactical summary lines for all weapons', () => {
+      const options = createHubOptions({
+        npcId: 'armory',
+        metaSave: {
+          scrap: 120,
+          unlocked: {
+            machine_gun: true,
+            shotgun: true
+          }
+        },
+        player: {
+          weapon: 'pistol'
+        }
+      });
+      modal.open(options);
+
+      expect(document.getElementById('hub-station-title')?.textContent).toBe('🔫 TACTICAL ARMORY & BALLISTICS');
+      expect(document.getElementById('hub-station-speaker')?.textContent).toBe('QUARTERMASTER VEX');
+
+      const cards = document.querySelectorAll<HTMLElement>('.hub-weapon-card');
+      const weaponIds = Object.keys(WEAPONS) as WeaponId[];
+      expect(cards.length).toBe(weaponIds.length);
+
+      weaponIds.forEach((id, index) => {
+        const card = cards[index];
+        const tac = getWeaponTacticalProfile(id);
+        const w = WEAPONS[id];
+
+        expect(card.getAttribute('data-weapon-id')).toBe(id);
+        expect(card.getAttribute('data-tactical-role')).toBe(tac.roleTag);
+        expect(card.getAttribute('data-base-dps')).toBe(String(tac.baseDps));
+
+        const tacticalSpan = card.querySelector('.hub-weapon-tactical');
+        expect(tacticalSpan).not.toBeNull();
+        expect(tacticalSpan?.textContent).toBe(tac.summaryLine);
+        expect(tacticalSpan?.textContent).toContain(tac.roleTag);
+        expect(tacticalSpan?.textContent).toContain(`${tac.baseDps} BASE DPS`);
+        expect(tacticalSpan?.textContent).toContain(tac.optimalRangeText);
+
+        const nameEl = card.querySelector('.hub-weapon-name');
+        expect(nameEl?.textContent).toBe(w.name);
+      });
+
+      // Verify pistol tactical profile specifically matches expected role & base DPS
+      const pistolCard = document.querySelector<HTMLElement>('.hub-weapon-card[data-weapon-id="pistol"]');
+      expect(pistolCard?.getAttribute('data-tactical-role')).toBe('PRECISION SIDEARM');
+      expect(pistolCard?.getAttribute('data-base-dps')).toBe('48');
+      expect(pistolCard?.querySelector('.hub-weapon-tactical')?.textContent).toBe(
+        'PRECISION SIDEARM · 48 BASE DPS · MID RANGE'
+      );
+      expect(pistolCard?.className).toContain('is-equipped');
+
+      // Verify unlocked and locked states
+      const mgCard = document.querySelector<HTMLElement>('.hub-weapon-card[data-weapon-id="machine_gun"]');
+      expect(mgCard?.className).toContain('is-unlocked');
+
+      const railgunTac = getWeaponTacticalProfile('railgun');
+      const railgunCard = document.querySelector<HTMLElement>('.hub-weapon-card[data-weapon-id="railgun"]');
+      expect(railgunCard?.className).toContain('is-locked');
+      expect(railgunCard?.getAttribute('data-tactical-role')).toBe(railgunTac.roleTag);
+      expect(railgunCard?.getAttribute('data-base-dps')).toBe(String(railgunTac.baseDps));
+      expect(railgunCard?.querySelector('.hub-weapon-tactical')?.textContent).toBe(railgunTac.summaryLine);
+
+      // Primary button confirms loadout and closes modal
+      const primaryBtn = document.getElementById('btn-hub-station-primary') as HTMLButtonElement;
+      expect(primaryBtn.textContent).toContain('CONFIRM ARMORY LOADOUT');
+      primaryBtn.click();
+      expect(modal.isOpen()).toBe(false);
+    });
+
+    it('renders armory station via explicit renderArmory method', () => {
+      const options = createHubOptions({
+        npcId: 'armory',
+        metaSave: { scrap: 50 },
+        player: { weapon: 'machine_gun' }
+      });
+      modal.open(options);
+      modal.renderArmory();
+
+      const equippedCard = document.querySelector<HTMLElement>('.hub-weapon-card[data-weapon-id="machine_gun"]');
+      expect(equippedCard?.className).toContain('is-equipped');
+      expect(equippedCard?.getAttribute('data-tactical-role')).toBe('RAPID SUPPRESSION');
+      expect(equippedCard?.getAttribute('data-base-dps')).toBe('58');
+      expect(equippedCard?.querySelector('.hub-weapon-tactical')?.textContent).toBe(
+        'RAPID SUPPRESSION · 58 BASE DPS · CLOSE-TO-MID RANGE'
+      );
     });
   });
 });

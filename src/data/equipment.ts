@@ -325,3 +325,70 @@ export function getEquippedSetBonus(
     label: labels.join(' • ')
   };
 }
+
+// ---------------------------------------------------------------------------
+// EQUIPMENT LOADOUT POWER & SET ADVISOR (M95)
+// ---------------------------------------------------------------------------
+
+export interface EquipmentLoadoutSummary {
+  installedCount: number;
+  emptySlots: EquipSlotId[];
+  totalPowerScore: number;
+  highestRarity: RarityTier;
+  rarityCounts: Record<RarityTier, number>;
+  nextSetGoalText: string;
+  summaryLine: string;
+}
+
+/**
+ * Computes an aggregate loadout summary including installed slot counts,
+ * power score, rarity distribution, and next set synergy goal.
+ */
+export function getEquipmentLoadoutSummary(
+  equipped?: Partial<Record<EquipSlotId, EquipmentItem | null>> | null
+): EquipmentLoadoutSummary {
+  let installedCount = 0;
+  const emptySlots: EquipSlotId[] = [];
+  let rawPowerScore = 0;
+  let highestRarity: RarityTier = 0;
+  const rarityCounts: Record<RarityTier, number> = { 0: 0, 1: 0, 2: 0, 3: 0 };
+
+  for (const slotDef of EQUIP_SLOTS) {
+    const item = equipped?.[slotDef.id];
+    if (item) {
+      installedCount++;
+      rawPowerScore += itemScore(item);
+      rarityCounts[item.rarity] = (rarityCounts[item.rarity] || 0) + 1;
+      if (item.rarity > highestRarity) {
+        highestRarity = item.rarity;
+      }
+    } else {
+      emptySlots.push(slotDef.id);
+    }
+  }
+
+  const totalPowerScore = Math.round(rawPowerScore * 100) / 100;
+
+  let nextSetGoalText: string;
+  if (rarityCounts[3] >= 3) {
+    nextSetGoalText = '3pc Valhalla Set Active (+15% Dmg, +10% Spd)';
+  } else if (rarityCounts[3] > 0) {
+    nextSetGoalText = `Need ${3 - rarityCounts[3]} more Legendary for 3pc Valhalla Set`;
+  } else if ((rarityCounts[2] + rarityCounts[3]) >= 4) {
+    nextSetGoalText = '4pc Rare Tuning Set Active (+12% Dmg, +8% Spd)';
+  } else {
+    nextSetGoalText = `Need ${Math.max(1, 4 - (rarityCounts[2] + rarityCounts[3]))} more Rare+ for 4pc Rare Tuning Set`;
+  }
+
+  const summaryLine = `LOADOUT: ${installedCount}/6 INSTALLED · POWER: ${totalPowerScore.toFixed(1)} · ${nextSetGoalText}`;
+
+  return {
+    installedCount,
+    emptySlots,
+    totalPowerScore,
+    highestRarity,
+    rarityCounts,
+    nextSetGoalText,
+    summaryLine
+  };
+}

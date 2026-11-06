@@ -13,6 +13,7 @@ import {
   WeaponId,
   PlayerState,
   EquipmentItem,
+  EquipSlot,
   Pickup,
   MetaSaveState,
   SAVE_KEY_META,
@@ -23,8 +24,15 @@ import {
 import {
   GarageController,
   getWeaponMasteryTier,
-  GarageCallbacks
+  GarageCallbacks,
+  getEquippedBikeVisualState,
+  PART_ANCHORS
 } from '../../src/ui/garage';
+
+import {
+  getEquipmentVisualSpec,
+  getEquipmentItemModelSvg
+} from '../../src/ui/icons';
 
 import {
   ShopModalController,
@@ -2109,6 +2117,264 @@ describe('Tier 5: Playability Verification & End-to-End Simulation', () => {
       expect(formatDummyHitTelemetry(45, false)).toBe('🎯 HIT 45');
       expect(formatDummyHitTelemetry(99.6, true)).toBe('🎯 CRIT 100!');
       expect(formatDummyHitTelemetry(0, false)).toBe('🎯 HIT 1');
+    });
+  });
+
+  // ==========================================================================
+  // 9. GARAGE HIGH-RES EQUIPMENT MODELS & DYNAMIC MOTORCYCLE UPGRADES (M96)
+  // ==========================================================================
+  describe('Garage High-Res Equipment Models & Dynamic Motorcycle Upgrades (M96)', () => {
+    it('verifies that equipping items one by one across all 6 slots increments equippedCount from 0 to 6 and updates #bike-canvas attributes', () => {
+      document.body.innerHTML = `
+        <div id="garage-overlay">
+          <canvas id="bike-canvas" width="300" height="190"></canvas>
+          <div id="slots-left"></div>
+          <div id="slots-right"></div>
+          <div id="eq-totals"></div>
+          <div id="stash-list"></div>
+          <div id="unlock-list"></div>
+          <div id="meta-upgrade-list"></div>
+        </div>
+      `;
+
+      const meta: MetaSaveState = createDefaultMetaSave();
+      meta.equipped = {};
+
+      const callbacks: GarageCallbacks = {
+        onEquipItem: vi.fn(),
+        onUnequipSlot: vi.fn(),
+        onSellItem: vi.fn(),
+        onUnlockWeapon: vi.fn(),
+        onEquipWeapon: vi.fn(),
+        onBuyUpgrade: vi.fn(),
+        onResumeRun: vi.fn(),
+        onNewRun: vi.fn(),
+        onResetSave: vi.fn()
+      };
+
+      const garage = new GarageController(callbacks);
+      const canvas = document.getElementById('bike-canvas') as HTMLCanvasElement;
+
+      // 0 items equipped initially
+      garage.open(false, 1, meta, player);
+      const initialVisual = getEquippedBikeVisualState(meta);
+      expect(initialVisual.equippedCount).toBe(0);
+      expect(initialVisual.equippedSlots).toEqual([]);
+      expect(canvas.getAttribute('data-equipped-visual-count')).toBe('0');
+      expect(canvas.getAttribute('data-equipped-visual-slots')).toBe('');
+      expect(canvas.getAttribute('data-equipped-model-codes')).toBe('');
+      expect(canvas.getAttribute('data-equipped-visual-summary')).toBe('MOUNTED MODELS (0/6): STOCK CHASSIS');
+
+      const slotsToEquip: EquipSlot[] = ['tires', 'engine', 'handlebars', 'exhaust', 'frame', 'tank'];
+
+      slotsToEquip.forEach((slot, index) => {
+        meta.equipped[slot] = {
+          slot,
+          rarity: 1,
+          name: `Custom ${slot.toUpperCase()}`,
+          stats: { speed: 10 + index * 2 }
+        };
+
+        garage.drawBikeLift(meta);
+
+        const visual = getEquippedBikeVisualState(meta);
+        const expectedCount = index + 1;
+        expect(visual.equippedCount).toBe(expectedCount);
+        expect(canvas.getAttribute('data-equipped-visual-count')).toBe(String(expectedCount));
+        expect(canvas.getAttribute('data-equipped-visual-slots')).toContain(slot);
+
+        const spec = getEquipmentVisualSpec(meta.equipped[slot], slot);
+        expect(canvas.getAttribute('data-equipped-model-codes')).toContain(spec.modelCode);
+        expect(canvas.getAttribute('data-equipped-visual-summary')).toBe(visual.summaryLine);
+      });
+
+      const fullVisual = getEquippedBikeVisualState(meta);
+      expect(fullVisual.equippedCount).toBe(6);
+      expect(canvas.getAttribute('data-equipped-visual-count')).toBe('6');
+      expect(fullVisual.modelCodes.length).toBe(6);
+
+      garage.close();
+    });
+
+    it('verifies that upgrading an equipped part from Common (Rarity 0 MK-I) to Legendary (Rarity 3 OMEGA) dynamically updates its .eq-slot.is-filled data-model-code, data-tier-badge, and rendered 128x128 SVG model markup', () => {
+      document.body.innerHTML = `
+        <div id="garage-overlay">
+          <canvas id="bike-canvas" width="300" height="190"></canvas>
+          <div id="slots-left"></div>
+          <div id="slots-right"></div>
+          <div id="eq-totals"></div>
+          <div id="stash-list"></div>
+          <div id="unlock-list"></div>
+          <div id="meta-upgrade-list"></div>
+        </div>
+      `;
+
+      const meta: MetaSaveState = createDefaultMetaSave();
+      const callbacks: GarageCallbacks = {
+        onEquipItem: vi.fn(),
+        onUnequipSlot: vi.fn(),
+        onSellItem: vi.fn(),
+        onUnlockWeapon: vi.fn(),
+        onEquipWeapon: vi.fn(),
+        onBuyUpgrade: vi.fn(),
+        onResumeRun: vi.fn(),
+        onNewRun: vi.fn(),
+        onResetSave: vi.fn()
+      };
+      const garage = new GarageController(callbacks);
+
+      // 1. Equip Common (Rarity 0) Engine part
+      const commonEngine: EquipmentItem = {
+        slot: 'engine',
+        rarity: 0,
+        name: 'Cast-Iron Twin',
+        stats: { speed: 8 }
+      };
+      meta.equipped.engine = commonEngine;
+      garage.open(false, 1, meta, player);
+
+      const commonSpec = getEquipmentVisualSpec(commonEngine, 'engine');
+      expect(commonSpec.tierBadge).toBe('MK-I');
+
+      const slotElCommon = document.querySelector<HTMLElement>('.eq-slot.is-filled[data-slot-id="engine"]');
+      expect(slotElCommon).not.toBeNull();
+      expect(slotElCommon?.getAttribute('data-model-code')).toBe(commonSpec.modelCode);
+      expect(slotElCommon?.getAttribute('data-tier-badge')).toBe('MK-I');
+
+      const commonSvg = getEquipmentItemModelSvg(commonEngine, 'engine');
+      expect(commonSvg).toContain('viewBox="0 0 128 128"');
+      expect(commonSvg).toContain(`data-model-code="${commonSpec.modelCode}"`);
+      expect(slotElCommon?.innerHTML).toContain('viewBox="0 0 128 128"');
+      expect(slotElCommon?.innerHTML).toContain(commonSpec.modelCode);
+      expect(slotElCommon?.classList.contains('rarity-common')).toBe(true);
+
+      // 2. Upgrade to Legendary (Rarity 3) Engine part
+      const legendaryEngine: EquipmentItem = {
+        slot: 'engine',
+        rarity: 3,
+        name: 'Valhalla Core Reactor',
+        stats: { speed: 50, dmg: 35 }
+      };
+      meta.equipped.engine = legendaryEngine;
+      garage.open(false, 1, meta, player);
+
+      const legendarySpec = getEquipmentVisualSpec(legendaryEngine, 'engine');
+      expect(legendarySpec.tierBadge).toBe('OMEGA');
+      expect(legendarySpec.modelCode).not.toBe(commonSpec.modelCode);
+
+      const slotElLegendary = document.querySelector<HTMLElement>('.eq-slot.is-filled[data-slot-id="engine"]');
+      expect(slotElLegendary).not.toBeNull();
+      expect(slotElLegendary?.getAttribute('data-model-code')).toBe(legendarySpec.modelCode);
+      expect(slotElLegendary?.getAttribute('data-tier-badge')).toBe('OMEGA');
+
+      const legendarySvg = getEquipmentItemModelSvg(legendaryEngine, 'engine');
+      expect(legendarySvg).toContain('viewBox="0 0 128 128"');
+      expect(legendarySvg).toContain(`data-model-code="${legendarySpec.modelCode}"`);
+      expect(slotElLegendary?.innerHTML).toContain('viewBox="0 0 128 128"');
+      expect(slotElLegendary?.innerHTML).toContain(legendarySpec.modelCode);
+      expect(slotElLegendary?.classList.contains('rarity-legendary')).toBe(true);
+
+      garage.close();
+    });
+
+    it('verifies that Stash cards (.stash-item) render distinct data-model-code and data-tier-badge attributes across all 4 rarity tiers and 6 slots', () => {
+      document.body.innerHTML = `
+        <div id="garage-overlay">
+          <canvas id="bike-canvas" width="300" height="190"></canvas>
+          <div id="slots-left"></div>
+          <div id="slots-right"></div>
+          <div id="eq-totals"></div>
+          <div id="stash-list"></div>
+          <div id="unlock-list"></div>
+          <div id="meta-upgrade-list"></div>
+        </div>
+      `;
+
+      const meta: MetaSaveState = createDefaultMetaSave();
+      const callbacks: GarageCallbacks = {
+        onEquipItem: vi.fn(),
+        onUnequipSlot: vi.fn(),
+        onSellItem: vi.fn(),
+        onUnlockWeapon: vi.fn(),
+        onEquipWeapon: vi.fn(),
+        onBuyUpgrade: vi.fn(),
+        onResumeRun: vi.fn(),
+        onNewRun: vi.fn(),
+        onResetSave: vi.fn()
+      };
+      const garage = new GarageController(callbacks);
+
+      const slots: EquipSlot[] = ['tires', 'engine', 'handlebars', 'exhaust', 'frame', 'tank'];
+      const rarities = [0, 1, 2, 3] as const;
+
+      const stashItems: EquipmentItem[] = [];
+      slots.forEach(slot => {
+        rarities.forEach(rarity => {
+          stashItems.push({
+            slot,
+            rarity,
+            name: `${slot} T${rarity}`,
+            stats: { speed: 10 + rarity * 5 }
+          });
+        });
+      });
+      meta.stash = stashItems;
+      garage.open(false, 1, meta, player);
+
+      const renderedCards = Array.from(document.querySelectorAll<HTMLElement>('.stash-item'));
+      expect(renderedCards.length).toBe(24);
+
+      const seenModelCodes = new Set<string>();
+      renderedCards.forEach((card, idx) => {
+        const item = stashItems[idx];
+        const spec = getEquipmentVisualSpec(item, item.slot);
+
+        expect(card.getAttribute('data-model-code')).toBe(spec.modelCode);
+        expect(card.getAttribute('data-tier-badge')).toBe(spec.tierBadge);
+
+        seenModelCodes.add(spec.modelCode);
+      });
+
+      // All 24 model codes across all 6 slots and 4 rarity tiers must be distinct
+      expect(seenModelCodes.size).toBe(24);
+
+      garage.close();
+    });
+
+    it('verifies that PART_ANCHORS defines non-overlapping anatomical anchor coordinates within the 400x300 logical motorcycle canvas for all 6 equipment slots', () => {
+      const slots: EquipSlot[] = ['tires', 'engine', 'handlebars', 'exhaust', 'frame', 'tank'];
+
+      // 1. Verify every slot has defined anchor coordinates within 400x300 logical canvas
+      slots.forEach(slot => {
+        const anchor = PART_ANCHORS[slot];
+        expect(anchor).toBeDefined();
+        expect(anchor.length).toBe(2);
+
+        const [x, y] = anchor;
+        expect(typeof x).toBe('number');
+        expect(typeof y).toBe('number');
+        expect(Number.isFinite(x)).toBe(true);
+        expect(Number.isFinite(y)).toBe(true);
+
+        expect(x).toBeGreaterThanOrEqual(0);
+        expect(x).toBeLessThanOrEqual(400);
+        expect(y).toBeGreaterThanOrEqual(0);
+        expect(y).toBeLessThanOrEqual(300);
+      });
+
+      // 2. Verify all pairs of anchors are non-overlapping with distinct coordinates
+      for (let i = 0; i < slots.length; i++) {
+        for (let j = i + 1; j < slots.length; j++) {
+          const s1 = slots[i];
+          const s2 = slots[j];
+          const [x1, y1] = PART_ANCHORS[s1];
+          const [x2, y2] = PART_ANCHORS[s2];
+
+          const dist = Math.hypot(x2 - x1, y2 - y1);
+          // Distance must be strictly greater than 0 (no collision), and separated for anatomical clarity
+          expect(dist).toBeGreaterThanOrEqual(20);
+        }
+      }
     });
   });
 });

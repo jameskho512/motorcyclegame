@@ -50,7 +50,9 @@ import {
   applyItemStats,
   EquipmentItem,
   EquipmentTargetPlayer,
-  RarityTier
+  RarityTier,
+  EquipmentLoadoutSummary,
+  getEquipmentLoadoutSummary
 } from '@/data/equipment';
 
 describe('Data Module: weapons.ts', () => {
@@ -488,6 +490,151 @@ describe('Data Module: equipment.ts', () => {
     expect(legendarySet.dmgBonus).toBeGreaterThan(0);
     expect(legendarySet.speedBonus).toBeGreaterThan(0);
     expect(legendarySet.label.length).toBeGreaterThan(0);
+  });
+
+  describe('Equipment Loadout Advisor (M95: getEquipmentLoadoutSummary)', () => {
+    it('handles empty, null, or undefined loadouts cleanly', () => {
+      const allSlots = ['tires', 'engine', 'handlebars', 'exhaust', 'frame', 'tank'];
+
+      const expectedEmpty: EquipmentLoadoutSummary = {
+        installedCount: 0,
+        emptySlots: allSlots as any,
+        totalPowerScore: 0,
+        highestRarity: 0,
+        rarityCounts: { 0: 0, 1: 0, 2: 0, 3: 0 },
+        nextSetGoalText: 'Need 4 more Rare+ for 4pc Rare Tuning Set',
+        summaryLine: 'LOADOUT: 0/6 INSTALLED · POWER: 0.0 · Need 4 more Rare+ for 4pc Rare Tuning Set'
+      };
+
+      expect(getEquipmentLoadoutSummary()).toEqual(expectedEmpty);
+      expect(getEquipmentLoadoutSummary(null)).toEqual(expectedEmpty);
+      expect(getEquipmentLoadoutSummary({})).toEqual(expectedEmpty);
+      expect(getEquipmentLoadoutSummary({ tires: null, engine: undefined })).toEqual(expectedEmpty);
+    });
+
+    it('accurately computes partial loadouts with Common and Magic items', () => {
+      const commonTires: EquipmentItem = {
+        slot: 'tires',
+        rarity: 0,
+        name: 'Stock Tires',
+        stats: { speed: 0.05 } // score: 0.05 / 0.05 = 1.0
+      };
+      const magicEngine: EquipmentItem = {
+        slot: 'engine',
+        rarity: 1,
+        name: 'Sport Engine',
+        stats: { dmg: 0.12 } // score: 0.12 / 0.06 = 2.0
+      };
+
+      const summary = getEquipmentLoadoutSummary({
+        tires: commonTires,
+        engine: magicEngine
+      });
+
+      expect(summary.installedCount).toBe(2);
+      expect(summary.emptySlots).toEqual(['handlebars', 'exhaust', 'frame', 'tank']);
+      expect(summary.highestRarity).toBe(1);
+      expect(summary.rarityCounts).toEqual({ 0: 1, 1: 1, 2: 0, 3: 0 });
+      expect(summary.totalPowerScore).toBe(3);
+      expect(summary.nextSetGoalText).toBe('Need 4 more Rare+ for 4pc Rare Tuning Set');
+      expect(summary.summaryLine).toBe(
+        'LOADOUT: 2/6 INSTALLED · POWER: 3.0 · Need 4 more Rare+ for 4pc Rare Tuning Set'
+      );
+    });
+
+    it('tracks progress towards 4pc Rare Tuning Set with 1-3 Rare items', () => {
+      const rareItem = (slot: any, name: string): EquipmentItem => ({
+        slot,
+        rarity: 2,
+        name,
+        stats: { dmg: 0.12 }
+      });
+
+      const twoRares = getEquipmentLoadoutSummary({
+        tires: rareItem('tires', 'Racing Tires'),
+        engine: rareItem('engine', 'Racing Engine')
+      });
+      expect(twoRares.nextSetGoalText).toBe('Need 2 more Rare+ for 4pc Rare Tuning Set');
+
+      const threeRares = getEquipmentLoadoutSummary({
+        tires: rareItem('tires', 'Racing Tires'),
+        engine: rareItem('engine', 'Racing Engine'),
+        frame: rareItem('frame', 'Racing Frame')
+      });
+      expect(threeRares.nextSetGoalText).toBe('Need 1 more Rare+ for 4pc Rare Tuning Set');
+    });
+
+    it('activates 4pc Rare Tuning Set when 4 or more Rare items are installed without Legendary', () => {
+      const rareItem = (slot: any): EquipmentItem => ({
+        slot,
+        rarity: 2,
+        name: `Rare ${slot}`,
+        stats: { dmg: 0.06 }
+      });
+
+      const fourRares = getEquipmentLoadoutSummary({
+        tires: rareItem('tires'),
+        engine: rareItem('engine'),
+        handlebars: rareItem('handlebars'),
+        exhaust: rareItem('exhaust')
+      });
+
+      expect(fourRares.installedCount).toBe(4);
+      expect(fourRares.highestRarity).toBe(2);
+      expect(fourRares.rarityCounts[2]).toBe(4);
+      expect(fourRares.nextSetGoalText).toBe('4pc Rare Tuning Set Active (+12% Dmg, +8% Spd)');
+      expect(fourRares.summaryLine).toBe(
+        `LOADOUT: 4/6 INSTALLED · POWER: ${fourRares.totalPowerScore.toFixed(1)} · 4pc Rare Tuning Set Active (+12% Dmg, +8% Spd)`
+      );
+    });
+
+    it('tracks progress toward 3pc Valhalla Set when 1 or 2 Legendary items are equipped', () => {
+      const legTires: EquipmentItem = {
+        slot: 'tires',
+        rarity: 3,
+        name: 'Valhalla Tires',
+        stats: { speed: 0.20 }
+      };
+      const legEngine: EquipmentItem = {
+        slot: 'engine',
+        rarity: 3,
+        name: 'Valhalla Engine',
+        stats: { dmg: 0.24 }
+      };
+
+      const oneLeg = getEquipmentLoadoutSummary({ tires: legTires });
+      expect(oneLeg.highestRarity).toBe(3);
+      expect(oneLeg.rarityCounts[3]).toBe(1);
+      expect(oneLeg.nextSetGoalText).toBe('Need 2 more Legendary for 3pc Valhalla Set');
+
+      const twoLeg = getEquipmentLoadoutSummary({ tires: legTires, engine: legEngine });
+      expect(twoLeg.highestRarity).toBe(3);
+      expect(twoLeg.rarityCounts[3]).toBe(2);
+      expect(twoLeg.nextSetGoalText).toBe('Need 1 more Legendary for 3pc Valhalla Set');
+    });
+
+    it('activates 3pc Valhalla Set when 3 or more Legendary items are equipped', () => {
+      const leg = (slot: any): EquipmentItem => ({
+        slot,
+        rarity: 3,
+        name: `Valhalla ${slot}`,
+        stats: { speed: 0.15 }
+      });
+
+      const threeLeg = getEquipmentLoadoutSummary({
+        tires: leg('tires'),
+        engine: leg('engine'),
+        frame: leg('frame')
+      });
+
+      expect(threeLeg.installedCount).toBe(3);
+      expect(threeLeg.highestRarity).toBe(3);
+      expect(threeLeg.rarityCounts[3]).toBe(3);
+      expect(threeLeg.nextSetGoalText).toBe('3pc Valhalla Set Active (+15% Dmg, +10% Spd)');
+      expect(threeLeg.summaryLine).toBe(
+        `LOADOUT: 3/6 INSTALLED · POWER: ${threeLeg.totalPowerScore.toFixed(1)} · 3pc Valhalla Set Active (+15% Dmg, +10% Spd)`
+      );
+    });
   });
 });
 

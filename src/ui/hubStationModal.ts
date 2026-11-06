@@ -14,8 +14,9 @@
 
 import { RARITY } from '../data/equipment';
 import { getCareerOutlawRank } from '@/core/state';
+import { WEAPONS, WeaponId, getWeaponTacticalProfile } from '@/data/weapons';
 
-export type HubStationId = 'garage' | 'blacksmith' | 'codex' | 'bounty' | 'launch';
+export type HubStationId = 'garage' | 'blacksmith' | 'codex' | 'bounty' | 'launch' | 'armory';
 
 export interface HubStationPromptInfo {
   title: string;
@@ -96,6 +97,14 @@ export function getHubStationPromptInfo(
         summary: 'Review Pre-Run Readiness Checklist & Deploy into Sector 1 (Rust Belt Outskirts)',
         actionLabel: 'OPEN LAUNCH GATE [E]',
         accentColor: '#e5203a'
+      };
+
+    case 'armory':
+      return {
+        title: '🔫 TACTICAL ARMORY & BALLISTICS',
+        summary: 'Inspect tactical combat roles, optimal ranges, and base DPS for all weapons',
+        actionLabel: 'OPEN ARMORY [E]',
+        accentColor: '#ff0055'
       };
 
     default:
@@ -285,6 +294,16 @@ export class HubStationModalController {
   }
 
   /**
+   * Renders the armory station view.
+   */
+  public renderArmory(options?: HubStationOpenOptions): void {
+    const opts = options || this.currentOptions;
+    if (opts) {
+      this.renderArmoryBody(opts.metaSave, opts.player);
+    }
+  }
+
+  /**
    * Closes the modal and restores focus.
    */
   public close(): void {
@@ -368,6 +387,20 @@ export class HubStationModalController {
         }
         break;
 
+      case 'armory':
+        if (this.kickerEl) this.kickerEl.textContent = 'SANCTUARY HIDEOUT // BALLISTICS & ARMORY';
+        if (this.titleEl) this.titleEl.textContent = '🔫 TACTICAL ARMORY & BALLISTICS';
+        if (this.speakerEl) this.speakerEl.textContent = 'QUARTERMASTER VEX';
+        if (this.quoteEl) {
+          this.quoteEl.textContent =
+            '"Check your tactical profile and engagement range before hitting the highway."';
+        }
+        if (this.purposeEl) {
+          this.purposeEl.textContent =
+            'Review tactical combat roles, optimal engagement ranges, and base DPS for all sanctuary weapons.';
+        }
+        break;
+
       case 'garage':
       default:
         if (this.kickerEl) this.kickerEl.textContent = 'SANCTUARY HIDEOUT // WORKSHOP';
@@ -401,6 +434,9 @@ export class HubStationModalController {
         break;
       case 'launch':
         this.renderLaunchBody(metaSave, player, scannerClaimed, bountyClaimed);
+        break;
+      case 'armory':
+        this.renderArmoryBody(metaSave, player);
         break;
       case 'garage':
       default:
@@ -748,6 +784,60 @@ export class HubStationModalController {
     if (this.primaryBtn) {
       this.primaryBtn.hidden = false;
       this.primaryBtn.innerHTML = '<kbd>E</kbd> 🔧 OPEN FULL GARAGE';
+      this.primaryBtn.onclick = () => this.close();
+    }
+  }
+
+  private renderArmoryBody(metaSave: any, player: any): void {
+    if (!this.bodyEl) return;
+    const scrap = metaSave?.scrap || 0;
+    const unlocked = metaSave?.unlocked || {};
+    const equippedWeaponId = player?.weapon || 'pistol';
+
+    const weaponCardsHtml = (Object.keys(WEAPONS) as WeaponId[])
+      .map((weaponId) => {
+        const w = WEAPONS[weaponId];
+        const tac = getWeaponTacticalProfile(weaponId);
+        const isUnlocked = weaponId === 'pistol' || !!unlocked[weaponId];
+        const isEquipped = equippedWeaponId === weaponId;
+        const statusLabel = isEquipped ? 'EQUIPPED' : isUnlocked ? 'UNLOCKED' : `${w.cost} ⚙️ SCRAP`;
+        const statusClass = isEquipped ? 'is-equipped' : isUnlocked ? 'is-unlocked' : 'is-locked';
+
+        return `
+          <div class="hub-weapon-card hub-weapon-row ${statusClass}"
+               data-weapon-id="${weaponId}"
+               data-tactical-role="${tac.roleTag}"
+               data-base-dps="${tac.baseDps}">
+            <div class="hub-weapon-head">
+              <strong class="hub-weapon-name" style="color: ${w.color}">${w.name}</strong>
+              <span class="hub-weapon-badge ${statusClass}">${statusLabel}</span>
+            </div>
+            <span class="hub-weapon-tactical">${tac.summaryLine}</span>
+            <p class="hub-weapon-desc">${w.desc}</p>
+          </div>
+        `;
+      })
+      .join('');
+
+    this.bodyEl.innerHTML = `
+      <div class="hub-scrap-bar">
+        <div class="hub-scrap-stat">
+          <span class="hub-stat-label">AVAILABLE SCRAP</span>
+          <span class="hub-stat-val hub-gold">⚙️ ${scrap} SCRAP</span>
+        </div>
+        <div class="hub-scrap-stat">
+          <span class="hub-stat-label">ACTIVE SIDEARM</span>
+          <span class="hub-stat-val hub-cyan">${(WEAPONS[equippedWeaponId as WeaponId] || WEAPONS.pistol).name.toUpperCase()}</span>
+        </div>
+      </div>
+      <div class="hub-armory-list">
+        ${weaponCardsHtml}
+      </div>
+    `;
+
+    if (this.primaryBtn) {
+      this.primaryBtn.hidden = false;
+      this.primaryBtn.innerHTML = '<kbd>E</kbd> ✓ CONFIRM ARMORY LOADOUT';
       this.primaryBtn.onclick = () => this.close();
     }
   }
