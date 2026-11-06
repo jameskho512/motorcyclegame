@@ -1048,6 +1048,48 @@ export class StageManager {
       }
     }
 
+    // In Home Base Hub, render slanted comic nameplate badge below the Armored Target Dummy bay
+    if ((room.type as string) === 'hub') {
+      const targetX = 360;
+      const badgeY = 594;
+      const halfW = 54;
+      const halfH = 10;
+      const slant = 6;
+      const badge = [
+        targetX - halfW + slant, badgeY - halfH,
+        targetX + halfW + slant, badgeY - halfH,
+        targetX + halfW - slant, badgeY + halfH,
+        targetX - halfW - slant, badgeY + halfH
+      ];
+      g.poly(badge.map((v) => v + 3))
+        .fill({ color: 0x0a0b10, alpha: 0.85 });
+      g.poly(badge)
+        .fill({ color: 0xff9f1c, alpha: 1 })
+        .stroke({ color: 0x0a0b10, width: 2.5, join: 'miter' });
+
+      let targetLabel = pricePool[priceUsed] as Text | undefined;
+      if (!targetLabel) {
+        targetLabel = new Text({
+          text: 'TARGET RANGE',
+          style: new TextStyle({
+            fontFamily: "'Impact', 'Haettenschweiler', 'Arial Black', sans-serif",
+            fontSize: 13,
+            fontStyle: 'italic',
+            fontWeight: '900',
+            fill: '#ffffff',
+            stroke: { color: '#0a0b10', width: 3.5, join: 'round' },
+            padding: 4
+          })
+        });
+        targetLabel.anchor.set(0.5, 0.5);
+        this.priceTextContainer.addChild(targetLabel);
+      }
+      priceUsed++;
+      if (targetLabel.text !== 'TARGET RANGE') targetLabel.text = 'TARGET RANGE';
+      targetLabel.visible = true;
+      targetLabel.position.set(targetX, badgeY);
+    }
+
     // Hide leftover pooled price labels
     for (let i = priceUsed; i < pricePool.length; i++) {
       pricePool[i].visible = false;

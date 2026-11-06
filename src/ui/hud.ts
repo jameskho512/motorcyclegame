@@ -87,7 +87,7 @@ const WEAPON_CARD_LABEL: Record<WeaponId, string> = {
   pistol: 'PISTOL',
   machine_gun: 'SMG',
   flamethrower: 'FLAMETHROWER',
-  grenade_launcher: 'GRENADE LAUNCHER',
+  grenade_launcher: 'GRENADES',
   shotgun: 'SHOTGUN',
   railgun: 'RAILGUN',
   arc_coil: 'TESLA COIL'
@@ -933,6 +933,19 @@ export class HUDController {
       toast.setAttribute('aria-hidden', 'true');
       this.toastTimeoutId = null;
     }, durationMs);
+  }
+
+  public hideToast(): void {
+    if (typeof document === 'undefined') return;
+    if (this.toastTimeoutId !== null) {
+      clearTimeout(this.toastTimeoutId);
+      this.toastTimeoutId = null;
+    }
+    const toast = document.getElementById('hud-toast');
+    if (toast) {
+      toast.classList.remove('is-visible');
+      toast.setAttribute('aria-hidden', 'true');
+    }
   }
 
   /**

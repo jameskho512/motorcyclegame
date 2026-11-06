@@ -453,11 +453,22 @@ canvas#fuel-gauge {
   top: 12px;
   left: 50%;
   transform: translateX(-50%) skewX(-12deg);
-  width: min(520px, calc(100vw - 720px));
+  width: min(670px, calc(100vw - 740px));
   min-width: 320px;
   z-index: 25;
   pointer-events: none;
   transition: opacity 0.2s ease-out, transform 0.2s var(--ease-snap);
+}
+
+.hud-boss.is-enraged .boss-hud-inner {
+  border-color: #ff2a4b;
+  box-shadow:
+    5px 6px 0 #0a0b10,
+    0 0 34px rgba(255, 23, 68, 0.78);
+}
+
+.hud-boss.is-enraged .boss-hud-sub {
+  color: #ff4d6d;
 }
 
 .hud-boss[hidden] {
@@ -703,6 +714,10 @@ canvas#fuel-gauge {
   transform: translateX(-50%) skewX(-12deg) translateY(0);
 }
 
+body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
+  transform: translateX(-50%) skewX(-12deg) translateY(58px);
+}
+
 #game-wrapper:has(#shop-confirm-overlay.visible, #portal-confirm-overlay.visible, #settings-overlay.visible, #garage-overlay.visible) .hud-toast {
   opacity: 0 !important;
 }
@@ -873,7 +888,7 @@ canvas#fuel-gauge {
 .weapon-slot {
   transform: skewX(-11deg);
   transform-origin: center bottom;
-  width: clamp(86px, 6.2vw, 104px);
+  width: clamp(90px, 6.6vw, 110px);
   height: clamp(102px, 10.5vh, 122px);
   border: 2.5px solid #ffffff;
   outline: 2.5px solid #0a0b10;
@@ -1011,6 +1026,10 @@ canvas#fuel-gauge {
 .weapon-slot.is-evolved {
   border-color: #00f5d4;
   box-shadow: 3px 3px 0 var(--ink, #0a0b10), 0 0 12px rgba(0, 245, 212, 0.55);
+}
+
+.wcard.is-evolved .wcard-name {
+  color: #00f5d4;
 }
 
 .w-evo-badge {

@@ -51,7 +51,7 @@ import { ShopModalController } from './ui/shopModal';
 import { PortalModalController, shouldPromptPortal, isClearOfPortal } from './ui/portalModal';
 import { SettingsController } from './ui/settings';
 import { TooltipManager } from './ui/tooltip';
-import { WEAPONS } from './data/weapons';
+import { WEAPONS, WEAPON_EVOLUTIONS, isWeaponEvolved } from './data/weapons';
 
 export class MotoRogueApp {
   public stateManager: StateManager;
@@ -384,6 +384,7 @@ export class MotoRogueApp {
     player.stunTimer = 0;
 
     this.combatState = createCombatState();
+    this.hud.hideToast();
     this.hud.updateBossBar(null, this.stateManager.floorNum);
     this.updateHUD();
   }
@@ -800,16 +801,24 @@ export class MotoRogueApp {
           room.pickups.splice(i, 1);
           this.updateHUD();
         } else if (p.type === 'item_drop') {
+          const wasEvo = isWeaponEvolved(player.weapon, player);
           player.itemStacks[p.itemId] = (player.itemStacks[p.itemId] || 0) + 1;
           this.audio.pickupItem();
           room.pickups.splice(i, 1);
+          if (!wasEvo && isWeaponEvolved(player.weapon, player)) {
+            this.hud.showToast('OVERCLOCK EVOLUTION', `⚡ ${WEAPON_EVOLUTIONS[player.weapon].evolvedName} ONLINE!`, '#ffd60a', 2600);
+          }
           this.updateHUD();
         } else if (p.type === 'mod_pedestal' && p.cost === 0) {
           // Free mod
+          const wasEvo = isWeaponEvolved(player.weapon, player);
           p.mod.apply(player);
           player.items.push(p.mod.name);
           this.audio.pickupItem();
           room.pickups.splice(i, 1);
+          if (!wasEvo && isWeaponEvolved(player.weapon, player)) {
+            this.hud.showToast('OVERCLOCK EVOLUTION', `⚡ ${WEAPON_EVOLUTIONS[player.weapon].evolvedName} ONLINE!`, '#ffd60a', 2600);
+          }
           this.updateHUD();
         } else if (p.type === 'shop_heart' || p.type === 'mod_pedestal' || p.type === 'run_weapon') {
           // Do not re-prompt if the player explicitly cancelled this purchase until they step away
@@ -823,6 +832,7 @@ export class MotoRogueApp {
               () => {
                 this.dismissedPickup = null;
                 if (player.coins >= p.cost) {
+                  const wasEvo = isWeaponEvolved(player.weapon, player);
                   player.coins -= p.cost;
                   this.audio.shopBuy();
                   if (p.type === 'shop_heart') {
@@ -836,6 +846,9 @@ export class MotoRogueApp {
                   }
                   const pIdx = room.pickups.indexOf(p);
                   if (pIdx >= 0) room.pickups.splice(pIdx, 1);
+                  if (!wasEvo && isWeaponEvolved(player.weapon, player)) {
+                    this.hud.showToast('OVERCLOCK EVOLUTION', `⚡ ${WEAPON_EVOLUTIONS[player.weapon].evolvedName} ONLINE!`, '#ffd60a', 2600);
+                  }
                   this.updateHUD();
                 } else {
                   this.audio.shopError();
@@ -1086,14 +1099,6 @@ export class MotoRogueApp {
     this.curRoomX = 0;
     this.curRoomY = 0;
     this.combatState = createCombatState();
-    this.combatState.damageNumbers.push({
-      x: player.x,
-      y: player.y - 36,
-      text: 'HOME BASE // POWERUPS RESET',
-      color: '#ffd60a',
-      life: 2.2,
-      maxLife: 2.2
-    });
     this.hud.showToast('OUTLAW SANCTUARY', '🛠️ 5 UPGRADE STATIONS & TARGET RANGE ACTIVE', '#ffd60a', 2500);
     this.updateHUD();
   }
