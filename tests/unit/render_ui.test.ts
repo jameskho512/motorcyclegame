@@ -25,7 +25,7 @@ import { ShopModalController } from '../../src/ui/shopModal';
 import { FilterManager } from '../../src/render/shaders';
 import { StageManager, getFloorMoteColor, getEliteAffixColor } from '../../src/render/stage';
 import { Pickup, MetaSaveState, PlayerState, Obstacle } from '../../src/types/game';
-import { GarageController } from '../../src/ui/garage';
+import { GarageController, getWeaponMasteryTier } from '../../src/ui/garage';
 
 describe('Render & UI Subsystems', () => {
   describe('Semicircular Fuel Gauge Math', () => {
@@ -592,6 +592,138 @@ describe('Render & UI Subsystems', () => {
 
       resetBtn.click();
       expect(callbacks.onResetSave).toHaveBeenCalledTimes(1);
+    });
+
+    it('renders weapon mastery badge and data-mastery-tier attribute for unlocked and locked weapons', () => {
+      (metaSave as any).weaponKills = {
+        machine_gun: 120,
+        shotgun: 45,
+        flamethrower: 12,
+        railgun: 0
+      };
+
+      const garage = new GarageController(callbacks);
+      garage.open(false, 1, metaSave, player);
+
+      const list = document.getElementById('unlock-list');
+      expect(list).not.toBeNull();
+      const rows = list?.querySelectorAll('.unlock-item.gx-weapon');
+      expect(rows?.length).toBe(6);
+
+      // machine_gun: 120 kills -> Tier 3 MASTER III (★★★)
+      const mgRow = rows?.[0] as HTMLElement;
+      expect(mgRow.getAttribute('data-mastery-tier')).toBe('3');
+      const mgBadge = mgRow.querySelector('.gx-weapon-mastery');
+      expect(mgBadge).not.toBeNull();
+      expect(mgBadge?.className).toContain('tier-3');
+      expect(mgBadge?.textContent).toContain('★★★ MASTER III (+15% DMG) · 120 KILLS');
+
+      // shotgun: 45 kills -> Tier 2 ADEPT II (★★☆)
+      const shotgunRow = rows?.[1] as HTMLElement;
+      expect(shotgunRow.getAttribute('data-mastery-tier')).toBe('2');
+      const shotgunBadge = shotgunRow.querySelector('.gx-weapon-mastery');
+      expect(shotgunBadge?.className).toContain('tier-2');
+      expect(shotgunBadge?.textContent).toContain('★★☆ ADEPT II (+10% DMG) · 45 KILLS');
+
+      // flamethrower: 12 kills -> Tier 1 ROOKIE I (★☆☆)
+      const flameRow = rows?.[2] as HTMLElement;
+      expect(flameRow.getAttribute('data-mastery-tier')).toBe('1');
+      const flameBadge = flameRow.querySelector('.gx-weapon-mastery');
+      expect(flameBadge?.className).toContain('tier-1');
+      expect(flameBadge?.textContent).toContain('★☆☆ ROOKIE I (+5% DMG) · 12 KILLS');
+
+      // railgun: 0 kills -> Tier 0 UNRANKED (☆☆☆)
+      const railgunRow = rows?.[3] as HTMLElement;
+      expect(railgunRow.getAttribute('data-mastery-tier')).toBe('0');
+      const railgunBadge = railgunRow.querySelector('.gx-weapon-mastery');
+      expect(railgunBadge?.className).toContain('tier-0');
+      expect(railgunBadge?.textContent).toContain('☆☆☆ UNRANKED · 0 KILLS');
+      // No (+0% DMG) text when dmgBonusPct is 0
+      expect(railgunBadge?.textContent).not.toContain('+0% DMG');
+    });
+  });
+
+  describe('Weapon Mastery Tier Math & Thresholds', () => {
+    it('returns UNRANKED tier 0 for 0 kills, negative numbers, or invalid inputs', () => {
+      expect(getWeaponMasteryTier(0)).toEqual({
+        tier: 0,
+        label: 'UNRANKED',
+        stars: '☆☆☆',
+        dmgBonusPct: 0,
+        kills: 0
+      });
+      expect(getWeaponMasteryTier(-15)).toEqual({
+        tier: 0,
+        label: 'UNRANKED',
+        stars: '☆☆☆',
+        dmgBonusPct: 0,
+        kills: 0
+      });
+      expect(getWeaponMasteryTier(NaN as any)).toEqual({
+        tier: 0,
+        label: 'UNRANKED',
+        stars: '☆☆☆',
+        dmgBonusPct: 0,
+        kills: 0
+      });
+      expect(getWeaponMasteryTier(undefined as any)).toEqual({
+        tier: 0,
+        label: 'UNRANKED',
+        stars: '☆☆☆',
+        dmgBonusPct: 0,
+        kills: 0
+      });
+    });
+
+    it('returns ROOKIE I tier 1 for 10-39 kills with +5% DMG', () => {
+      expect(getWeaponMasteryTier(10)).toEqual({
+        tier: 1,
+        label: 'ROOKIE I',
+        stars: '★☆☆',
+        dmgBonusPct: 5,
+        kills: 10
+      });
+      expect(getWeaponMasteryTier(39.9)).toEqual({
+        tier: 1,
+        label: 'ROOKIE I',
+        stars: '★☆☆',
+        dmgBonusPct: 5,
+        kills: 39
+      });
+    });
+
+    it('returns ADEPT II tier 2 for 40-99 kills with +10% DMG', () => {
+      expect(getWeaponMasteryTier(40)).toEqual({
+        tier: 2,
+        label: 'ADEPT II',
+        stars: '★★☆',
+        dmgBonusPct: 10,
+        kills: 40
+      });
+      expect(getWeaponMasteryTier(99)).toEqual({
+        tier: 2,
+        label: 'ADEPT II',
+        stars: '★★☆',
+        dmgBonusPct: 10,
+        kills: 99
+      });
+    });
+
+    it('returns MASTER III tier 3 for 100+ kills with +15% DMG', () => {
+      expect(getWeaponMasteryTier(100)).toEqual({
+        tier: 3,
+        label: 'MASTER III',
+        stars: '★★★',
+        dmgBonusPct: 15,
+        kills: 100
+      });
+      expect(getWeaponMasteryTier(500)).toEqual({
+        tier: 3,
+        label: 'MASTER III',
+        stars: '★★★',
+        dmgBonusPct: 15,
+        kills: 500
+      });
     });
   });
 

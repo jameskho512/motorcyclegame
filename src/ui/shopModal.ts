@@ -17,6 +17,33 @@ export interface ShopModalCallbacks {
   onCancel?: () => void;
 }
 
+export interface ShopItemAppraisal {
+  tierLabel: string;
+  valueVerdict: string;
+  isBargain: boolean;
+}
+
+export function getShopItemAppraisal(pickup: Pickup, playerCoins?: number): ShopItemAppraisal {
+  const cost = (pickup as any).cost ?? 0;
+  const isBargain = cost > 0 && cost <= 14;
+  const tierLabel = isBargain
+    ? '🔥 BLACK MARKET BARGAIN'
+    : cost >= 25
+      ? '⚡ HIGH-GRADE ORDNANCE'
+      : '★ STANDARD ISSUE';
+  let valueVerdict = 'AVAILABLE';
+  if (typeof playerCoins === 'number') {
+    if (playerCoins < cost) {
+      valueVerdict = `SHORT ${cost - playerCoins} COINS`;
+    } else if (playerCoins >= cost * 2) {
+      valueVerdict = 'SURPLUS FUNDS';
+    } else {
+      valueVerdict = 'AFFORDABLE';
+    }
+  }
+  return { tierLabel, valueVerdict, isBargain };
+}
+
 /** Category label shown in the popup's type tag. */
 export type ShopItemKind = 'MOD' | 'WEAPON' | 'REPAIR' | 'ITEM';
 
@@ -43,6 +70,9 @@ const SHOP_CRATE_HI_FI_SVG = `<svg viewBox="0 0 48 48" aria-hidden="true" focusa
 </svg>`;
 
 export class ShopModalController {
+  public static getShopItemAppraisal = getShopItemAppraisal;
+  public getShopItemAppraisal = getShopItemAppraisal;
+
   private overlay: HTMLElement | null = null;
   private nameEl: HTMLElement | null = null;
   private descEl: HTMLElement | null = null;
@@ -118,6 +148,8 @@ export class ShopModalController {
     this.pendingConfirm = onConfirm;
     this.pendingCancel = onCancel || null;
 
+    const appraisal = getShopItemAppraisal(pickup, playerCoins);
+
     let title = 'Mysterious Crate';
     let desc = 'Unknown item contents.';
     let cost = 0;
@@ -168,6 +200,12 @@ export class ShopModalController {
       } else {
         this.descEl.textContent = desc;
       }
+      if (typeof document !== 'undefined') {
+        const appraisalPill = document.createElement('div');
+        appraisalPill.className = 'shop-appraisal-pill';
+        appraisalPill.textContent = `${appraisal.tierLabel} · ${appraisal.valueVerdict}`;
+        this.descEl.appendChild(appraisalPill);
+      }
     }
     if (this.costEl) {
       this.costEl.textContent = `${cost}`;
@@ -201,6 +239,8 @@ export class ShopModalController {
       this.overlay.classList.toggle('insufficient', insufficient);
       this.overlay.classList.add('visible');
       this.overlay.setAttribute('aria-hidden', 'false');
+      this.overlay.setAttribute('data-appraisal-tier', appraisal.tierLabel);
+      this.overlay.setAttribute('data-is-bargain', String(appraisal.isBargain));
     }
     this.visible = true;
 

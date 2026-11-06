@@ -42,6 +42,25 @@ import {
   EquipmentTargetPlayer
 } from '@/data/equipment';
 
+import {
+  generateDungeon,
+  enableChoicePedestalsInTreasureRooms,
+  assignBiomeBarrelVariants
+} from '@/world/dungeon';
+import { ARENA_WIDTH, ARENA_HEIGHT, Direction } from '@/types/game';
+
+export class SeededRNG {
+  private s: number;
+  constructor(seed: number) {
+    this.s = seed;
+  }
+  next(): number {
+    this.s = (this.s * 9301 + 49297) % 233280;
+    return this.s / 233280;
+  }
+  random = (): number => this.next();
+}
+
 describe('EMPIRICAL STRESS TEST: rollRarity() Distribution & Robustness', () => {
   it('never outputs NaN, undefined, or out-of-bound rarity tiers across 10,000 rolls per floor (Floors 1-20)', () => {
     for (let floor = 1; floor <= 20; floor++) {
@@ -374,5 +393,166 @@ describe('EMPIRICAL STRESS TEST: Equipment State Application Invariants', () => 
     expect(player.blastMult).toBeCloseTo(initial.blastMult, 5);
     expect(player.vampChance).toBeCloseTo(initial.vampChance, 5);
     expect(player.maxHp).toBe(initial.maxHp);
+  });
+});
+
+describe('EMPIRICAL STRESS TEST: 100-Seed Procedural Dungeon & Floor 1-6 Invariants', () => {
+  it('generates 360 procedural dungeons across 60 seeds and floors 1-6 with strict structural invariants', () => {
+    const complementaryDoor: Record<Direction, Direction> = {
+      N: 'S',
+      S: 'N',
+      E: 'W',
+      W: 'E'
+    };
+    const dirOffsets: Record<Direction, { dx: number; dy: number }> = {
+      N: { dx: 0, dy: -1 },
+      S: { dx: 0, dy: 1 },
+      W: { dx: -1, dy: 0 },
+      E: { dx: 1, dy: 0 }
+    };
+
+    let totalDungeonsTested = 0;
+    let floor4BarrelsTested = 0;
+    let floor4CryoBarrelsFound = 0;
+
+    for (let seed = 1; seed <= 60; seed++) {
+      for (let floor = 1; floor <= 6; floor++) {
+        const rng = new SeededRNG(seed * 1000 + floor);
+        const dungeon = generateDungeon(floor, { randomFn: rng.random });
+        totalDungeonsTested++;
+
+        // 1. Start room invariants
+        expect(dungeon.startCoord).toEqual({ x: 0, y: 0 });
+        const startRoom = dungeon.rooms['0,0'];
+        expect(startRoom).toBeDefined();
+        expect(startRoom.type).toBe('start');
+        expect(startRoom.cleared).toBe(true);
+        expect(startRoom.visited).toBe(true);
+
+        // 2. Boss room invariants
+        expect(dungeon.bossCoord).toBeDefined();
+        const bossKey = `${dungeon.bossCoord.x},${dungeon.bossCoord.y}`;
+        const bossRoom = dungeon.rooms[bossKey];
+        expect(bossRoom).toBeDefined();
+        expect(bossRoom.type).toBe('boss');
+        expect(bossRoom.enemies.some(e => e.type === 'boss')).toBe(true);
+
+        // 3. Room count formula: targetRooms = 7 + min(10, floor * 2)
+        const expectedRooms = 7 + Math.min(10, floor * 2);
+        expect(dungeon.targetRooms).toBe(expectedRooms);
+        expect(Object.keys(dungeon.rooms).length).toBe(expectedRooms);
+
+        // 4. Door symmetry and connectivity
+        for (const [key, room] of Object.entries(dungeon.rooms)) {
+          const [rx, ry] = key.split(',').map(Number);
+          expect(room.x).toBe(rx);
+          expect(room.y).toBe(ry);
+
+          const hasAtLeastOneDoor = Object.values(room.doors).some(d => d === true);
+          expect(hasAtLeastOneDoor).toBe(true);
+
+          for (const [dirKey, hasDoor] of Object.entries(room.doors) as [Direction, boolean][]) {
+            if (hasDoor) {
+              const offset = dirOffsets[dirKey];
+              const neighborKey = `${rx + offset.dx},${ry + offset.dy}`;
+              const neighbor = dungeon.rooms[neighborKey];
+              expect(neighbor).toBeDefined();
+              const comp = complementaryDoor[dirKey];
+              expect(neighbor.doors[comp]).toBe(true);
+            }
+          }
+
+          // 5. Obstacle coordinates & integrity (0 NaN, finite within bounds)
+          for (const ob of room.obstacles) {
+            expect(Number.isFinite(ob.x)).toBe(true);
+            expect(Number.isFinite(ob.y)).toBe(true);
+            expect(Number.isFinite(ob.size)).toBe(true);
+            expect(Number.isNaN(ob.x)).toBe(false);
+            expect(Number.isNaN(ob.y)).toBe(false);
+            expect(Number.isNaN(ob.size)).toBe(false);
+            expect(ob.x).toBeGreaterThanOrEqual(0);
+            expect(ob.x).toBeLessThanOrEqual(ARENA_WIDTH);
+            expect(ob.y).toBeGreaterThanOrEqual(0);
+            expect(ob.y).toBeLessThanOrEqual(ARENA_HEIGHT);
+            expect(ob.hp).toBeGreaterThan(0);
+          }
+
+          // 6. BiomeZone coordinates (0 NaN, valid type)
+          if (room.biomeZones) {
+            for (const z of room.biomeZones) {
+              expect(Number.isFinite(z.x)).toBe(true);
+              expect(Number.isFinite(z.y)).toBe(true);
+              expect(Number.isFinite(z.radius)).toBe(true);
+              expect(Number.isNaN(z.x)).toBe(false);
+              expect(Number.isNaN(z.y)).toBe(false);
+              expect(Number.isNaN(z.radius)).toBe(false);
+              expect(z.radius).toBeGreaterThan(0);
+              expect(['oil_slick', 'lava_vent', 'boost_strip', 'ice_patch']).toContain(z.type);
+            }
+          }
+        }
+
+        // 7. Verify assignBiomeBarrelVariants application
+        assignBiomeBarrelVariants(dungeon, floor);
+        for (const room of Object.values(dungeon.rooms)) {
+          for (const ob of room.obstacles) {
+            if (ob.type === 'barrel') {
+              if (floor === 4) {
+                floor4BarrelsTested++;
+                expect(['cryo_barrel', 'explosive']).toContain(ob.variant);
+                if (ob.variant === 'cryo_barrel') {
+                  floor4CryoBarrelsFound++;
+                }
+              } else {
+                expect(ob.variant).toBe('explosive');
+              }
+            } else if (ob.type === 'rock') {
+              expect(ob.variant).toBeUndefined();
+            }
+          }
+        }
+
+        // 8. Verify enableChoicePedestalsInTreasureRooms application
+        enableChoicePedestalsInTreasureRooms(dungeon.rooms, undefined, rng.random);
+        if (dungeon.treasureCoord) {
+          const tKey = `${dungeon.treasureCoord.x},${dungeon.treasureCoord.y}`;
+          const treasureRoom = dungeon.rooms[tKey];
+          expect(treasureRoom).toBeDefined();
+          expect(treasureRoom.type).toBe('treasure');
+
+          const choicePedestals = treasureRoom.pickups.filter(
+            p => p.type === 'mod_pedestal' && (p as any).choiceGroup === 'treasure_choice'
+          );
+          expect(choicePedestals.length).toBe(2);
+          expect((choicePedestals[0] as any).cost).toBe(0);
+          expect((choicePedestals[1] as any).cost).toBe(0);
+          expect(choicePedestals[0].x).toBe(ARENA_WIDTH / 2 - 72);
+          expect(choicePedestals[1].x).toBe(ARENA_WIDTH / 2 + 72);
+        }
+      }
+    }
+
+    expect(totalDungeonsTested).toBe(360);
+    // Across 60 seeds on Floor 4, cryo barrels must be present whenever barrels exist
+    expect(floor4BarrelsTested).toBeGreaterThan(0);
+    expect(floor4CryoBarrelsFound).toBeGreaterThan(0);
+  });
+
+  it('verifies treasure choice pedestal mutual exclusion (claiming one removes sibling)', () => {
+    const rng = new SeededRNG(999);
+    const dungeon = generateDungeon(3, { randomFn: rng.random });
+    enableChoicePedestalsInTreasureRooms(dungeon.rooms, undefined, rng.random);
+
+    const tKey = `${dungeon.treasureCoord!.x},${dungeon.treasureCoord!.y}`;
+    const treasureRoom = dungeon.rooms[tKey];
+    expect(treasureRoom.pickups.length).toBe(2);
+
+    const picked = treasureRoom.pickups[0];
+    const dummyPlayer: any = { dmgMult: 1.0, fireRateMult: 1.0, speedMult: 1.0, blastMult: 1.0 };
+    (picked as any).mod!.apply(dummyPlayer);
+
+    // Sibling pedestal despawns automatically
+    expect(treasureRoom.pickups.length).toBe(1);
+    expect(treasureRoom.pickups[0]).toBe(picked);
   });
 });

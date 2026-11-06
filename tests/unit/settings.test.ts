@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { SettingsController, SettingsAudioPort } from '../../src/ui/settings';
+import { SettingsController, SettingsAudioPort, ScreenShakeLevel } from '../../src/ui/settings';
 import { InputManager } from '../../src/core/input';
 import { DEFAULT_VOLUME_SETTINGS, VolumeKey, VolumeSettings } from '../../src/audio/sfx';
 
@@ -137,6 +137,59 @@ describe('SettingsController (audio mixer overlay)', () => {
     expect(port.resetVolumes).toHaveBeenCalled();
     expect(document.querySelector<HTMLInputElement>('input[data-channel="engine"]')?.value).toBe('100');
     expect(document.querySelector('[data-readout="engine"]')?.textContent).toBe('100%');
+  });
+
+  it('defaults screen shake to 1 (100%) and renders shake button', () => {
+    expect(ctrl.getScreenShake()).toBe(1);
+    const shakeBtn = document.getElementById('btn-settings-shake') as HTMLButtonElement;
+    expect(shakeBtn).not.toBeNull();
+    expect(shakeBtn.textContent).toBe('SHAKE: 100%');
+    expect(shakeBtn.getAttribute('data-shake')).toBe('100');
+    expect(shakeBtn.getAttribute('aria-label')).toBe('Screen shake intensity');
+  });
+
+  it('cycles screen shake 1 -> 0.5 -> 0 -> 1 on button click and invokes onShakeChange', () => {
+    const recordedLevels: ScreenShakeLevel[] = [];
+    const onShake = vi.fn((lvl: ScreenShakeLevel) => recordedLevels.push(lvl));
+    setupDom();
+    ctrl = new SettingsController({ audio: port, onShakeChange: onShake });
+    ctrl.mount();
+    const shakeBtn = document.getElementById('btn-settings-shake') as HTMLButtonElement;
+
+    // 1 -> 0.5
+    shakeBtn.click();
+    expect(ctrl.getScreenShake()).toBe(0.5);
+    expect(shakeBtn.textContent).toBe('SHAKE: 50%');
+    expect(shakeBtn.getAttribute('data-shake')).toBe('50');
+    expect(onShake).toHaveBeenLastCalledWith(0.5);
+
+    // 0.5 -> 0
+    shakeBtn.click();
+    expect(ctrl.getScreenShake()).toBe(0);
+    expect(shakeBtn.textContent).toBe('SHAKE: OFF');
+    expect(shakeBtn.getAttribute('data-shake')).toBe('0');
+    expect(onShake).toHaveBeenLastCalledWith(0);
+
+    // 0 -> 1
+    shakeBtn.click();
+    expect(ctrl.getScreenShake()).toBe(1);
+    expect(shakeBtn.textContent).toBe('SHAKE: 100%');
+    expect(shakeBtn.getAttribute('data-shake')).toBe('100');
+    expect(onShake).toHaveBeenLastCalledWith(1);
+    expect(onShake).toHaveBeenCalledTimes(3);
+    expect(recordedLevels).toEqual([0.5, 0, 1]);
+  });
+
+  it('RESET DEFAULTS restores screen shake back to 1', () => {
+    ctrl.setScreenShake(0);
+    expect(ctrl.getScreenShake()).toBe(0);
+    const shakeBtn = document.getElementById('btn-settings-shake') as HTMLButtonElement;
+    expect(shakeBtn.textContent).toBe('SHAKE: OFF');
+
+    (document.getElementById('btn-settings-reset') as HTMLButtonElement).click();
+    expect(ctrl.getScreenShake()).toBe(1);
+    expect(shakeBtn.textContent).toBe('SHAKE: 100%');
+    expect(shakeBtn.getAttribute('data-shake')).toBe('100');
   });
 
   it('CLOSE button closes; gear launcher opens', () => {

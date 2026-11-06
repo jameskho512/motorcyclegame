@@ -534,6 +534,37 @@
   white-space: normal;
 }
 
+.unlock-item.gx-weapon .info span.gx-weapon-mastery,
+.gx-weapon-mastery {
+  display: inline-block;
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+  margin-top: 2px;
+  line-height: 1.2;
+}
+
+.gx-weapon-mastery.tier-0 {
+  color: #64748b;
+}
+
+.gx-weapon-mastery.tier-1 {
+  color: #00f5d4;
+  text-shadow: 0 0 6px rgba(0, 245, 212, 0.3);
+}
+
+.gx-weapon-mastery.tier-2 {
+  color: #ff9f1c;
+  text-shadow: 0 0 6px rgba(255, 159, 28, 0.3);
+}
+
+.gx-weapon-mastery.tier-3 {
+  color: #ffd60a;
+  text-shadow: 0 0 8px rgba(255, 214, 10, 0.4);
+}
+
 /* Large High-Clarity Set 08 3D Weapon Showcase Frame & Corner Status Badge */
 .unlock-item.gx-weapon .gx-weapon-art {
   position: relative;

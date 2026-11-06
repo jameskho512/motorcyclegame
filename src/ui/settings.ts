@@ -12,6 +12,8 @@
 
 import { VOLUME_KEYS, VolumeKey, VolumeSettings } from '../audio/sfx';
 
+export type ScreenShakeLevel = 1 | 0.5 | 0;
+
 /** Minimal audio surface the settings UI needs (SoundSynthesizer satisfies it). */
 export interface SettingsAudioPort {
   getVolumes(): VolumeSettings;
@@ -26,6 +28,7 @@ export interface SettingsControllerOptions {
   audio: SettingsAudioPort;
   onOpenChange?: (open: boolean) => void;
   onMuteChange?: (muted: boolean) => void;
+  onShakeChange?: (level: ScreenShakeLevel) => void;
   overlayId?: string;
   launcherId?: string;
 }
@@ -68,6 +71,7 @@ export function renderSettingsMarkup(): string {
       <h2 class="settings-title" id="settings-title">AUDIO MIXER</h2>
       <div class="settings-rows">${rows}</div>
       <div class="settings-actions">
+        <button type="button" class="settings-btn settings-btn--shake" id="btn-settings-shake" data-shake="100" aria-label="Screen shake intensity">SHAKE: 100%</button>
         <button type="button" class="settings-btn settings-btn--mute" id="btn-settings-mute" aria-pressed="false">MUTE ALL</button>
         <button type="button" class="settings-btn settings-btn--secondary" id="btn-settings-reset">RESET DEFAULTS</button>
         <button type="button" class="settings-btn settings-btn--primary" id="btn-settings-close"><kbd>ESC</kbd> CLOSE</button>
@@ -83,18 +87,31 @@ export class SettingsController {
   private audio: SettingsAudioPort;
   private onOpenChange?: (open: boolean) => void;
   private onMuteChange?: (muted: boolean) => void;
+  private onShakeChange?: (level: ScreenShakeLevel) => void;
   private overlayId: string;
   private launcherId: string;
   private overlay: HTMLElement | null = null;
   private opened: boolean = false;
   private returnFocus: HTMLElement | null = null;
+  private screenShake: ScreenShakeLevel = 1;
 
   constructor(options: SettingsControllerOptions) {
     this.audio = options.audio;
     this.onOpenChange = options.onOpenChange;
     this.onMuteChange = options.onMuteChange;
+    this.onShakeChange = options.onShakeChange;
     this.overlayId = options.overlayId ?? 'settings-overlay';
     this.launcherId = options.launcherId ?? 'btn-open-settings';
+  }
+
+  public getScreenShake(): ScreenShakeLevel {
+    return this.screenShake;
+  }
+
+  public setScreenShake(level: ScreenShakeLevel): void {
+    this.screenShake = level;
+    this.syncShake();
+    this.onShakeChange?.(level);
   }
 
   /** Renders markup into the overlay container and wires listeners. Safe to call when DOM is absent. */
@@ -129,6 +146,11 @@ export class SettingsController {
         return;
       }
       switch (target.id) {
+        case 'btn-settings-shake': {
+          const next: ScreenShakeLevel = this.screenShake === 1 ? 0.5 : this.screenShake === 0.5 ? 0 : 1;
+          this.setScreenShake(next);
+          break;
+        }
         case 'btn-settings-mute':
           this.audio.setMuted(!this.audio.isMuted());
           this.syncMute();
@@ -136,6 +158,7 @@ export class SettingsController {
           break;
         case 'btn-settings-reset':
           this.audio.resetVolumes();
+          this.setScreenShake(1);
           this.sync();
           break;
         case 'btn-settings-close':
@@ -205,11 +228,21 @@ export class SettingsController {
       this.setReadout(key, pct);
     }
     this.syncMute();
+    this.syncShake();
   }
 
   public getFocusableElements(): HTMLElement[] {
     if (!this.overlay) return [];
     return Array.from(this.overlay.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+  }
+
+  private syncShake(): void {
+    const btn = this.overlay?.querySelector<HTMLButtonElement>('#btn-settings-shake');
+    if (!btn) return;
+    const pct = this.screenShake === 1 ? '100' : this.screenShake === 0.5 ? '50' : '0';
+    const text = this.screenShake === 1 ? 'SHAKE: 100%' : this.screenShake === 0.5 ? 'SHAKE: 50%' : 'SHAKE: OFF';
+    btn.setAttribute('data-shake', pct);
+    btn.textContent = text;
   }
 
   private syncMute(): void {

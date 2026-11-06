@@ -59,7 +59,8 @@ import {
   updatePlayerBullets,
   handleEnemyDeath,
   applyTireIronBonus,
-  rollCrit
+  rollCrit,
+  triggerExplosion
 } from '@/systems/combat';
 
 import {
@@ -767,6 +768,374 @@ describe('Tier 5: Adversarial Coverage Hardening', () => {
 
       const offscreenRoom = calcMinimapRoomCoords(100, 100, 0, 0, 240, 145, 18, 3);
       expect(offscreenRoom.visible).toBe(false);
+    });
+  });
+
+  // ==========================================================================
+  // SECTION 4: MULTI-SYSTEM ADVERSARIAL STRESS & WAVE 4/5 INTEGRATION
+  // ==========================================================================
+  describe('4. Multi-System Adversarial Stress & Wave 4/5 Integration', () => {
+    it('4.1 verifies Wave 5 Elite Affixes (volatile, overclocked, vampiric) and handleEnemyDeath payoffs under rapid multi-kill bursts', () => {
+      const room: Room = {
+        x: 0,
+        y: 0,
+        type: 'combat',
+        cleared: false,
+        visited: true,
+        doors: { N: false, S: false, E: false, W: false },
+        obstacles: [],
+        enemies: [],
+        pickups: [],
+        hazards: [],
+        skids: [],
+        trapdoor: false
+      };
+      const combatState = createCombatState();
+
+      // Configure player with partially depleted HP and NOS
+      player.maxHp = 8;
+      player.hp = 5;
+      player.nos = 40;
+      player.nosMax = 100;
+      player.vampChance = 0; // Isolate affix payoff from passive item siphon
+
+      // 1. Vampiric Elite kill payoff (+1 HP siphon capped at maxHp)
+      const vampEnemy = createEnemy('charger', 200, 200, 2, true);
+      (vampEnemy as any).eliteAffix = 'vampiric';
+      room.enemies.push(vampEnemy);
+
+      handleEnemyDeath({
+        room,
+        enemy: vampEnemy,
+        index: 0,
+        player,
+        state: combatState,
+        floorNum: 2
+      });
+
+      expect(player.hp).toBe(6); // +1 HP siphoned
+      const vampFloater = combatState.damageNumbers.find(d => d.text.includes('ELITE SIPHON'));
+      expect(vampFloater).toBeDefined();
+      expect(vampFloater?.color).toBe('#06d6a0');
+
+      // Cap at maxHp: heal player to maxHp and kill another vampiric elite
+      player.hp = player.maxHp;
+      const vampEnemy2 = createEnemy('charger', 220, 220, 2, true);
+      (vampEnemy2 as any).eliteAffix = 'vampiric';
+      handleEnemyDeath({
+        room,
+        enemy: vampEnemy2,
+        index: 0,
+        player,
+        state: combatState,
+        floorNum: 2
+      });
+      expect(player.hp).toBe(player.maxHp); // Strictly capped, does not exceed 8
+
+      // 2. Overclocked Elite kill payoff (+20 NOS capped at nosMax)
+      const ocEnemy = createEnemy('trishot', 300, 300, 2, true);
+      (ocEnemy as any).eliteAffix = 'overclocked';
+      player.nos = 50;
+
+      handleEnemyDeath({
+        room,
+        enemy: ocEnemy,
+        index: 0,
+        player,
+        state: combatState,
+        floorNum: 2
+      });
+
+      expect(player.nos).toBe(70); // +20 NOS
+      const ocFloater = combatState.damageNumbers.find(d => d.text.includes('OVERCLOCKED +20 NOS!'));
+      expect(ocFloater).toBeDefined();
+      expect(ocFloater?.color).toBe('#00f5d4');
+
+      // Cap at nosMax
+      player.nos = 95;
+      const ocEnemy2 = createEnemy('trishot', 320, 320, 2, true);
+      (ocEnemy2 as any).eliteAffix = 'overclocked';
+      handleEnemyDeath({
+        room,
+        enemy: ocEnemy2,
+        index: 0,
+        player,
+        state: combatState,
+        floorNum: 2
+      });
+      expect(player.nos).toBe(100); // Strictly capped at nosMax
+
+      // 3. Volatile Elite kill payoff (shockwave explosion particle)
+      const prevParticlesCount = combatState.particles.length;
+      const volEnemy = createEnemy('bomber', 400, 400, 2, true);
+      (volEnemy as any).eliteAffix = 'volatile';
+
+      handleEnemyDeath({
+        room,
+        enemy: volEnemy,
+        index: 0,
+        player,
+        state: combatState,
+        floorNum: 2
+      });
+
+      const shockwave = combatState.particles.slice(prevParticlesCount).find(p => p.shockwaveMax === 52);
+      expect(shockwave).toBeDefined();
+      expect(shockwave?.color).toBe('#ff9f1c');
+      expect(shockwave?.life).toBe(0.25);
+      const volFloater = combatState.damageNumbers.find(d => d.text.includes('VOLATILE ELITE!'));
+      expect(volFloater).toBeDefined();
+
+      // 4. Simultaneous burst multi-kill of all 3 elite types
+      player.hp = 4;
+      player.nos = 30;
+      const burstEnemies = [
+        createEnemy('brute', 250, 250, 3, true),
+        createEnemy('splitter', 260, 260, 3, true),
+        createEnemy('swarmer', 270, 270, 3, true)
+      ];
+      (burstEnemies[0] as any).eliteAffix = 'vampiric';
+      (burstEnemies[1] as any).eliteAffix = 'overclocked';
+      (burstEnemies[2] as any).eliteAffix = 'volatile';
+      room.enemies.push(...burstEnemies);
+
+      for (let i = 0; i < burstEnemies.length; i++) {
+        handleEnemyDeath({
+          room,
+          enemy: burstEnemies[i],
+          index: i,
+          player,
+          state: combatState,
+          floorNum: 3
+        });
+      }
+
+      expect(player.hp).toBe(5); // +1 from vampiric
+      expect(player.nos).toBe(50); // +20 from overclocked
+      expect(combatState.particles.some(p => p.shockwaveMax === 52)).toBe(true);
+
+      // Verify all particles and damage numbers have finite non-NaN coordinates
+      for (const p of combatState.particles) {
+        expect(Number.isFinite(p.x)).toBe(true);
+        expect(Number.isFinite(p.y)).toBe(true);
+        expect(Number.isFinite(p.radius)).toBe(true);
+      }
+      for (const d of combatState.damageNumbers) {
+        expect(Number.isFinite(d.x)).toBe(true);
+        expect(Number.isFinite(d.y)).toBe(true);
+      }
+    });
+
+    it('4.2 simulates Wave 5 Biome Zones (boost_strip, oil_slick, ice_patch) under extreme velocities and heat-lock states without NaN or blowout', () => {
+      const room: Room = {
+        x: 0,
+        y: 0,
+        type: 'combat',
+        cleared: false,
+        visited: true,
+        doors: { N: false, S: false, E: false, W: false },
+        obstacles: [],
+        enemies: [],
+        pickups: [],
+        hazards: [],
+        skids: [],
+        biomeZones: [
+          { x: 220, y: 220, radius: 80, type: 'boost_strip' },
+          { x: 360, y: 360, radius: 80, type: 'ice_patch' },
+          { x: 500, y: 500, radius: 80, type: 'oil_slick' }
+        ],
+        trapdoor: false
+      };
+
+      const dt = 1 / 60;
+
+      // Phase A: Player on boost_strip (replenishes NOS smoothly, effSpeed amplified)
+      player.x = 220;
+      player.y = 220;
+      player.vx = 50;
+      player.vy = 0;
+      player.nos = 10;
+      player.nosMax = 100;
+      player.nosDelay = 3.5;
+      player.nosLock = true;
+      player.heatLevel = 4;
+
+      updatePlayerPhysics(player, { ix: 1, iy: 0, shift: false }, room, dt);
+      expect((player as any).onBoostStrip).toBe(true);
+      expect(player.nos).toBeGreaterThan(10); // Boost strip regenerated NOS
+
+      // Extreme velocity stress through the room across 60 frames
+      player.vx = 9500;
+      player.vy = -8400;
+      for (let step = 0; step < 60; step++) {
+        updatePlayerPhysics(player, { ix: 1, iy: -1, shift: false }, room, dt);
+        expect(Number.isFinite(player.x)).toBe(true);
+        expect(Number.isFinite(player.y)).toBe(true);
+        expect(Number.isFinite(player.vx)).toBe(true);
+        expect(Number.isFinite(player.vy)).toBe(true);
+        expect(Number.isFinite(player.nos)).toBe(true);
+        expect(Number.isNaN(player.x)).toBe(false);
+        expect(Number.isNaN(player.y)).toBe(false);
+      }
+
+      // Phase B: Move player to ice_patch with nos >= 25 (reduces nosDelay and releases nosLock)
+      player.x = 360;
+      player.y = 360;
+      player.vx = 30;
+      player.vy = 30;
+      player.nos = 30;
+      player.nosLock = true;
+      player.nosDelay = 2.0;
+
+      for (let step = 0; step < 10; step++) {
+        updatePlayerPhysics(player, { ix: 0, iy: 1, shift: false }, room, dt);
+        expect(Number.isFinite(player.x)).toBe(true);
+        expect(Number.isFinite(player.y)).toBe(true);
+        expect(Number.isFinite(player.nosDelay)).toBe(true);
+      }
+      expect(player.nosLock).toBe(false); // nosLock released on ice patch when nos >= 25
+      expect(player.nosDelay).toBeLessThan(2.0);
+
+      // Phase C: Move player to oil_slick (forces continuous skid marks, damped steering)
+      player.x = 500;
+      player.y = 500;
+      player.vx = 40;
+      player.vy = 40;
+      const initialSkids = room.skids.length;
+
+      for (let step = 0; step < 30; step++) {
+        updatePlayerPhysics(player, { ix: -1, iy: 1, shift: false }, room, dt);
+        expect(Number.isFinite(player.x)).toBe(true);
+        expect(Number.isFinite(player.y)).toBe(true);
+        expect(Number.isFinite(player.bikeAngle)).toBe(true);
+      }
+      expect(room.skids.length).toBeGreaterThan(initialSkids);
+      expect(room.skids.length).toBeLessThanOrEqual(MAX_SKIDS_PER_ROOM);
+
+      // Boundary safety verification under extreme hyper-velocity
+      player.vx = 999999;
+      player.vy = 999999;
+      updatePlayerPhysics(player, { ix: 1, iy: 1, shift: false }, room, dt);
+      expect(player.x).toBeLessThanOrEqual(ARENA_WIDTH - WALL_THICKNESS - player.radius);
+      expect(player.y).toBeLessThanOrEqual(ARENA_HEIGHT - WALL_THICKNESS - player.radius);
+      expect(Number.isNaN(player.x)).toBe(false);
+      expect(Number.isNaN(player.y)).toBe(false);
+    });
+
+    it('4.3 verifies Wave 4 Boss Phase-2 overdrivePulseTimer hazard spawning and cryo_barrel slow aura interaction', () => {
+      const room: Room = {
+        x: 0,
+        y: 0,
+        type: 'boss',
+        cleared: false,
+        visited: true,
+        doors: { N: false, S: false, E: false, W: false },
+        obstacles: [
+          { x: 360, y: 260, size: 42, type: 'barrel', variant: 'cryo_barrel', hp: 15 }
+        ],
+        enemies: [],
+        pickups: [],
+        hazards: [],
+        skids: [],
+        trapdoor: false
+      };
+
+      const combatState = createCombatState();
+
+      // 1. Spawn Floor 4 Boss (variant 3: CRYO VALKYRIE) in Phase 2
+      const boss = createBoss(4, 360, 200);
+      boss.phase = 2;
+      boss.hp = 300; // Phase 2 enrage
+      room.enemies.push(boss);
+
+      const dt = 0.1; // 100ms ticks
+
+      // Simulate boss updates across 5 seconds (50 ticks)
+      // overdrivePulseTimer is initialized to 2.4s and resets periodically to spawn hazards
+      let hazardSpawns = 0;
+      for (let tick = 0; tick < 50; tick++) {
+        const prevHazards = room.hazards.length;
+        updateEnemyAI({
+          room,
+          enemy: boss,
+          dt,
+          player,
+          projScale: 1.0,
+          enemyBullets: combatState.enemyBullets,
+          enemyBombs: combatState.enemyBombs,
+          floorNum: 4
+        });
+        if (room.hazards.length > prevHazards) {
+          hazardSpawns++;
+        }
+      }
+
+      // Over 5 seconds with 2.4s period, overdrivePulseTimer must have triggered at least 2 hazard pulses
+      expect(hazardSpawns).toBeGreaterThanOrEqual(2);
+      expect(room.hazards.length).toBeGreaterThanOrEqual(2);
+      for (const h of room.hazards) {
+        expect(Number.isFinite(h.x)).toBe(true);
+        expect(Number.isFinite(h.y)).toBe(true);
+        expect(h.radius).toBe(46);
+        expect(h.life).toBeGreaterThan(0);
+        expect(h.maxLife).toBe(3.5);
+      }
+
+      // 2. Cryo Barrel detonation and Slow Aura application
+      expect(room.obstacles.length).toBe(1);
+      const barrel = room.obstacles[0];
+      expect(barrel.variant).toBe('cryo_barrel');
+
+      // Shoot barrel with projectile to trigger cryo explosion
+      combatState.bullets.push({
+        x: 360,
+        y: 250,
+        vx: 0,
+        vy: 200,
+        radius: 6,
+        dmg: 25,
+        life: 1.0,
+        color: '#ffd166',
+        bounceLeft: 0,
+        pierceLeft: 0,
+        hitIds: new Set()
+      });
+
+      updatePlayerBullets(0.05, combatState.bullets, room, player, combatState);
+
+      // Cryo barrel exploded and was removed
+      expect(room.obstacles.length).toBe(0);
+
+      // Verify cryo shockwave and shrapnel particles exist
+      const cryoShockwave = combatState.particles.find(p => p.color === '#72efdd' && p.shockwaveMax === 88);
+      expect(cryoShockwave).toBeDefined();
+
+      // Boss was within 88px radius of cryo barrel detonation (dist = 60 <= 88 + 34)
+      // Boss must have received cryo slow aura (slowTimer = 3.5) and 'CRYO SLOW!' damage indicator
+      expect((boss as any).slowTimer).toBeGreaterThan(0);
+      expect((boss as any).slowTimer).toBeLessThanOrEqual(3.5);
+
+      const cryoSlowText = combatState.damageNumbers.find(d => d.text === 'CRYO SLOW!');
+      expect(cryoSlowText).toBeDefined();
+      expect(cryoSlowText?.color).toBe('#72efdd');
+
+      // 3. Subsequent attack deals chilled bonus (+15%) and Thermal Shock when hit by explosive/flame
+      const initialBossHp = boss.hp;
+      triggerExplosion(boss.x, boss.y, 50, 40, room, combatState, undefined, Math.random, false);
+
+      // Hit damage against chilled target with non-cryo explosion triggers THERMAL SHOCK!
+      const thermalShockText = combatState.damageNumbers.find(d => d.text.includes('THERMAL SHOCK!'));
+      expect(thermalShockText).toBeDefined();
+      expect(boss.hp).toBeLessThan(initialBossHp);
+
+      // Final sanity: zero NaN values anywhere in combat state or entities
+      expect(Number.isFinite(boss.x)).toBe(true);
+      expect(Number.isFinite(boss.y)).toBe(true);
+      expect(Number.isFinite(boss.hp)).toBe(true);
+      for (const b of combatState.enemyBullets) {
+        expect(Number.isFinite(b.x)).toBe(true);
+        expect(Number.isFinite(b.y)).toBe(true);
+      }
     });
   });
 });

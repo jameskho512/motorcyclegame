@@ -57,6 +57,28 @@ export const BIKE_LIVERIES: readonly BikeLiveryDef[] = [
   { id: 'toxic_hazard', name: 'TOXIC HAZARD', primary: '#38b000', secondary: '#004b23', accent: '#b5e48c' }
 ] as const;
 
+export interface WeaponMasteryInfo {
+  tier: 0 | 1 | 2 | 3;
+  label: string;
+  stars: string;
+  dmgBonusPct: number;
+  kills: number;
+}
+
+export function getWeaponMasteryTier(kills: number = 0): WeaponMasteryInfo {
+  const safeKills = Math.max(0, Math.floor(Number(kills) || 0));
+  if (safeKills >= 100) {
+    return { tier: 3, label: 'MASTER III', stars: '★★★', dmgBonusPct: 15, kills: safeKills };
+  }
+  if (safeKills >= 40) {
+    return { tier: 2, label: 'ADEPT II', stars: '★★☆', dmgBonusPct: 10, kills: safeKills };
+  }
+  if (safeKills >= 10) {
+    return { tier: 1, label: 'ROOKIE I', stars: '★☆☆', dmgBonusPct: 5, kills: safeKills };
+  }
+  return { tier: 0, label: 'UNRANKED', stars: '☆☆☆', dmgBonusPct: 0, kills: safeKills };
+}
+
 export interface GarageCallbacks {
   onEquipItem: (item: EquipmentItem) => void;
   onUnequipSlot: (slotId: EquipSlot) => void;
@@ -685,16 +707,20 @@ export class GarageController {
       const isUnlocked = !!metaSave.unlocked[id];
       const isEquipped = player.weapon === id;
       const canAfford = metaSave.scrap >= w.cost;
+      const rawKills = (metaSave as any).weaponKills?.[id] ?? 0;
+      const mastery = getWeaponMasteryTier(rawKills);
 
       const row = document.createElement('div');
       const state = isEquipped ? 'is-equipped' : isUnlocked ? 'is-unlocked' : 'is-locked';
       row.className = `unlock-item gx-weapon ${state}`;
+      row.setAttribute('data-mastery-tier', String(mastery.tier));
       row.style.setProperty('--wc', w.color);
       row.innerHTML = `
         <div class="gx-weapon-art">${WEAPON_HI_FI_SVG[id]}<span class="gx-weapon-status">${isUnlocked ? CHECK_SVG : LOCK_SVG}</span></div>
         <div class="info">
           <strong><span class="gx-key">${esc(w.key)}</span>${esc(w.name.toUpperCase())}</strong>
           <span>${esc(w.desc)}</span>
+          <span class="gx-weapon-mastery tier-${mastery.tier}">${mastery.stars} ${mastery.label}${mastery.dmgBonusPct > 0 ? ` (+${mastery.dmgBonusPct}% DMG)` : ''} · ${mastery.kills} KILLS</span>
         </div>
       `;
 

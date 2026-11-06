@@ -22,7 +22,12 @@ import {
   PORTAL_RADIUS,
   PORTAL_CLEAR_HYSTERESIS
 } from '../../src/ui/portalModal';
-import { ARENA_WIDTH, ARENA_HEIGHT } from '../../src/types/game';
+import {
+  ShopModalController,
+  getShopItemAppraisal,
+  ShopItemAppraisal
+} from '../../src/ui/shopModal';
+import { ARENA_WIDTH, ARENA_HEIGHT, Pickup } from '../../src/types/game';
 
 const MARKUP = `
   <button id="outside-btn">outside</button>
@@ -325,5 +330,173 @@ describe('getNextSectorBriefing pure helper', () => {
     expect(PortalModalController.getNextSectorBriefing(1)).toEqual(getNextSectorBriefing(1));
     const controller = new PortalModalController();
     expect(controller.getNextSectorBriefing(2)).toEqual(getNextSectorBriefing(2));
+  });
+});
+
+describe('getShopItemAppraisal pure helper', () => {
+  const createMockPickup = (cost: number): Pickup => ({
+    x: 100,
+    y: 100,
+    radius: 20,
+    type: 'shop_heart',
+    name: 'Hull Repair',
+    cost
+  });
+
+  it('correctly appraises bargain items (cost: 12)', () => {
+    const appraisal: ShopItemAppraisal = getShopItemAppraisal(createMockPickup(12));
+    expect(appraisal).toEqual({
+      tierLabel: '🔥 BLACK MARKET BARGAIN',
+      valueVerdict: 'AVAILABLE',
+      isBargain: true
+    });
+  });
+
+  it('correctly appraises standard issue items (cost: 18)', () => {
+    const appraisal = getShopItemAppraisal(createMockPickup(18));
+    expect(appraisal).toEqual({
+      tierLabel: '★ STANDARD ISSUE',
+      valueVerdict: 'AVAILABLE',
+      isBargain: false
+    });
+  });
+
+  it('correctly appraises high-grade ordnance items (cost: 28)', () => {
+    const appraisal = getShopItemAppraisal(createMockPickup(28));
+    expect(appraisal).toEqual({
+      tierLabel: '⚡ HIGH-GRADE ORDNANCE',
+      valueVerdict: 'AVAILABLE',
+      isBargain: false
+    });
+  });
+
+  it('verifies cost boundary conditions (0, 14, 15, 24, 25)', () => {
+    expect(getShopItemAppraisal(createMockPickup(0)).tierLabel).toBe('★ STANDARD ISSUE');
+    expect(getShopItemAppraisal(createMockPickup(0)).isBargain).toBe(false);
+
+    expect(getShopItemAppraisal(createMockPickup(14)).tierLabel).toBe('🔥 BLACK MARKET BARGAIN');
+    expect(getShopItemAppraisal(createMockPickup(14)).isBargain).toBe(true);
+
+    expect(getShopItemAppraisal(createMockPickup(15)).tierLabel).toBe('★ STANDARD ISSUE');
+    expect(getShopItemAppraisal(createMockPickup(15)).isBargain).toBe(false);
+
+    expect(getShopItemAppraisal(createMockPickup(24)).tierLabel).toBe('★ STANDARD ISSUE');
+    expect(getShopItemAppraisal(createMockPickup(24)).isBargain).toBe(false);
+
+    expect(getShopItemAppraisal(createMockPickup(25)).tierLabel).toBe('⚡ HIGH-GRADE ORDNANCE');
+    expect(getShopItemAppraisal(createMockPickup(25)).isBargain).toBe(false);
+  });
+
+  it('correctly computes value verdicts based on playerCoins', () => {
+    const pickup = createMockPickup(20);
+
+    // No coins provided
+    expect(getShopItemAppraisal(pickup).valueVerdict).toBe('AVAILABLE');
+
+    // SHORT state
+    expect(getShopItemAppraisal(pickup, 15).valueVerdict).toBe('SHORT 5 COINS');
+    expect(getShopItemAppraisal(pickup, 0).valueVerdict).toBe('SHORT 20 COINS');
+
+    // AFFORDABLE state (cost <= coins < cost * 2)
+    expect(getShopItemAppraisal(pickup, 20).valueVerdict).toBe('AFFORDABLE');
+    expect(getShopItemAppraisal(pickup, 39).valueVerdict).toBe('AFFORDABLE');
+
+    // SURPLUS FUNDS state (coins >= cost * 2)
+    expect(getShopItemAppraisal(pickup, 40).valueVerdict).toBe('SURPLUS FUNDS');
+    expect(getShopItemAppraisal(pickup, 100).valueVerdict).toBe('SURPLUS FUNDS');
+  });
+});
+
+describe('ShopModalController appraisal DOM attributes & pills', () => {
+  const SHOP_MARKUP = `
+    <div id="shop-confirm-overlay" aria-hidden="true">
+      <div class="shop-confirm-card">
+        <div class="shop-name-panel">
+          <div id="shop-modal-name"></div>
+        </div>
+        <div id="shop-modal-desc"></div>
+        <div id="shop-modal-cost"></div>
+        <div id="shop-modal-type"></div>
+        <div id="shop-modal-quote"></div>
+        <button id="btn-confirm-buy" type="button">Confirm</button>
+        <button id="btn-cancel-buy" type="button">Cancel</button>
+      </div>
+    </div>
+  `;
+
+  let modal: ShopModalController;
+  let overlay: HTMLElement;
+  let descEl: HTMLElement;
+
+  beforeEach(() => {
+    document.body.innerHTML = SHOP_MARKUP;
+    overlay = document.getElementById('shop-confirm-overlay')!;
+    descEl = document.getElementById('shop-modal-desc')!;
+    modal = new ShopModalController();
+  });
+
+  afterEach(() => {
+    modal.close();
+    document.body.innerHTML = '';
+  });
+
+  it('renders bargain appraisal attributes and pill on open', () => {
+    const pickup: Pickup = {
+      x: 100,
+      y: 100,
+      radius: 20,
+      type: 'shop_heart',
+      name: 'Discount Patch',
+      cost: 12
+    };
+
+    modal.open(pickup, vi.fn(), undefined, 30);
+
+    expect(overlay.getAttribute('data-appraisal-tier')).toBe('🔥 BLACK MARKET BARGAIN');
+    expect(overlay.getAttribute('data-is-bargain')).toBe('true');
+
+    const pill = descEl.querySelector('.shop-appraisal-pill');
+    expect(pill).not.toBeNull();
+    expect(pill?.textContent).toBe('🔥 BLACK MARKET BARGAIN · SURPLUS FUNDS');
+  });
+
+  it('renders standard issue appraisal attributes and short funds pill on open', () => {
+    const pickup: Pickup = {
+      x: 100,
+      y: 100,
+      radius: 20,
+      type: 'shop_heart',
+      name: 'Standard Repair',
+      cost: 18
+    };
+
+    modal.open(pickup, vi.fn(), undefined, 10);
+
+    expect(overlay.getAttribute('data-appraisal-tier')).toBe('★ STANDARD ISSUE');
+    expect(overlay.getAttribute('data-is-bargain')).toBe('false');
+
+    const pill = descEl.querySelector('.shop-appraisal-pill');
+    expect(pill).not.toBeNull();
+    expect(pill?.textContent).toBe('★ STANDARD ISSUE · SHORT 8 COINS');
+  });
+
+  it('renders high-grade ordnance appraisal attributes and affordable pill on open', () => {
+    const pickup: Pickup = {
+      x: 100,
+      y: 100,
+      radius: 20,
+      type: 'shop_heart',
+      name: 'Heavy Repair Kit',
+      cost: 28
+    };
+
+    modal.open(pickup, vi.fn(), undefined, 35);
+
+    expect(overlay.getAttribute('data-appraisal-tier')).toBe('⚡ HIGH-GRADE ORDNANCE');
+    expect(overlay.getAttribute('data-is-bargain')).toBe('false');
+
+    const pill = descEl.querySelector('.shop-appraisal-pill');
+    expect(pill).not.toBeNull();
+    expect(pill?.textContent).toBe('⚡ HIGH-GRADE ORDNANCE · AFFORDABLE');
   });
 });
