@@ -33,6 +33,7 @@ import { getFloorBountyContract, getRoomHazardSummary, getFloorExplorationStatus
 import { getCombatOffenseSummary } from '@/systems/combat';
 import { getRoomThreatAssessment, getBossEncounterBriefing } from '@/systems/enemyAI';
 import { getRiderMobilitySummary } from '@/systems/physics';
+import { getFloorBountyContractStatus } from '@/core/state';
 
 export type DungeonGrid = Dungeon;
 export type { RoomHazardSummary };
@@ -274,6 +275,7 @@ export class HUDController {
   public bossBar: HTMLElement | null = null;
   public bossHudEl: HTMLElement | null = null;
   public bossSubEl: HTMLElement | null = null;
+  public synergyListEl: HTMLElement | null = null;
 
   constructor(callbacks?: { onSelectWeapon?: (id: WeaponId) => void }) {
     this.onSelectWeapon = callbacks?.onSelectWeapon;
@@ -281,6 +283,7 @@ export class HUDController {
       this.bossHudEl = document.getElementById('boss-hud');
       this.bossBar = (document.getElementById('boss-bar') || document.getElementById('boss-hud')) as HTMLElement | null;
       this.bossSubEl = document.getElementById('boss-hud-sub');
+      this.synergyListEl = (document.getElementById('hud-synergy-list') || document.getElementById('synergy-list')) as HTMLElement | null;
       this.fuelGaugeCanvas = document.getElementById('fuel-gauge') as HTMLCanvasElement | null;
       if (this.fuelGaugeCanvas) {
         this.fuelGaugeCtx = this.fuelGaugeCanvas.getContext('2d');
@@ -1579,10 +1582,26 @@ export class HUDController {
       );
     }
 
-    const synListContainers = [
-      document.getElementById('hud-synergy-list'),
-      document.getElementById('synergy-list')
-    ].filter(Boolean) as HTMLElement[];
+    const hudSynergyEl = typeof document !== 'undefined' ? document.getElementById('hud-synergy-list') : null;
+    const synergyEl = typeof document !== 'undefined' ? document.getElementById('synergy-list') : null;
+    if (!this.synergyListEl || (hudSynergyEl && this.synergyListEl !== hudSynergyEl && this.synergyListEl.id === 'hud-synergy-list')) {
+      this.synergyListEl = hudSynergyEl || synergyEl || this.synergyListEl;
+    }
+
+    const bounty = getFloorBountyContractStatus(floorNum, player);
+    const bountyTargets = [
+      this.synergyListEl,
+      hudSynergyEl,
+      synergyEl
+    ].filter((el, idx, arr) => Boolean(el) && arr.indexOf(el) === idx) as HTMLElement[];
+
+    for (const el of bountyTargets) {
+      el.setAttribute('data-bounty-contract-title', `${bounty.contractTitle}`);
+      el.setAttribute('data-bounty-style-met', `${bounty.isStyleMilestoneMet ? 'true' : 'false'}`);
+      el.setAttribute('data-bounty-summary', `${bounty.summaryLine}`);
+    }
+
+    const synListContainers = bountyTargets;
 
     if (synListContainers.length > 0) {
       const activeWep = WEAPONS[player.weapon] || WEAPONS.pistol;

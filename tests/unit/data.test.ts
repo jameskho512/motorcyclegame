@@ -36,7 +36,9 @@ import {
   DROP_ITEMS,
   DROP_ITEM_IDS,
   calcUpgradeCost,
-  ModPlayerTarget
+  ModPlayerTarget,
+  MetaTuningSummary,
+  getMetaTuningSummary
 } from '@/data/upgrades';
 import {
   EQUIP_SLOTS,
@@ -1169,6 +1171,164 @@ describe('Tooltip: formatHubNpcTooltip', () => {
       expect(summary.summaryLine).toBe(
         'ARSENAL: 2/7 UNLOCKED · 0 TOTAL KILLS · SIGNATURE: PISTOL (0)'
       );
+    });
+  });
+
+  describe('Meta Tuning Upgrade Progress & Investment Summary (M110: getMetaTuningSummary)', () => {
+    const totalMaxRanks = Object.values(META_UPGRADES).reduce((sum, up) => sum + up.maxRank, 0); // 19 (5 + 5 + 5 + 4)
+
+    it('handles null, undefined, and empty metaSave with 0 ranks and identifies cheapest starting upgrade', () => {
+      const expectedEmpty: MetaTuningSummary = {
+        totalRanks: 0,
+        maxPossibleRanks: totalMaxRanks,
+        completionPct: 0,
+        cheapestNextUpgradeId: 'speed',
+        cheapestNextCost: 20, // speed base cost is 20 (dmg: 25, fireRate: 25, maxHp: 35)
+        summaryLine: `TUNING: 0/${totalMaxRanks} RANKS (0%) · NEXT: TWIN-CAM ENGINE TUNE (20 SCRAP)`
+      };
+
+      expect(getMetaTuningSummary()).toEqual(expectedEmpty);
+      expect(getMetaTuningSummary(null)).toEqual(expectedEmpty);
+      expect(getMetaTuningSummary({})).toEqual(expectedEmpty);
+      expect(getMetaTuningSummary({ ranks: null })).toEqual(expectedEmpty);
+      expect(getMetaTuningSummary({ ranks: {} })).toEqual(expectedEmpty);
+      expect(getMetaTuningSummary({ ranks: { dmg: 0, fireRate: 0, speed: 0, maxHp: 0 } })).toEqual(expectedEmpty);
+    });
+
+    it('evaluates partial ranks accurately, calculating completion percentage and cheapest next upgrade', () => {
+      // Speed rank 1 (cost 31), dmg rank 0 (cost 25), fireRate rank 0 (cost 25), maxHp rank 0 (cost 35)
+      // Cheapest next: dmg (25 scrap)
+      const partial1 = getMetaTuningSummary({
+        ranks: {
+          speed: 1
+        }
+      });
+
+      expect(partial1.totalRanks).toBe(1);
+      expect(partial1.maxPossibleRanks).toBe(totalMaxRanks);
+      expect(partial1.completionPct).toBe(Math.round((1 / totalMaxRanks) * 100)); // 5%
+      expect(partial1.cheapestNextUpgradeId).toBe('dmg');
+      expect(partial1.cheapestNextCost).toBe(25);
+      expect(partial1.summaryLine).toBe(
+        `TUNING: 1/${totalMaxRanks} RANKS (5%) · NEXT: ORDNANCE CALIBRATION (25 SCRAP)`
+      );
+
+      // Multiple ranks: dmg 2, fireRate 1, speed 3, maxHp 1 -> total 7
+      // Next costs:
+      // dmg rank 2 -> rank 3: round(25 * 1.6^2) = 64
+      // fireRate rank 1 -> rank 2: round(25 * 1.6^1) = 40
+      // speed rank 3 -> rank 4: round(20 * 1.55^3) = round(20 * 3.723875) = 74
+      // maxHp rank 1 -> rank 2: round(35 * 1.75^1) = round(61.25) = 61
+      // Cheapest next: fireRate at 40 scrap
+      const partial2 = getMetaTuningSummary({
+        ranks: {
+          dmg: 2,
+          fireRate: 1,
+          speed: 3,
+          maxHp: 1
+        }
+      });
+
+      expect(partial2.totalRanks).toBe(7);
+      expect(partial2.completionPct).toBe(Math.round((7 / totalMaxRanks) * 100)); // 37%
+      expect(partial2.cheapestNextUpgradeId).toBe('fireRate');
+      expect(partial2.cheapestNextCost).toBe(40);
+      expect(partial2.summaryLine).toBe(
+        `TUNING: 7/${totalMaxRanks} RANKS (37%) · NEXT: AUTOLOADER GEARING (40 SCRAP)`
+      );
+    });
+
+    it('identifies the sole remaining non-maxed upgrade when all others are maxed', () => {
+      // dmg 5, fireRate 5, speed 5 (all maxed), maxHp 3 (rank 3 of 4)
+      // maxHp rank 3 -> rank 4: round(35 * 1.75^3) = 188
+      const oneRemaining = getMetaTuningSummary({
+        ranks: {
+          dmg: 5,
+          fireRate: 5,
+          speed: 5,
+          maxHp: 3
+        }
+      });
+
+      expect(oneRemaining.totalRanks).toBe(18);
+      expect(oneRemaining.maxPossibleRanks).toBe(totalMaxRanks);
+      expect(oneRemaining.completionPct).toBe(Math.round((18 / totalMaxRanks) * 100)); // 95%
+      expect(oneRemaining.cheapestNextUpgradeId).toBe('maxHp');
+      expect(oneRemaining.cheapestNextCost).toBe(188);
+      expect(oneRemaining.summaryLine).toBe(
+        `TUNING: 18/${totalMaxRanks} RANKS (95%) · NEXT: REINFORCED FRAME (188 SCRAP)`
+      );
+    });
+
+    it('handles fully maxed meta progression with 100% completion and ALL SYSTEMS MAXED banner', () => {
+      const allMaxed = getMetaTuningSummary({
+        ranks: {
+          dmg: 5,
+          fireRate: 5,
+          speed: 5,
+          maxHp: 4
+        }
+      });
+
+      expect(allMaxed.totalRanks).toBe(totalMaxRanks);
+      expect(allMaxed.maxPossibleRanks).toBe(totalMaxRanks);
+      expect(allMaxed.completionPct).toBe(100);
+      expect(allMaxed.cheapestNextUpgradeId).toBeNull();
+      expect(allMaxed.cheapestNextCost).toBeNull();
+      expect(allMaxed.summaryLine).toBe(
+        `TUNING: ${totalMaxRanks}/${totalMaxRanks} RANKS (100%) · ALL SYSTEMS MAXED`
+      );
+    });
+
+    it('sanitizes and clamps negative, floating-point, NaN, non-finite, and overflow ranks', () => {
+      const boundarySummary = getMetaTuningSummary({
+        ranks: {
+          dmg: -10, // Clamped to 0 -> cost 25
+          fireRate: 99, // Clamped to maxRank 5 -> maxed
+          speed: 2.8, // Floored to 2 -> clamped to 2 -> cost 48
+          maxHp: NaN // Sanitized to 0 -> cost 35
+        }
+      });
+
+      expect(boundarySummary.totalRanks).toBe(7); // 0 + 5 + 2 + 0
+      expect(boundarySummary.completionPct).toBe(Math.round((7 / totalMaxRanks) * 100));
+      expect(boundarySummary.cheapestNextUpgradeId).toBe('dmg');
+      expect(boundarySummary.cheapestNextCost).toBe(25);
+      expect(boundarySummary.summaryLine).toBe(
+        `TUNING: 7/${totalMaxRanks} RANKS (37%) · NEXT: ORDNANCE CALIBRATION (25 SCRAP)`
+      );
+
+      // Verify overflow on all upgrades clamps to maxed
+      const overflowMaxed = getMetaTuningSummary({
+        ranks: {
+          dmg: 100,
+          fireRate: Infinity,
+          speed: 999,
+          maxHp: 50
+        }
+      });
+
+      expect(overflowMaxed.totalRanks).toBe(totalMaxRanks);
+      expect(overflowMaxed.completionPct).toBe(100);
+      expect(overflowMaxed.cheapestNextUpgradeId).toBeNull();
+      expect(overflowMaxed.cheapestNextCost).toBeNull();
+      expect(overflowMaxed.summaryLine).toBe(
+        `TUNING: ${totalMaxRanks}/${totalMaxRanks} RANKS (100%) · ALL SYSTEMS MAXED`
+      );
+    });
+
+    it('ignores extraneous or unknown upgrade keys in ranks cleanly', () => {
+      const withExtraKeys = getMetaTuningSummary({
+        ranks: {
+          dmg: 1,
+          unknownStat: 10,
+          nitro_boost: 5
+        } as any
+      });
+
+      expect(withExtraKeys.totalRanks).toBe(1);
+      expect(withExtraKeys.cheapestNextUpgradeId).toBe('speed');
+      expect(withExtraKeys.cheapestNextCost).toBe(20);
     });
   });
 });

@@ -43,10 +43,12 @@ import {
   WeaponId,
   RegularEnemyType,
   Room,
-  Pickup
+  Pickup,
+  MetaSaveState
 } from '@/types/game';
 
 import { WEAPONS } from '@/data/weapons';
+import { getWeaponArsenalSummary } from '../../src/data/weapons';
 import { META_UPGRADES, calcUpgradeCost, RUN_MOD_POOL, DROP_ITEMS, DROP_ITEM_IDS } from '@/data/upgrades';
 import { EQUIP_SLOTS, RARITY, genLoot, itemScore } from '@/data/equipment';
 import {
@@ -59,6 +61,8 @@ import {
   writeMetaSave,
   getCareerOutlawRank
 } from '@/core/state';
+import { getFloorBountyContractStatus } from '../../src/core/state';
+import { getScannerStationAdvisor, getForgeStationAdvisor } from '../../src/ui/hubStationModal';
 import { InputManager, KEY_WEAPON_MAP } from '@/core/input';
 import { SoundSynthesizer, calculateEngineParams } from '@/audio/sfx';
 import { generateDungeon, OBSTACLE_PATTERNS, createBoss, getFloorExplorationStatus } from '@/world/dungeon';
@@ -1031,6 +1035,310 @@ describe('Tier 1: Feature Coverage — 28 Features in Isolation', () => {
 
       // Default parameter matches Heat 0
       expect(getPortalHeatBriefing()).toEqual(h0);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  describe('Feature 9: Floor Bounty Contracts, Arsenal Career & Sanctuary Advisors (M111)', () => {
+    it('evaluates all 6 Floor Bounty Contracts (Floors 1..6) verifying reward escalation and style milestone detection', () => {
+      // Contract 1: Neon Daredevil (Floor 1)
+      const b1 = getFloorBountyContractStatus(1, { styleScore: 0, styleRank: 'D' });
+      expect(b1.targetFloor).toBe(1);
+      expect(b1.contractTitle).toBe('NEON DAREDEVIL');
+      expect(b1.taskText).toBe('Graze 3 enemy projectiles or clear Floor 1 Boss');
+      expect(b1.rewardScrap).toBe(8);
+      expect(b1.rewardCoins).toBe(10);
+      expect(b1.isStyleMilestoneMet).toBe(false);
+      expect(b1.summaryLine).toBe('BOUNTY [F1] NEON DAREDEVIL: Graze 3 enemy projectiles or clear Floor 1 Boss (+8 SCRAP, +10 COINS)');
+
+      // Contract 2: Drift Executioner (Floor 2)
+      const b2 = getFloorBountyContractStatus(2, { styleScore: 20, styleRank: 'C' });
+      expect(b2.targetFloor).toBe(2);
+      expect(b2.contractTitle).toBe('DRIFT EXECUTIONER');
+      expect(b2.taskText).toBe('Trigger 2 Drift Shockwaves or clear Floor 2 Boss');
+      expect(b2.rewardScrap).toBe(10);
+      expect(b2.rewardCoins).toBe(12);
+      expect(b2.isStyleMilestoneMet).toBe(false);
+
+      // Contract 3: Thermal Hunter (Floor 3) - Meets style milestone via Rank A
+      const b3 = getFloorBountyContractStatus(3, { styleScore: 10, styleRank: 'A' });
+      expect(b3.targetFloor).toBe(3);
+      expect(b3.contractTitle).toBe('THERMAL HUNTER');
+      expect(b3.taskText).toBe('Reach Style Rank A or clear Floor 3 Boss');
+      expect(b3.rewardScrap).toBe(12);
+      expect(b3.rewardCoins).toBe(15);
+      expect(b3.isStyleMilestoneMet).toBe(true);
+
+      // Contract 4: Cryo Breaker (Floor 4)
+      const b4 = getFloorBountyContractStatus(4, { styleScore: 40, styleRank: 'B' });
+      expect(b4.targetFloor).toBe(4);
+      expect(b4.contractTitle).toBe('CRYO BREAKER');
+      expect(b4.taskText).toBe('Detonate 2 Arena Barrels or clear Floor 4 Boss');
+      expect(b4.rewardScrap).toBe(15);
+      expect(b4.rewardCoins).toBe(18);
+      expect(b4.isStyleMilestoneMet).toBe(false);
+
+      // Contract 5: Apex Interceptor (Floor 5) - Meets style milestone via styleScore >= 50
+      const b5 = getFloorBountyContractStatus(5, { styleScore: 55, styleRank: 'B' });
+      expect(b5.targetFloor).toBe(5);
+      expect(b5.contractTitle).toBe('APEX INTERCEPTOR');
+      expect(b5.taskText).toBe('Reach Style Rank S or clear Floor 5 Boss');
+      expect(b5.rewardScrap).toBe(18);
+      expect(b5.rewardCoins).toBe(22);
+      expect(b5.isStyleMilestoneMet).toBe(true);
+
+      // Contract 6: Valhalla Conqueror (Floor 6) - Meets style milestone via Rank SSS
+      const b6 = getFloorBountyContractStatus(6, { styleScore: 0, styleRank: 'SSS' });
+      expect(b6.targetFloor).toBe(6);
+      expect(b6.contractTitle).toBe('VALHALLA CONQUEROR');
+      expect(b6.taskText).toBe('Defeat Omega Valhalla on Floor 6');
+      expect(b6.rewardScrap).toBe(25);
+      expect(b6.rewardCoins).toBe(30);
+      expect(b6.isStyleMilestoneMet).toBe(true);
+      expect(b6.summaryLine).toBe('BOUNTY [F6] VALHALLA CONQUEROR: Defeat Omega Valhalla on Floor 6 (+25 SCRAP, +30 COINS)');
+
+      // Verify reward escalation: 8 -> 25 scrap and 10 -> 30 coins
+      const allScraps = [b1, b2, b3, b4, b5, b6].map(c => c.rewardScrap);
+      const allCoins = [b1, b2, b3, b4, b5, b6].map(c => c.rewardCoins);
+      expect(allScraps).toEqual([8, 10, 12, 15, 18, 25]);
+      expect(allCoins).toEqual([10, 12, 15, 18, 22, 30]);
+
+      // Verify style milestone detection sensitivity: D (false) vs A/SSS (true)
+      expect(getFloorBountyContractStatus(1, { styleRank: 'D', styleScore: 0 }).isStyleMilestoneMet).toBe(false);
+      expect(getFloorBountyContractStatus(1, { styleRank: 'A', styleScore: 0 }).isStyleMilestoneMet).toBe(true);
+      expect(getFloorBountyContractStatus(1, { styleRank: 'SSS', styleScore: 0 }).isStyleMilestoneMet).toBe(true);
+      expect(getFloorBountyContractStatus(1, null).isStyleMilestoneMet).toBe(false);
+    });
+
+    it('evaluates getWeaponArsenalSummary progression from a fresh save to a full 7-weapon outlaw arsenal with signature weapon tracking', () => {
+      // 1. Fresh save state: default pistol only
+      const freshSummary = getWeaponArsenalSummary();
+      expect(freshSummary.unlockedCount).toBe(1);
+      expect(freshSummary.totalWeapons).toBe(7);
+      expect(freshSummary.totalKills).toBe(0);
+      expect(freshSummary.topWeaponId).toBe('pistol');
+      expect(freshSummary.topWeaponName).toBe('Pistol');
+      expect(freshSummary.topWeaponKills).toBe(0);
+      expect(freshSummary.summaryLine).toBe('ARSENAL: 1/7 UNLOCKED · 0 TOTAL KILLS · SIGNATURE: PISTOL (0)');
+
+      // Also holds with empty meta state
+      const emptyMeta = createDefaultMetaSave();
+      expect(getWeaponArsenalSummary(emptyMeta).summaryLine).toBe(
+        'ARSENAL: 1/7 UNLOCKED · 0 TOTAL KILLS · SIGNATURE: PISTOL (0)'
+      );
+
+      // 2. Mid progression: 3 unlocked weapons with kills
+      const midMeta: MetaSaveState = {
+        ...createDefaultMetaSave(),
+        unlocked: {
+          ...createDefaultMetaSave().unlocked,
+          machine_gun: true,
+          shotgun: true
+        },
+        weaponKills: {
+          pistol: 12,
+          machine_gun: 35,
+          shotgun: 80
+        }
+      };
+      const midSummary = getWeaponArsenalSummary(midMeta);
+      expect(midSummary.unlockedCount).toBe(3);
+      expect(midSummary.totalWeapons).toBe(7);
+      expect(midSummary.totalKills).toBe(127);
+      expect(midSummary.topWeaponId).toBe('shotgun');
+      expect(midSummary.topWeaponName).toBe(WEAPONS.shotgun.name);
+      expect(midSummary.topWeaponKills).toBe(80);
+      expect(midSummary.summaryLine).toBe(`ARSENAL: 3/7 UNLOCKED · 127 TOTAL KILLS · SIGNATURE: ${WEAPONS.shotgun.name.toUpperCase()} (80)`);
+
+      // 3. Full 7-weapon outlaw arsenal
+      const fullMeta: MetaSaveState = {
+        ...createDefaultMetaSave(),
+        unlocked: {
+          machine_gun: true,
+          shotgun: true,
+          flamethrower: true,
+          railgun: true,
+          grenade_launcher: true,
+          arc_coil: true
+        },
+        weaponKills: {
+          pistol: 20,
+          machine_gun: 45,
+          shotgun: 90,
+          flamethrower: 30,
+          railgun: 160,
+          grenade_launcher: 25,
+          arc_coil: 30
+        }
+      };
+      const fullSummary = getWeaponArsenalSummary(fullMeta);
+      expect(fullSummary.unlockedCount).toBe(7);
+      expect(fullSummary.totalWeapons).toBe(7);
+      expect(fullSummary.totalKills).toBe(400);
+      expect(fullSummary.topWeaponId).toBe('railgun');
+      expect(fullSummary.topWeaponName).toBe(WEAPONS.railgun.name);
+      expect(fullSummary.topWeaponKills).toBe(160);
+      expect(fullSummary.summaryLine).toBe(`ARSENAL: 7/7 UNLOCKED · 400 TOTAL KILLS · SIGNATURE: ${WEAPONS.railgun.name.toUpperCase()} (160)`);
+
+      // 4. Dynamic signature weapon shift when another gun overtakes leader
+      const shiftedMeta: MetaSaveState = {
+        ...fullMeta,
+        weaponKills: {
+          ...fullMeta.weaponKills,
+          shotgun: 250
+        }
+      };
+      const shiftedSummary = getWeaponArsenalSummary(shiftedMeta);
+      expect(shiftedSummary.topWeaponId).toBe('shotgun');
+      expect(shiftedSummary.topWeaponName).toBe(WEAPONS.shotgun.name);
+      expect(shiftedSummary.topWeaponKills).toBe(250);
+      expect(shiftedSummary.totalKills).toBe(560);
+      expect(shiftedSummary.summaryLine).toBe(`ARSENAL: 7/7 UNLOCKED · 560 TOTAL KILLS · SIGNATURE: ${WEAPONS.shotgun.name.toUpperCase()} (250)`);
+    });
+
+    it('evaluates getScannerStationAdvisor and getForgeStationAdvisor state transitions as the player claims the free +15% Crit scanner uplink and spends 15 Scrap at the Forge Anvil', () => {
+      const player = createDefaultPlayerState();
+
+      // Scanner Station: Standby -> Claimed transition
+      const scanBefore = getScannerStationAdvisor(player, 1);
+      expect(scanBefore.scannerActive).toBe(false);
+      expect(scanBefore.critBonusPct).toBe(0);
+      expect(scanBefore.targetFloor).toBe(1);
+      expect(scanBefore.recommendedAction).toBe('ACTIVATE SCANNER UPLINK (Free +15% Crit Chance & Full Floor Radar)');
+      expect(scanBefore.summaryLine).toBe(
+        'SCANNER INTEL [FLOOR 1]: STANDBY (0% CRIT) · ACTIVATE SCANNER UPLINK (Free +15% Crit Chance & Full Floor Radar)'
+      );
+
+      // Player activates uplink in sanctuary
+      player.scannerBuff = true;
+      const scanAfter = getScannerStationAdvisor(player, 2);
+      expect(scanAfter.scannerActive).toBe(true);
+      expect(scanAfter.critBonusPct).toBe(15);
+      expect(scanAfter.targetFloor).toBe(2);
+      expect(scanAfter.recommendedAction).toBe('TACTICAL UPLINK ONLINE (+15% Crit Chance & Minimap Reveal Active)');
+      expect(scanAfter.summaryLine).toBe(
+        'SCANNER INTEL [FLOOR 2]: ONLINE (+15% CRIT) · TACTICAL UPLINK ONLINE (+15% Crit Chance & Minimap Reveal Active)'
+      );
+
+      // Forge Station: 25 Scrap available -> Spends 15 Scrap (leaving 10 Scrap)
+      const meta = { ...createDefaultMetaSave(), scrap: 25 };
+      const forgeBefore = getForgeStationAdvisor(meta, player);
+      expect(forgeBefore.canReforge).toBe(true);
+      expect(forgeBefore.scrapAvailable).toBe(25);
+      expect(forgeBefore.reforgeCost).toBe(15);
+      expect(forgeBefore.modCount).toBe(0);
+      expect(forgeBefore.recommendedAction).toBe('Reforge Ready (15 Scrap) — Roll your first Outlaw Mod');
+      expect(forgeBefore.summaryLine).toBe(
+        'FORGE ANVIL: 25 SCRAP (COST: 15) · Reforge Ready (15 Scrap) — Roll your first Outlaw Mod'
+      );
+
+      // Player spends 15 Scrap at Forge Anvil to forge their first mod
+      meta.scrap -= 15;
+      player.items = ['tire_iron'];
+
+      const forgeAfter = getForgeStationAdvisor(meta, player);
+      expect(forgeAfter.canReforge).toBe(false);
+      expect(forgeAfter.scrapAvailable).toBe(10);
+      expect(forgeAfter.reforgeCost).toBe(15);
+      expect(forgeAfter.modCount).toBe(1);
+      expect(forgeAfter.recommendedAction).toBe('Need 5 more Scrap to Reforge at the Anvil');
+      expect(forgeAfter.summaryLine).toBe('FORGE ANVIL: 10 SCRAP (COST: 15) · Need 5 more Scrap to Reforge at the Anvil');
+
+      // Subsequent re-salvage bringing scrap back above reforge threshold
+      meta.scrap = 15;
+      const forgeRerollReady = getForgeStationAdvisor(meta, player);
+      expect(forgeRerollReady.canReforge).toBe(true);
+      expect(forgeRerollReady.recommendedAction).toBe('Reforge Ready (15 Scrap) — Reroll & upgrade active mod loadout');
+    });
+
+    it('verifies end-to-end consistency between getWeaponArsenalSummary and getCareerOutlawRank across rookie and veteran save states', () => {
+      // 1. Rookie save state
+      const rookieMeta = createDefaultMetaSave();
+      const rookieArsenal = getWeaponArsenalSummary(rookieMeta);
+      const rookieRank = getCareerOutlawRank(rookieMeta);
+
+      expect(rookieArsenal.unlockedCount).toBe(1);
+      expect(rookieArsenal.totalWeapons).toBe(7);
+      expect(rookieArsenal.totalKills).toBe(0);
+      expect(rookieArsenal.topWeaponId).toBe('pistol');
+      expect(rookieArsenal.topWeaponKills).toBe(0);
+      expect(rookieArsenal.summaryLine).toContain('1/7 UNLOCKED · 0 TOTAL KILLS · SIGNATURE: PISTOL (0)');
+
+      expect(rookieRank.rankId).toBe('rookie_courier');
+      expect(rookieRank.title).toBe('⚙️ ROOKIE COURIER');
+      expect(rookieRank.tierNumber).toBe(1);
+      expect(rookieRank.careerScore).toBe(0);
+      expect(rookieRank.nextMilestoneText).toBe('Reach 40 Career Score or Floor 2 for HIGHWAY OUTLAW');
+
+      // 2. Syndicate Enforcer / Apex Roadlord (Intermediate veteran)
+      const midMeta: MetaSaveState = {
+        ...createDefaultMetaSave(),
+        bestFloor: 3,
+        bossesSlain: 3,
+        totalKills: 120,
+        unlocked: {
+          ...createDefaultMetaSave().unlocked,
+          machine_gun: true,
+          shotgun: true
+        },
+        weaponKills: { pistol: 20, machine_gun: 40, shotgun: 60 }
+      };
+      const midArsenal = getWeaponArsenalSummary(midMeta);
+      const midRank = getCareerOutlawRank(midMeta);
+
+      expect(midArsenal.totalKills).toBe(midMeta.totalKills);
+      expect(midArsenal.unlockedCount).toBe(3);
+      expect(midArsenal.topWeaponId).toBe('shotgun');
+      expect(midArsenal.topWeaponKills).toBe(60);
+      // careerScore: 120 + 3*25 + (3-1)*40 = 120 + 75 + 80 = 275 -> Apex Roadlord (>= 250)
+      expect(midRank.tierNumber).toBe(4);
+      expect(midRank.rankId).toBe('apex_roadlord');
+      expect(midRank.careerScore).toBe(275);
+
+      // 3. Legend of Valhalla (Endgame veteran)
+      const veteranMeta: MetaSaveState = {
+        ...createDefaultMetaSave(),
+        scrap: 300,
+        bestFloor: 6,
+        bossesSlain: 6,
+        totalKills: 600,
+        unlocked: {
+          machine_gun: true,
+          shotgun: true,
+          flamethrower: true,
+          railgun: true,
+          grenade_launcher: true,
+          arc_coil: true
+        },
+        weaponKills: {
+          pistol: 40,
+          machine_gun: 80,
+          shotgun: 140,
+          flamethrower: 50,
+          railgun: 180,
+          grenade_launcher: 50,
+          arc_coil: 60
+        }
+      };
+      const veteranArsenal = getWeaponArsenalSummary(veteranMeta);
+      const veteranRank = getCareerOutlawRank(veteranMeta);
+
+      // Cross-verification: Arsenal kills match MetaSave career kill telemetry
+      expect(veteranArsenal.totalKills).toBe(veteranMeta.totalKills);
+      expect(veteranArsenal.unlockedCount).toBe(7);
+      expect(veteranArsenal.totalWeapons).toBe(7);
+      expect(veteranArsenal.topWeaponId).toBe('railgun');
+      expect(veteranArsenal.topWeaponName).toBe(WEAPONS.railgun.name);
+      expect(veteranArsenal.topWeaponKills).toBe(180);
+      expect(veteranArsenal.summaryLine).toBe(`ARSENAL: 7/7 UNLOCKED · 600 TOTAL KILLS · SIGNATURE: ${WEAPONS.railgun.name.toUpperCase()} (180)`);
+
+      // Cross-verification: Rank math & milestone
+      // careerScore: 600 + 6*25 + (6-1)*40 = 600 + 150 + 200 = 950
+      expect(veteranRank.rankId).toBe('legend_of_valhalla');
+      expect(veteranRank.title).toBe('👑 LEGEND OF VALHALLA');
+      expect(veteranRank.tierNumber).toBe(5);
+      expect(veteranRank.careerScore).toBe(950);
+      expect(veteranRank.nextMilestoneText).toBe('MAX CAREER RANK ACHIEVED');
     });
   });
 });

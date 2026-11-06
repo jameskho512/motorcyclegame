@@ -2422,6 +2422,89 @@ describe('Render & UI Subsystems', () => {
       expect(bountyRow4.textContent).toContain('+18⚙️ +22🪙');
       expect(bountyRow4.getAttribute('data-tip')).toContain('CRYO BREAKER: Detonate 2 Cryo/Explosive Barrels or clear Floor 4 Boss (Reward: +18 Scrap, +22 Coins)');
     });
+
+    it('sets data-bounty-contract-title, data-bounty-style-met, and data-bounty-summary telemetry attributes across Floor 1 and Floor 3', () => {
+      const metaSave: any = { scrap: 50, unlocked: {}, weaponKills: {} };
+
+      // Floor 1: NEON DAREDEVIL, cruising D rank -> isStyleMilestoneMet is false
+      const playerFloor1 = {
+        ...player,
+        styleScore: 10,
+        styleRank: 'D'
+      } as unknown as PlayerState;
+
+      hud.updateSidebar(playerFloor1, 1, metaSave);
+
+      const hudList1 = document.getElementById('hud-synergy-list')!;
+      const synList1 = document.getElementById('synergy-list')!;
+
+      expect(hudList1.getAttribute('data-bounty-contract-title')).toBe('NEON DAREDEVIL');
+      expect(hudList1.getAttribute('data-bounty-style-met')).toBe('false');
+      expect(hudList1.getAttribute('data-bounty-summary')).toBe(
+        'BOUNTY [F1] NEON DAREDEVIL: Graze 3 enemy projectiles or clear Floor 1 Boss (+8 SCRAP, +10 COINS)'
+      );
+
+      expect(synList1.getAttribute('data-bounty-contract-title')).toBe('NEON DAREDEVIL');
+      expect(synList1.getAttribute('data-bounty-style-met')).toBe('false');
+      expect(synList1.getAttribute('data-bounty-summary')).toBe(
+        'BOUNTY [F1] NEON DAREDEVIL: Graze 3 enemy projectiles or clear Floor 1 Boss (+8 SCRAP, +10 COINS)'
+      );
+
+      expect(hud.synergyListEl).not.toBeNull();
+      expect(hud.synergyListEl?.getAttribute('data-bounty-contract-title')).toBe('NEON DAREDEVIL');
+      expect(hud.synergyListEl?.getAttribute('data-bounty-style-met')).toBe('false');
+      expect(hud.synergyListEl?.getAttribute('data-bounty-summary')).toBe(
+        'BOUNTY [F1] NEON DAREDEVIL: Graze 3 enemy projectiles or clear Floor 1 Boss (+8 SCRAP, +10 COINS)'
+      );
+
+      // Floor 3: THERMAL HUNTER, high style A rank -> isStyleMilestoneMet is true
+      const playerFloor3A = {
+        ...player,
+        styleScore: 60,
+        styleRank: 'A'
+      } as unknown as PlayerState;
+
+      hud.updateSidebar(playerFloor3A, 3, metaSave);
+
+      expect(hudList1.getAttribute('data-bounty-contract-title')).toBe('THERMAL HUNTER');
+      expect(hudList1.getAttribute('data-bounty-style-met')).toBe('true');
+      expect(hudList1.getAttribute('data-bounty-summary')).toBe(
+        'BOUNTY [F3] THERMAL HUNTER: Reach Style Rank A or clear Floor 3 Boss (+12 SCRAP, +15 COINS)'
+      );
+
+      expect(synList1.getAttribute('data-bounty-contract-title')).toBe('THERMAL HUNTER');
+      expect(synList1.getAttribute('data-bounty-style-met')).toBe('true');
+      expect(synList1.getAttribute('data-bounty-summary')).toBe(
+        'BOUNTY [F3] THERMAL HUNTER: Reach Style Rank A or clear Floor 3 Boss (+12 SCRAP, +15 COINS)'
+      );
+
+      expect(hud.synergyListEl?.getAttribute('data-bounty-contract-title')).toBe('THERMAL HUNTER');
+      expect(hud.synergyListEl?.getAttribute('data-bounty-style-met')).toBe('true');
+      expect(hud.synergyListEl?.getAttribute('data-bounty-summary')).toBe(
+        'BOUNTY [F3] THERMAL HUNTER: Reach Style Rank A or clear Floor 3 Boss (+12 SCRAP, +15 COINS)'
+      );
+
+      // Floor 3: THERMAL HUNTER, high style SSS rank -> isStyleMilestoneMet is true
+      const playerFloor3SSS = {
+        ...player,
+        styleScore: 98,
+        styleRank: 'SSS'
+      } as unknown as PlayerState;
+
+      hud.updateSidebar(playerFloor3SSS, 3, metaSave);
+
+      expect(hudList1.getAttribute('data-bounty-contract-title')).toBe('THERMAL HUNTER');
+      expect(hudList1.getAttribute('data-bounty-style-met')).toBe('true');
+      expect(hudList1.getAttribute('data-bounty-summary')).toBe(
+        'BOUNTY [F3] THERMAL HUNTER: Reach Style Rank A or clear Floor 3 Boss (+12 SCRAP, +15 COINS)'
+      );
+
+      expect(synList1.getAttribute('data-bounty-contract-title')).toBe('THERMAL HUNTER');
+      expect(synList1.getAttribute('data-bounty-style-met')).toBe('true');
+      expect(synList1.getAttribute('data-bounty-summary')).toBe(
+        'BOUNTY [F3] THERMAL HUNTER: Reach Style Rank A or clear Floor 3 Boss (+12 SCRAP, +15 COINS)'
+      );
+    });
   });
 
   describe('HUD Mod Stack Tier & Evolution Readiness (getModStackTierClass & updateMods)', () => {

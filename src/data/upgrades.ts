@@ -723,3 +723,76 @@ export function getPotentialDuoSynergiesForItem(
     syn => syn.components.includes(itemIdOrName) && syn.isActive(simulated)
   );
 }
+
+// ============================================================================
+// META TUNING PROGRESS & INVESTMENT SUMMARY (M110)
+// ============================================================================
+
+export interface MetaTuningSummary {
+  totalRanks: number;
+  maxPossibleRanks: number;
+  completionPct: number;
+  cheapestNextUpgradeId: MetaUpgradeId | null;
+  cheapestNextCost: number | null;
+  summaryLine: string;
+}
+
+/**
+ * Pure function computing permanent Garage meta upgrade progression,
+ * overall completion percentage, lowest-cost non-maxed next upgrade,
+ * and single-line summary badge string for UI menus and profile summaries.
+ */
+export function getMetaTuningSummary(
+  metaSave?: { ranks?: Partial<Record<string, number>> | null } | null
+): MetaTuningSummary {
+  let totalRanks = 0;
+  let maxPossibleRanks = 0;
+  let cheapestNextUpgradeId: MetaUpgradeId | null = null;
+  let cheapestNextCost: number | null = null;
+
+  for (const up of Object.values(META_UPGRADES)) {
+    maxPossibleRanks += up.maxRank;
+    const rawRank = metaSave?.ranks?.[up.id];
+    let clampedRank = 0;
+    if (typeof rawRank === 'number' && !Number.isNaN(rawRank)) {
+      if (rawRank >= up.maxRank) {
+        clampedRank = up.maxRank;
+      } else if (rawRank <= 0) {
+        clampedRank = 0;
+      } else {
+        clampedRank = Math.max(0, Math.min(up.maxRank, Math.floor(rawRank)));
+      }
+    }
+    totalRanks += clampedRank;
+
+    if (clampedRank < up.maxRank) {
+      const cost = calcUpgradeCost(up, clampedRank);
+      if (cheapestNextCost === null || cost < cheapestNextCost) {
+        cheapestNextCost = cost;
+        cheapestNextUpgradeId = up.id;
+      }
+    }
+  }
+
+  const isAllMaxed = totalRanks >= maxPossibleRanks;
+  if (isAllMaxed) {
+    cheapestNextUpgradeId = null;
+    cheapestNextCost = null;
+  }
+
+  const completionPct = Math.round((totalRanks / Math.max(1, maxPossibleRanks)) * 100);
+
+  const summaryLine = isAllMaxed
+    ? `TUNING: ${totalRanks}/${maxPossibleRanks} RANKS (100%) · ALL SYSTEMS MAXED`
+    : `TUNING: ${totalRanks}/${maxPossibleRanks} RANKS (${completionPct}%) · NEXT: ${META_UPGRADES[cheapestNextUpgradeId!].name.toUpperCase()} (${cheapestNextCost} SCRAP)`;
+
+  return {
+    totalRanks,
+    maxPossibleRanks,
+    completionPct,
+    cheapestNextUpgradeId,
+    cheapestNextCost,
+    summaryLine
+  };
+}
+
