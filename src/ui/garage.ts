@@ -29,8 +29,9 @@ import {
 
 import { WEAPONS, UNLOCKABLE_IDS } from '../data/weapons';
 import { META_UPGRADES, calcUpgradeCost } from '../data/upgrades';
-import { EQUIP_SLOTS, RARITY, MAX_STASH, fmtStat } from '../data/equipment';
+import { EQUIP_SLOTS, RARITY, MAX_STASH, fmtStat, itemScore } from '../data/equipment';
 import { EQUIP_SLOT_HI_FI_SVG, WEAPON_HI_FI_SVG } from './icons';
+import { SET08_ASSETS } from './set08Assets';
 
 export interface BikeLiveryDef {
   id: BikeLiveryId;
@@ -71,14 +72,14 @@ const RIGHT_SLOTS: readonly EquipSlot[] = ['handlebars', 'frame', 'tank'];
 const BIKE_W = 400;
 const BIKE_H = 300;
 
-/** Where each slot's connector line lands on the bike (logical coords). */
+/** Where each slot's connector line lands around the bike perimeter (logical coords, non-crossing). */
 const PART_ANCHORS: Record<EquipSlot, readonly [number, number]> = {
-  tires: [104, 172],
-  engine: [206, 190],
-  exhaust: [118, 178],
-  handlebars: [306, 94],
-  frame: [168, 186],
-  tank: [236, 114]
+  tires: [118, 78],
+  engine: [134, 150],
+  exhaust: [142, 216],
+  handlebars: [274, 78],
+  frame: [268, 150],
+  tank: [258, 216]
 };
 
 /** Neutral paint for empty (uninstalled) parts, chosen to keep the bike readable. */
@@ -145,9 +146,26 @@ export class GarageController {
   private isVisible: boolean = false;
   private isDead: boolean = false;
   private callbacks: GarageCallbacks;
+  private set08BikeImg: HTMLImageElement | null = null;
+  private set08BikeLoaded: boolean = false;
+  private lastMetaSave: MetaSaveState | null = null;
+  private confirmResetPending: boolean = false;
+  private confirmResetTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(callbacks: GarageCallbacks) {
     this.callbacks = callbacks;
+
+    if (typeof Image !== 'undefined') {
+      const img = new Image();
+      img.onload = () => {
+        this.set08BikeLoaded = true;
+        if (this.lastMetaSave && this.isVisible) {
+          this.drawBikeLift(this.lastMetaSave);
+        }
+      };
+      img.src = SET08_ASSETS.bike_player || '/assets/set08/bike_player.png';
+      this.set08BikeImg = img;
+    }
 
     if (typeof document !== 'undefined') {
       this.overlay = document.getElementById('garage-overlay');
@@ -197,6 +215,34 @@ export class GarageController {
 
       this.resetSaveBtn?.addEventListener('click', () => {
         this.callbacks.onPlayUiClick?.();
+        if (!this.confirmResetPending) {
+          this.confirmResetPending = true;
+          const originalLabel = this.resetSaveBtn?.dataset.origLabel || this.resetSaveBtn?.textContent || 'Reset';
+          if (this.resetSaveBtn) {
+            this.resetSaveBtn.dataset.origLabel = originalLabel;
+            this.resetSaveBtn.textContent = 'CONFIRM FULL RESET?';
+            this.resetSaveBtn.classList.add('is-confirming');
+          }
+          if (this.confirmResetTimer) clearTimeout(this.confirmResetTimer);
+          this.confirmResetTimer = setTimeout(() => {
+            this.confirmResetPending = false;
+            if (this.resetSaveBtn) {
+              this.resetSaveBtn.textContent = this.resetSaveBtn.dataset.origLabel || 'Reset';
+              this.resetSaveBtn.classList.remove('is-confirming');
+            }
+          }, 3000);
+          return;
+        }
+
+        if (this.confirmResetTimer) {
+          clearTimeout(this.confirmResetTimer);
+          this.confirmResetTimer = null;
+        }
+        this.confirmResetPending = false;
+        if (this.resetSaveBtn) {
+          this.resetSaveBtn.textContent = this.resetSaveBtn.dataset.origLabel || 'Reset';
+          this.resetSaveBtn.classList.remove('is-confirming');
+        }
         this.callbacks.onResetSave();
       });
 
@@ -424,13 +470,30 @@ export class GarageController {
       const slotLabel = slotDef ? slotDef.label : it.slot;
       const statsStr = statsText(it.stats);
 
+      const eqItem = metaSave.equipped[it.slot] || null;
+      const diffScore = eqItem ? itemScore(it) - itemScore(eqItem) : itemScore(it);
+      let diffBadgeHtml = '';
+      let vsEquippedLine = '';
+      if (!eqItem || diffScore > 0.05) {
+        diffBadgeHtml = '<span class="gx-stash-diff is-up">▲ UPGRADE</span>';
+        vsEquippedLine = eqItem
+          ? `▲ UPGRADE vs Equipped: ${eqItem.name} (${statsText(eqItem.stats)})`
+          : `▲ UPGRADE (${slotLabel} slot empty)`;
+      } else if (diffScore < -0.05) {
+        diffBadgeHtml = '<span class="gx-stash-diff is-down">▼</span>';
+        vsEquippedLine = `▼ Downgrade vs Equipped: ${eqItem.name} (${statsText(eqItem.stats)})`;
+      } else {
+        vsEquippedLine = `= Equal to Equipped: ${eqItem.name} (${statsText(eqItem.stats)})`;
+      }
+
       const el = document.createElement('button');
       el.type = 'button';
       el.className = `stash-item rarity-${R.id}`;
       el.style.setProperty('--rar', R.color);
-      el.title = `${it.name} - ${R.name} ${slotLabel}\n${statsStr}\nClick: install | Right-click / Del: sell for ${R.sell} scrap`;
-      el.setAttribute('aria-label', `${it.name}, ${R.name} ${slotLabel}. ${statsStr}. Install. Press Delete to sell for ${R.sell} scrap`);
+      el.title = `${it.name} - ${R.name} ${slotLabel}\n${statsStr}\n${vsEquippedLine}\nClick: install | Right-click / Del: sell for ${R.sell} scrap`;
+      el.setAttribute('aria-label', `${it.name}, ${R.name} ${slotLabel}. ${statsStr}. ${vsEquippedLine}. Install. Press Delete to sell for ${R.sell} scrap`);
       el.innerHTML = `
+        ${diffBadgeHtml}
         <div class="gx-stash-art">${EQUIP_SLOT_HI_FI_SVG[it.slot] || ''}</div>
         <b>${esc(it.name)}</b>
         <span class="gx-stash-meta">${esc(R.name)} ${esc(slotLabel)}</span>
@@ -579,6 +642,7 @@ export class GarageController {
    * to fill the bay), so the illustration stays crisp and undistorted.
    */
   public drawBikeLift(metaSave: MetaSaveState): void {
+    this.lastMetaSave = metaSave;
     if (!this.bikeCanvas || !this.bikeCtx) return;
     const c = this.bikeCanvas;
     const g = this.bikeCtx;
@@ -635,13 +699,22 @@ export class GarageController {
     }
     g.restore();
 
-    // 1. Connector lines from the slot frames to each part (screen space)
+    // 1. Connector lines from the slot frames to each part (aligned to live DOM slot centers)
     const drawConnector = (slot: EquipSlot, side: 'left' | 'right', idx: number) => {
-      const sy = (H * (idx * 2 + 1)) / 6;
+      const colEl = side === 'left' ? this.slotsLeft : this.slotsRight;
+      const slotEl = colEl?.querySelectorAll('.eq-slot')[idx] as HTMLElement | undefined;
+      let sy = (H * (idx * 2 + 1)) / 6;
+      if (slotEl) {
+        const sr = slotEl.getBoundingClientRect();
+        if (sr.height > 2) {
+          sy = sr.top + sr.height / 2 - rect.top;
+        }
+      }
       const sx = side === 'left' ? 0 : W;
       const [ax, ay] = toScreen(PART_ANCHORS[slot][0], PART_ANCHORS[slot][1]);
-      const kneeX = side === 'left' ? Math.min(ax - 6, sx + 24) : Math.max(ax + 6, sx - 24);
+      const kneeX = side === 'left' ? Math.min(ax - 14, sx + 38) : Math.max(ax + 14, sx - 38);
       const it = equipped(slot);
+      const lineCol = it ? RARITY[it.rarity].color : 'rgba(255, 214, 10, 0.65)';
       g.save();
       g.lineCap = 'round';
       g.lineJoin = 'round';
@@ -650,10 +723,10 @@ export class GarageController {
       g.lineTo(kneeX, sy);
       g.lineTo(ax, ay);
       g.strokeStyle = INK;
-      g.lineWidth = 4;
+      g.lineWidth = 4.5;
       g.stroke();
-      g.strokeStyle = it ? RARITY[it.rarity].color : '#ffd60a';
-      g.lineWidth = 1.8;
+      g.strokeStyle = lineCol;
+      g.lineWidth = 2;
       g.stroke();
       g.beginPath();
       g.arc(ax, ay, 4.5, 0, Math.PI * 2);
@@ -726,7 +799,44 @@ export class GarageController {
     }
     g.restore();
 
-    // 3. Wheels & tires
+    // 2.5 Set 08 High-Res Spider-Verse Halftone Comic Pop-Art Motorcycle Sprite Overlay
+    if (this.set08BikeLoaded && this.set08BikeImg && this.set08BikeImg.naturalWidth > 0) {
+      g.restore();
+
+      // Draw slot connectors BEHIND the Set 08 bike so lines never cross over the bike artwork
+      LEFT_SLOTS.forEach((slot, i) => drawConnector(slot, 'left', i));
+      RIGHT_SLOTS.forEach((slot, i) => drawConnector(slot, 'right', i));
+
+      const activeLivery =
+        BIKE_LIVERIES.find(l => l.id === metaSave.livery) || BIKE_LIVERIES[0];
+
+      g.save();
+      g.translate(ox, oy);
+      g.scale(s, s);
+      // Ben-Day Halftone Dot Matrix Halo behind the Set 08 Bike (tinted by active livery)
+      for (let hx = 85; hx <= 325; hx += 10) {
+        for (let hy = 25; hy <= 220; hy += 10) {
+          const dist = Math.hypot(hx - 205, (hy - 125) * 1.2);
+          if (dist < 115) {
+            const dotR = Math.max(0.8, (1 - dist / 115) * 2.4);
+            g.beginPath();
+            g.arc(hx, hy, dotR, 0, Math.PI * 2);
+            g.fillStyle = (hx + hy) % 20 === 0 ? activeLivery.accent : activeLivery.primary;
+            g.globalAlpha = 0.26;
+            g.fill();
+          }
+        }
+      }
+      g.globalAlpha = 1;
+      // Chromatic Livery Rim-Light Aura beneath the Set 08 Bike seated on the lift
+      g.shadowColor = activeLivery.primary;
+      g.shadowBlur = 22;
+      g.drawImage(this.set08BikeImg, 36, -32, 328, 308);
+      g.restore();
+      return;
+    }
+
+    // 3. Wheels & tires (Procedural fallback when image hasn't loaded yet)
     const tireAccent = colorOf('tires');
     const drawWheel = (wx: number, wy: number, front: boolean) => {
       g.save();

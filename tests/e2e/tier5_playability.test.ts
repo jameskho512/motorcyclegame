@@ -894,5 +894,173 @@ describe('Tier 5: Playability Verification & End-to-End Simulation', () => {
 
       app.inputManager.destroy();
     });
+
+    it('creates 2 linked choiceGroup pedestals in the Treasure room and despawns sibling on pickup', () => {
+      setupAppDom();
+      const app = new MotoRogueApp();
+      app.startNewRun(false);
+
+      const treasureEntry = Object.entries(app.dungeon).find(([, rm]) => rm.type === 'treasure');
+      expect(treasureEntry).toBeDefined();
+      const [key, treasureRoom] = treasureEntry!;
+      const [tx, ty] = key.split(',').map(Number);
+
+      const choicePedestals = treasureRoom.pickups.filter(
+        p => p.type === 'mod_pedestal' && (p as any).choiceGroup === 'treasure_choice'
+      );
+      expect(choicePedestals).toHaveLength(2);
+
+      // Move player into Treasure room onto first choice pedestal
+      app.curRoomX = tx;
+      app.curRoomY = ty;
+      app.stateManager.player.x = choicePedestals[0].x;
+      app.stateManager.player.y = choicePedestals[0].y;
+
+      app.update(0.016);
+
+      // Both the claimed pedestal and its sibling must be despawned
+      const remainingChoice = treasureRoom.pickups.filter(
+        p => (p as any).choiceGroup === 'treasure_choice'
+      );
+      expect(remainingChoice).toHaveLength(0);
+      expect(app.combatState.damageNumbers.some(d => d.text.includes('CHOICE LOCKED'))).toBe(true);
+
+      app.inputManager.destroy();
+    });
+
+    it('triggers 28px near-miss bullet graze (+8 NOS, +12 styleScore, and ⚡ GRAZE! +8 NOS callout)', () => {
+      setupAppDom();
+      const app = new MotoRogueApp();
+      app.startNewRun(false);
+
+      const player = app.stateManager.player;
+      player.nos = 50;
+      player.styleScore = 20;
+      player.invuln = 0;
+
+      // Player radius is 17, bullet radius is 6 -> hitR = 23, grazeR = 49.
+      // Place stationary bullet at distance 35px (within graze skirt, outside hitR)
+      const eb = {
+        x: player.x + 35,
+        y: player.y,
+        vx: 0,
+        vy: 0,
+        radius: 6,
+        color: '#ff1f4b'
+      };
+      app.combatState.enemyBullets.push(eb);
+
+      app.update(0.016);
+
+      expect((eb as any).grazed).toBe(true);
+      expect(player.nos).toBeGreaterThanOrEqual(58);
+      expect(player.styleScore).toBeGreaterThanOrEqual(32);
+      expect(app.combatState.damageNumbers.some(d => d.text === '⚡ GRAZE! +8 NOS')).toBe(true);
+
+      app.inputManager.destroy();
+    });
+
+    it('builds driftCharge with Spacebar handbrake powerslide and triggers Drift Overcharge on release', () => {
+      setupAppDom();
+      const app = new MotoRogueApp();
+      app.startNewRun(false);
+
+      const player = app.stateManager.player;
+      const rawKeys = (app.inputManager as any).rawKeys;
+
+      // Hold 'w', 'd', and Spacebar (' ')
+      rawKeys['w'] = true;
+      rawKeys['d'] = true;
+      rawKeys[' '] = true;
+
+      for (let i = 0; i < 20; i++) {
+        app.update(0.016);
+      }
+
+      expect(player.spacePowerslide).toBe(true);
+      expect(player.driftCharge).toBeGreaterThanOrEqual(0.50);
+
+      // Ensure driftCharge is below auto-threshold (0.85) but >= 0.50, then release Spacebar
+      player.driftCharge = 0.60;
+      rawKeys[' '] = false;
+      app.update(0.016);
+
+      expect(player.driftCharge).toBe(0);
+      expect(player.driftBoostTimer).toBeCloseTo(2.4, 1);
+      expect(app.combatState.bullets.length).toBeGreaterThanOrEqual(8);
+      expect(app.combatState.damageNumbers.some(d => d.text.includes('DRIFT OVERCHARGE'))).toBe(true);
+
+      app.inputManager.destroy();
+    });
+
+    it('triggers Boss Phase-2 OVERDRIVE ENRAGE cut-in when boss HP drops to <= 50%', () => {
+      setupAppDom();
+      const app = new MotoRogueApp();
+      app.startNewRun(false);
+
+      const bossEntry = Object.entries(app.dungeon).find(([, rm]) => rm.type === 'boss');
+      expect(bossEntry).toBeDefined();
+      const [key, bossRoom] = bossEntry!;
+      const [bx, by] = key.split(',').map(Number);
+
+      app.curRoomX = bx;
+      app.curRoomY = by;
+
+      const boss = bossRoom.enemies.find(e => e.type === 'boss') as any;
+      expect(boss).toBeDefined();
+      boss.hp = Math.floor(boss.maxHp * 0.45); // Drop to 45% HP (<= 50%)
+
+      app.update(0.016);
+
+      expect(boss.enraged).toBe(true);
+      expect(boss.phase).toBe(2);
+      expect(app.combatState.damageNumbers.some(d => d.text === '⚠️ OVERDRIVE ENRAGE!!')).toBe(true);
+
+      app.inputManager.destroy();
+    });
+
+    it('persists Outlaw Sanctuary Hub scannerBuff across launch portal and toggles .is-low-hull vignette at <= 34% HP', () => {
+      setupAppDom();
+      const app = new MotoRogueApp();
+      app.enterHomeBase();
+
+      const hubRoom = app.getCurrentRoom()!;
+      expect(hubRoom.type).toBe('hub');
+
+      // 1. Move onto Doc's Cyber-Codex station
+      const codexNpc = hubRoom.pickups.find(p => (p as any).npcId === 'codex')!;
+      expect(codexNpc).toBeDefined();
+      app.stateManager.player.x = codexNpc.x;
+      app.stateManager.player.y = codexNpc.y;
+      app.update(0.016);
+
+      expect(app.stateManager.player.scannerBuff).toBe(true);
+
+      // 2. Move onto Highway Gate launch station and verify scannerBuff persists into Floor 1 run
+      const launchNpc = hubRoom.pickups.find(p => (p as any).npcId === 'launch')!;
+      expect(launchNpc).toBeDefined();
+      app.stateManager.player.x = launchNpc.x;
+      app.stateManager.player.y = launchNpc.y;
+      app.update(0.016);
+
+      expect(app.inHomeBase).toBe(false);
+      expect(app.stateManager.player.scannerBuff).toBe(true);
+      expect(app.stateManager.player.projSpeedMult).toBeGreaterThan(1.0);
+
+      // 3. Verify Low-Hull Vignette (.is-low-hull on #game-wrapper) when HP <= 34%
+      const wrapper = document.getElementById('game-wrapper')!;
+      expect(wrapper.classList.contains('is-low-hull')).toBe(false);
+
+      app.stateManager.player.hp = 2;
+      app.stateManager.player.maxHp = 6; // 2/6 = 33.3% <= 34%
+      app.updateHUD();
+      expect(wrapper.classList.contains('is-low-hull')).toBe(true);
+
+      app.stateManager.player.hp = 5;
+      app.updateHUD();
+      expect(wrapper.classList.contains('is-low-hull')).toBe(false);
+
+      app.inputManager.destroy();
+    });
   });
 });

@@ -29,17 +29,17 @@
 }
 
 /* --------------------------------------------------------------------------
-   Garage Main Frame (Strictly fits 1280x720 without window / modal scroll)
+   Garage Main Frame (Utilizes 96% of viewport for high-clarity 3D asset showcase)
    -------------------------------------------------------------------------- */
 #garage-overlay .garage-card {
   position: relative;
   box-sizing: border-box;
-  width: min(1420px, 98vw);
-  height: min(740px, 98vh);
-  max-width: 1420px;
-  max-height: 740px;
+  width: min(1840px, 97vw);
+  height: min(980px, 95vh);
+  max-width: 1840px;
+  max-height: 980px;
   margin: 0;
-  padding: 10px 16px 10px;
+  padding: 12px 20px 12px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -245,8 +245,8 @@
    -------------------------------------------------------------------------- */
 .garage-main-grid.gx-grid {
   display: grid;
-  grid-template-columns: 350px 1fr 370px;
-  gap: 12px;
+  grid-template-columns: 315px 1fr 485px;
+  gap: 16px;
   flex: 1;
   min-height: 0;
   margin: 0;
@@ -456,30 +456,31 @@
 }
 
 /* --------------------------------------------------------------------------
-   RIGHT PANEL: ARMORY Weapon Cards with Lock Icons & Scrap Prices
+   RIGHT PANEL: ARMORY Weapon Cards with Large Set 08 3D Art & Scrap Prices
    -------------------------------------------------------------------------- */
 .gx-armory .unlock-list.gx-scroll {
   justify-content: space-between;
+  gap: 8px;
 }
 
 .unlock-item.gx-weapon {
   position: relative;
   display: grid;
-  grid-template-columns: 54px 1fr auto;
+  grid-template-columns: 118px 1fr auto;
   align-items: center;
-  padding: 5px 8px;
+  padding: 6px 10px;
   flex: 1;
   background: #14151e;
   border: 2px solid #36394a;
-  border-radius: 2px;
-  gap: 6px;
-  min-height: 58px;
+  border-radius: 4px;
+  gap: 12px;
+  min-height: 78px;
   transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s;
 }
 
 .unlock-item.gx-weapon.is-equipped {
   border: 2.5px solid var(--yellow, #ffd60a);
-  box-shadow: 0 0 10px rgba(255, 214, 10, 0.4), inset 0 0 8px rgba(255, 214, 10, 0.12);
+  box-shadow: 0 0 12px rgba(255, 214, 10, 0.45), inset 0 0 10px rgba(255, 214, 10, 0.14);
 }
 
 .unlock-item.gx-weapon.is-locked {
@@ -495,15 +496,15 @@
 .unlock-item.gx-weapon .info {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
   min-width: 0;
 }
 
 .unlock-item.gx-weapon .info strong {
   font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
   font-style: italic;
-  font-size: 13px;
-  letter-spacing: 0.8px;
+  font-size: 16px;
+  letter-spacing: 0.9px;
   color: #ffffff;
   text-transform: uppercase;
   line-height: 1.1;
@@ -518,45 +519,45 @@
 
 .unlock-item.gx-weapon .gx-key {
   display: inline-block;
-  margin-right: 4px;
-  padding: 0 4px;
+  margin-right: 5px;
+  padding: 1px 5px;
   background: var(--ink, #0a0b10);
-  border: 1px solid #444;
+  border: 1px solid #555;
   color: var(--yellow, #ffd60a);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .unlock-item.gx-weapon .info span {
-  font-size: 10px;
-  color: #a4aab8;
-  line-height: 1.22;
+  font-size: 11.5px;
+  color: #b4bac8;
+  line-height: 1.25;
   white-space: normal;
 }
 
-/* Cel-Shaded Weapon Illustration Box & Corner Status Badge */
+/* Large High-Clarity Set 08 3D Weapon Showcase Frame & Corner Status Badge */
 .unlock-item.gx-weapon .gx-weapon-art {
   position: relative;
-  width: 54px;
-  height: 38px;
+  width: 118px;
+  height: 74px;
   display: flex;
   align-items: center;
   justify-content: center;
   background:
-    radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--wc, #ffd60a) 26%, transparent) 0%, rgba(10, 11, 16, 0.9) 82%);
-  border: 1.5px solid color-mix(in srgb, var(--wc, #4a5068) 70%, #2a2d3a);
-  border-radius: 3px;
-  box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.7), 2px 2px 0 var(--ink, #0a0b10);
+    radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--wc, #ffd60a) 32%, transparent) 0%, rgba(10, 11, 16, 0.92) 84%);
+  border: 2px solid color-mix(in srgb, var(--wc, #4a5068) 78%, #2a2d3a);
+  border-radius: 4px;
+  box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.75), 3px 3px 0 var(--ink, #0a0b10);
   pointer-events: none;
   flex-shrink: 0;
 }
 
 .gx-weapon-art svg {
-  width: 50px;
-  height: 34px;
+  width: 112px;
+  height: 70px;
   display: block;
   filter:
-    drop-shadow(1.5px 1.5px 0 var(--ink, #0a0b10))
-    drop-shadow(0 0 6px color-mix(in srgb, var(--wc, #ffd60a) 55%, transparent));
+    drop-shadow(2px 2px 0 var(--ink, #0a0b10))
+    drop-shadow(0 0 8px color-mix(in srgb, var(--wc, #ffd60a) 55%, transparent));
 }
 
 .unlock-item.gx-weapon.is-locked .gx-weapon-art > svg {
@@ -650,7 +651,7 @@
 }
 
 /* --------------------------------------------------------------------------
-   CENTER BAY: Motorcycle Preview on Hydraulic Lift & 6 Equipment Slots
+   CENTER BAY: Motorcycle Preview on Hydraulic Lift & 6 Large Equipment Slots
    -------------------------------------------------------------------------- */
 .gx-bay-wrap {
   display: flex;
@@ -658,15 +659,19 @@
   position: relative;
   min-height: 0;
   justify-content: center;
+  padding: 6px 8px;
 }
 
 .bay.gx-bay {
   display: grid;
-  grid-template-columns: 96px 1fr 96px;
-  gap: 8px;
-  align-items: center;
+  grid-template-columns: 148px 1fr 148px;
+  grid-template-rows: minmax(0, 1fr);
+  gap: 10px;
+  align-items: stretch;
   position: relative;
   flex: 1;
+  height: 100%;
+  min-height: 0;
   background: transparent;
   border: none;
   padding: 0;
@@ -677,37 +682,39 @@
   display: flex;
   flex-direction: column;
   justify-content: space-around;
-  gap: 8px;
+  align-items: center;
+  gap: 12px;
   height: 100%;
 }
 
-/* 6 Equipment Slots: Large cards with THICK rarity borders */
+/* 6 Equipment Slots: Large High-Clarity Showcase Cards with THICK rarity borders */
 .eq-slot {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 94px;
-  height: 76px;
-  padding: 4px;
+  width: 144px;
+  height: 134px;
+  padding: 6px 6px 16px 6px;
   background:
+    radial-gradient(circle at 50% 44%, color-mix(in srgb, var(--rar, #4f5362) 24%, transparent) 0%, transparent 72%),
     var(--halftone, radial-gradient(circle, rgba(0, 0, 0, 0.45) 1.2px, transparent 1.6px) 0 0 / 7px 7px),
     #13141c;
   border: 3.5px solid var(--rar, #4f5362);
-  border-radius: 4px;
-  box-shadow: 4px 4px 0 var(--ink, #0a0b10), 0 0 10px rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  box-shadow: 5px 5px 0 var(--ink, #0a0b10), 0 0 14px rgba(255, 255, 255, 0.08);
   cursor: pointer;
   transition: transform 0.12s var(--ease-snap, ease-out), box-shadow 0.12s;
 }
 
 .eq-slot:hover {
   transform: translateY(-2px) scale(1.04);
-  box-shadow: 5px 6px 0 var(--ink, #0a0b10), 0 0 16px var(--rar, #ffd166);
+  box-shadow: 6px 7px 0 var(--ink, #0a0b10), 0 0 22px var(--rar, #ffd166);
 }
 
 .eq-slot.is-filled {
-  box-shadow: 4px 4px 0 var(--ink, #0a0b10), 0 0 14px var(--rar, #ffd166);
+  box-shadow: 5px 5px 0 var(--ink, #0a0b10), 0 0 18px var(--rar, #ffd166);
 }
 
 .eq-slot.is-empty {
@@ -717,11 +724,12 @@
 
 .eq-slot .gx-slot-icon,
 .eq-slot .sl-icon {
-  width: 46px;
-  height: 46px;
+  width: 88px;
+  height: 88px;
   display: flex;
   align-items: center;
   justify-content: center;
+  margin: 0 auto;
 }
 
 .eq-slot .gx-slot-icon svg,
@@ -730,8 +738,8 @@
   height: 100%;
   display: block;
   filter:
-    drop-shadow(1.5px 1.5px 0 var(--ink, #0a0b10))
-    drop-shadow(0 0 6px var(--rar, rgba(255, 214, 10, 0.35)));
+    drop-shadow(2px 2px 0 var(--ink, #0a0b10))
+    drop-shadow(0 0 8px var(--rar, rgba(255, 214, 10, 0.4)));
 }
 
 .eq-slot.is-empty .gx-slot-icon svg,
@@ -743,8 +751,22 @@
   opacity: 0.78;
 }
 
-/* Keep internal text hidden from card body to maintain clean square layout */
-.eq-slot .sl-name,
+/* Show equipped item name concisely below the 88x88 icon */
+.eq-slot .sl-name {
+  display: block;
+  max-width: 130px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #e6ebf5;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+  line-height: 1.1;
+}
+
+.eq-slot.is-empty .sl-name,
 .eq-slot .sl-stats {
   display: none;
 }
@@ -752,15 +774,15 @@
 /* Black rectangular pill badge under slot showing the slot name */
 .eq-slot .sl-label {
   position: absolute;
-  bottom: -9px;
+  bottom: -10px;
   background: var(--ink, #0a0b10);
   border: 2px solid var(--rar, #555b6a);
   color: #ffffff;
-  padding: 1px 6px;
+  padding: 2px 10px;
   font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
   font-style: italic;
-  font-size: 10.5px;
-  letter-spacing: 1px;
+  font-size: 12px;
+  letter-spacing: 1.2px;
   text-transform: uppercase;
   white-space: nowrap;
   box-shadow: 2px 2px 0 var(--ink, #0a0b10);
@@ -768,11 +790,13 @@
 }
 
 #bike-canvas {
-  width: 100%;
-  height: 100%;
-  max-height: 275px;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 460px;
+  align-self: stretch;
+  max-width: none !important;
+  max-height: none !important;
   display: block;
-  object-fit: contain;
 }
 
 .gx-livery-bar {
@@ -874,12 +898,12 @@
   gap: 2px;
 }
 
-/* 2-Row STASH Inventory Grid */
+/* 2-Row Large STASH Inventory Grid */
 .stash#stash-list {
   display: grid;
-  grid-template-columns: repeat(8, 48px);
-  grid-template-rows: repeat(2, 40px);
-  gap: 5px;
+  grid-template-columns: repeat(9, 76px);
+  grid-template-rows: repeat(2, 66px);
+  gap: 7px;
   overflow: visible;
   max-height: none;
   margin: 0;
@@ -891,32 +915,34 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 40px;
-  padding: 2px;
+  width: 76px;
+  height: 66px;
+  padding: 3px;
   background:
+    radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--rar, #444855) 22%, transparent) 0%, transparent 75%),
     var(--halftone, radial-gradient(circle, rgba(0, 0, 0, 0.4) 1.2px, transparent 1.6px) 0 0 / 7px 7px),
     #171922;
-  border: 2px solid var(--rar, #444855);
-  border-radius: 2px;
-  box-shadow: 2px 2px 0 var(--ink, #0a0b10);
+  border: 2.5px solid var(--rar, #444855);
+  border-radius: 4px;
+  box-shadow: 3px 3px 0 var(--ink, #0a0b10);
   cursor: pointer;
   transition: transform 0.1s var(--ease-snap, ease-out), box-shadow 0.1s;
 }
 
 .stash-item:hover {
-  transform: translateY(-2px) scale(1.05);
-  box-shadow: 3px 4px 0 var(--ink, #0a0b10), 0 0 10px var(--rar, #ffd166);
+  transform: translateY(-2px) scale(1.06);
+  box-shadow: 4px 5px 0 var(--ink, #0a0b10), 0 0 14px var(--rar, #ffd166);
 }
 
 .gx-stash-art {
-  width: 24px;
-  height: 24px;
+  width: 52px;
+  height: 52px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   pointer-events: none;
+  margin: auto;
 }
 
 .gx-stash-art svg {
@@ -924,20 +950,17 @@
   height: 100%;
   display: block;
   filter:
-    drop-shadow(1px 1px 0 var(--ink, #0a0b10))
-    drop-shadow(0 0 5px var(--rar, transparent));
+    drop-shadow(1.5px 1.5px 0 var(--ink, #0a0b10))
+    drop-shadow(0 0 6px var(--rar, transparent));
 }
 
 .stash-item b {
-  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
-  font-size: 7.5px;
-  color: #ffffff;
-  line-height: 1;
-  text-align: center;
-  white-space: nowrap;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
+  pointer-events: none;
 }
 
 .gx-stash-meta,
@@ -947,31 +970,62 @@
 
 .gx-stash-sell {
   position: absolute;
-  bottom: 1px;
+  bottom: 2px;
   right: 2px;
+  background: rgba(10, 11, 16, 0.92);
+  padding: 1px 4px;
+  border: 1px solid rgba(255, 214, 10, 0.45);
+  border-radius: 3px;
   font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
-  font-size: 8px;
+  font-size: 10px;
   color: var(--yellow, #ffd60a);
   display: flex;
   align-items: center;
-  gap: 1px;
+  gap: 2px;
 }
 
 .gx-stash-sell .gx-gear {
-  width: 7px;
-  height: 7px;
+  width: 9px;
+  height: 9px;
   fill: var(--yellow, #ffd60a);
+}
+
+.gx-stash-diff {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  z-index: 3;
+  padding: 1px 4px;
+  background: rgba(10, 11, 16, 0.94);
+  border-radius: 3px;
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.4px;
+  line-height: 1.1;
+  pointer-events: none;
+}
+
+.gx-stash-diff.is-up {
+  color: #06d6a0;
+  border: 1px solid rgba(6, 214, 160, 0.65);
+  box-shadow: 0 0 6px rgba(6, 214, 160, 0.35);
+}
+
+.gx-stash-diff.is-down {
+  color: #8d99ae;
+  border: 1px solid rgba(141, 153, 174, 0.35);
 }
 
 /* Ghost slots preserving the 2-row grid look from concept art */
 .gx-stash-ghost {
-  width: 48px;
-  height: 40px;
+  width: 76px;
+  height: 66px;
   background:
     var(--halftone, radial-gradient(circle, rgba(0, 0, 0, 0.4) 1.2px, transparent 1.6px) 0 0 / 7px 7px),
     rgba(18, 20, 28, 0.6);
   border: 2px solid #282a36;
-  border-radius: 2px;
+  border-radius: 4px;
 }
 
 .gx-stash-empty {

@@ -29,6 +29,7 @@ import {
   updatePlayerBullets,
   updateGrenades,
   updateBurnDoT,
+  updateEnemyCollisions,
   triggerExplosion,
   handleEnemyDeath
 } from '../../src/systems/combat';
@@ -623,5 +624,226 @@ describe('Systems: Combat — Explosions & Grenade Flight', () => {
     expect(room.obstacles).not.toContain(barrel);
     // Indestructible rock remains
     expect(room.obstacles).toContain(rock);
+  });
+});
+
+describe('Systems: Combat — BUG-02, BUG-03, BUG-04, Weapon Scaling & Duo Synergies', () => {
+  it('BUG-02: Cryo-Jacketed Shells (in player.items) chills enemies for 2.2s and chilled enemies take +15% bonus damage', () => {
+    const player = createMockPlayer({ items: ['Cryo-Jacketed Shells'] });
+    const state = createCombatState();
+    const enemy = createMockEnemy({ x: 390, y: 360, hp: 100, maxHp: 100 });
+    const room = createMockRoom({ enemies: [enemy] });
+
+    // First hit: applies slowTimer = 2.2
+    state.bullets.push({
+      x: 388,
+      y: 360,
+      vx: 500,
+      vy: 0,
+      radius: 5,
+      dmg: 10,
+      pierceLeft: 0,
+      bounceLeft: 0,
+      hitIds: new Set(),
+      color: '#fff',
+      life: 1.0
+    });
+    updatePlayerBullets(0.01, state.bullets, room, player, state);
+    expect((enemy as any).slowTimer).toBeCloseTo(2.2, 4);
+    expect((enemy as any).hitFlashTimer).toBeCloseTo(0.07, 4);
+    const hpAfterFirst = enemy.hp;
+
+    // Second hit against chilled enemy: deals +15% bonus damage (10 * 1.15 = 11.5)
+    state.bullets.push({
+      x: 388,
+      y: 360,
+      vx: 500,
+      vy: 0,
+      radius: 5,
+      dmg: 10,
+      pierceLeft: 0,
+      bounceLeft: 0,
+      hitIds: new Set(),
+      color: '#fff',
+      life: 1.0
+    });
+    updatePlayerBullets(0.01, state.bullets, room, player, state);
+    expect(hpAfterFirst - enemy.hp).toBeCloseTo(11.5, 4);
+  });
+
+  it('BUG-03: Smart-Link Guidance steers bullets toward nearest enemy within 190px forward cone at up to 2.2 rad/s', () => {
+    const player = createMockPlayer({ items: ['Smart-Link Guidance'] });
+    const state = createCombatState();
+    // Enemy is 100px ahead and 50px below -> within 190px and dot > 0.4
+    const enemy = createMockEnemy({ x: 460, y: 410, hp: 100, maxHp: 100 });
+    const room = createMockRoom({ enemies: [enemy] });
+
+    state.bullets.push({
+      x: 360,
+      y: 360,
+      vx: 500,
+      vy: 0,
+      radius: 5,
+      dmg: 10,
+      pierceLeft: 0,
+      bounceLeft: 0,
+      hitIds: new Set(),
+      color: '#fff',
+      life: 1.0
+    });
+
+    updatePlayerBullets(0.05, state.bullets, room, player, state);
+    const b = state.bullets[0];
+    const newAngle = Math.atan2(b.vy, b.vx);
+    expect(newAngle).toBeCloseTo(2.2 * 0.05, 4);
+  });
+
+  it('BUG-04: Grenade Launcher attaches clusterCount and bouncesLeft, bounces with 65% dmg, and spawns mini-clusters on final detonation', () => {
+    const player = createMockPlayer({
+      weapon: 'grenade_launcher',
+      multiShot: 3,
+      bounce: 1
+    });
+    const state = createCombatState();
+    const enemy = createMockEnemy({ x: 450, y: 360, hp: 200, maxHp: 200 });
+    const room = createMockRoom({ enemies: [enemy] });
+
+    fireWeapon({ player, target: { x: 450, y: 360 }, state, rng: () => 0.5 });
+    expect(state.grenades).toHaveLength(1);
+    const g = state.grenades[0];
+    expect((g as any).clusterCount).toBe(2);
+    expect((g as any).bouncesLeft).toBe(1);
+
+    // Reach first impact: bouncesLeft decrements to 0, triggers 65% bounce explosion, retargets 55px forward
+    updateGrenades(g.duration + 0.01, state.grenades, room, state);
+    expect(state.grenades).toHaveLength(1);
+    expect((g as any).bouncesLeft).toBe(0);
+    expect(g.duration).toBeCloseTo(0.28, 4);
+    expect(g.targetX).toBeCloseTo(450 + 55, 2);
+    expect(enemy.hp).toBeCloseTo(200 - 18 * 0.65, 3);
+
+    // Move enemy to new targetX (505, 360) for final detonation + 2 mini-clusters
+    enemy.x = g.targetX;
+    enemy.y = g.targetY;
+    const hpBeforeFinal = enemy.hp;
+    updateGrenades(0.30, state.grenades, room, state);
+    expect(state.grenades).toHaveLength(0);
+    // Final detonation + 2 mini-cluster explosions damaged the enemy further
+    expect(enemy.hp).toBeLessThan(hpBeforeFinal - 18);
+  });
+
+  it('scales Railgun damage (+15% per pierce) and radius (+1.2px per pierce) and supports wall bouncing', () => {
+    const player = createMockPlayer({
+      weapon: 'railgun',
+      pierce: 2,
+      bounce: 2
+    });
+    const state = createCombatState();
+    fireWeapon({ player, target: { x: 500, y: 360 }, state, rng: () => 0.5 });
+    expect(state.bullets).toHaveLength(1);
+    const b = state.bullets[0];
+    expect(b.dmg).toBeCloseTo(35 * (1 + 0.15 * 2), 4);
+    expect(b.radius).toBeCloseTo(6.5 + 1.2 * 2, 4);
+    expect(b.bounceLeft).toBe(2);
+  });
+
+  it('supports 3.0x SUPER CRIT when Chrome Lens stacks >= 9', () => {
+    // 10 stacks -> superCritChance = (10 - 8) * 0.12 = 0.24
+    expect(rollCrit(10, false, () => 0.10)).toEqual({ isCrit: true, mult: 3 });
+    expect(rollCrit(10, false, () => 0.50)).toEqual({ isCrit: true, mult: 2 });
+  });
+
+  it('Universal NOS Battering Ram wins against Brutes/Elites, consumes 15 NOS, grants 0.25s invuln, and triggers Juggernaut Overdrive on kill', () => {
+    const player = createMockPlayer({
+      x: 360,
+      y: 360,
+      nos: 80,
+      invuln: 0,
+      itemStacks: { titanium_spikes: 2, adrenaline_injector: 1 }
+    });
+    (player as any).isBoosting = true;
+
+    const brute = createMockEnemy({
+      id: 50,
+      type: 'brute',
+      x: 375,
+      y: 360,
+      radius: 22,
+      hp: 40,
+      maxHp: 120
+    });
+    const bystander = createMockEnemy({
+      id: 51,
+      type: 'swarmer',
+      x: 410,
+      y: 360,
+      hp: 100,
+      maxHp: 100
+    });
+    const room = createMockRoom({ enemies: [brute, bystander] });
+    const state = createCombatState();
+    const onPlayerHurt = vi.fn();
+
+    updateEnemyCollisions(room, player, state, onPlayerHurt);
+
+    // Player took 0 damage, gained 0.25s invuln, consumed 15 NOS then refunded +30 NOS from Juggernaut Overdrive kill (80 - 15 + 30 = 95)
+    expect(onPlayerHurt).not.toHaveBeenCalled();
+    expect(player.invuln).toBeGreaterThanOrEqual(0.25);
+    expect(brute.hp).toBeLessThanOrEqual(0);
+    expect((brute as any).hitFlashTimer).toBeCloseTo(0.07, 4);
+    expect(player.nos).toBeCloseTo(95, 4);
+    // Juggernaut Overdrive 70px shockwave explosion damaged nearby bystander
+    expect(bystander.hp).toBeLessThan(100);
+  });
+
+  it('triggers Thermal Shock (+35% shatter damage) when chilled enemy is hit by flame or explosion, and Superconductor extends chain lightning to 240px + propagates slow', () => {
+    const player = createMockPlayer();
+    const state = createCombatState();
+    const chilledPrimary = createMockEnemy({ id: 1, x: 390, y: 360, hp: 100, maxHp: 100 });
+    (chilledPrimary as any).slowTimer = 2.0;
+
+    // Flame puff hitting chilled enemy triggers Thermal Shock (+35% damage)
+    const room = createMockRoom({ enemies: [chilledPrimary] });
+    state.bullets.push({
+      x: 390,
+      y: 360,
+      vx: 200,
+      vy: 0,
+      radius: 10,
+      dmg: 10,
+      isFlame: true,
+      pierceLeft: 99,
+      bounceLeft: 0,
+      hitIds: new Set(),
+      color: '#ff6b2b',
+      life: 0.3,
+      maxLife: 0.3
+    });
+    updatePlayerBullets(0.01, state.bullets, room, player, state);
+    // Chilled (+15%) and Thermal Shock (+35%) -> 10 * 1.15 * 1.35 = 15.525
+    expect(100 - chilledPrimary.hp).toBeGreaterThan(13);
+    expect((chilledPrimary as any).thermalShockIcd).toBeCloseTo(0.4, 4);
+    expect(state.damageNumbers.some(d => d.text === 'THERMAL SHOCK!')).toBe(true);
+
+    // Superconductor: Arc coil hitting chilled primary chains up to 240px (e.g. 210px away) and propagates slowTimer = 1.5
+    const farTarget = createMockEnemy({ id: 2, x: 600, y: 360, hp: 100, maxHp: 100 }); // 210px from 390
+    room.enemies.push(farTarget);
+    state.bullets.push({
+      x: 388,
+      y: 360,
+      vx: 500,
+      vy: 0,
+      radius: 6,
+      dmg: 20,
+      isArc: true,
+      pierceLeft: 0,
+      bounceLeft: 0,
+      hitIds: new Set(),
+      color: '#c77dff',
+      life: 1.0
+    });
+    updatePlayerBullets(0.01, state.bullets, room, player, state);
+    expect(farTarget.hp).toBeLessThan(100);
+    expect((farTarget as any).slowTimer).toBeCloseTo(1.5, 4);
   });
 });

@@ -41,7 +41,7 @@ import {
   type Pickup
 } from '../types/game';
 import { RUN_MOD_POOL } from '../data/upgrades';
-import { genLoot } from '../data/equipment';
+import { genLoot, rollRarity, type RarityTier } from '../data/equipment';
 import { resolveCircleAABB } from './combat';
 
 // ============================================================================
@@ -247,7 +247,7 @@ export function createBoss(
     specialTimer: 0,
     dashVx: 0,
     dashVy: 0,
-    phase: 0,
+    phase: 1,
     state: 'idle',
     angle: 0,
     isElite: false,
@@ -318,7 +318,27 @@ export function updateEnemyAI({
   const dx = player.x - en.x;
   const dy = player.y - en.y;
   const dist = Math.hypot(dx, dy) || 1;
-  en.angle = Math.atan2(dy, dx);
+  const targetAngle = Math.atan2(dy, dx);
+
+  if (
+    en.type === 'turret' ||
+    en.type === 'sniper' ||
+    en.type === 'brute' ||
+    en.type === 'trishot' ||
+    en.type === 'bomber' ||
+    en.type === 'pyro'
+  ) {
+    if (en.aiTimer > 0.16) {
+      (en as any).aimLockAngle = targetAngle;
+      en.angle = targetAngle;
+    } else if (en.aiTimer > 0 && (en as any).aimLockAngle !== undefined) {
+      en.angle = (en as any).aimLockAngle;
+    } else {
+      en.angle = targetAngle;
+    }
+  } else {
+    en.angle = targetAngle;
+  }
 
   switch (en.type) {
     case 'swarmer':
@@ -509,8 +529,10 @@ export function updateEnemyAI({
 
     case 'boss': {
       const boss = en as Boss;
-      boss.phase = (boss.phase || 0) + dt;
+      const phaseTimer = ((boss as any).phaseTimer || 0) + dt;
+      (boss as any).phaseTimer = phaseTimer;
       const isEnraged = boss.hp <= boss.maxHp * 0.5;
+      boss.phase = isEnraged ? 2 : 1;
       (boss as any).enraged = isEnraged;
 
       // Handle dash / windup state machine for ramming / jet-strafing bosses
@@ -524,7 +546,7 @@ export function updateEnemyAI({
             // Tangential jet strafe
             const perpX = -dy / dist;
             const perpY = dx / dist;
-            const dir = (Math.floor(boss.phase * 2) % 2 === 0) ? 1 : -1;
+            const dir = (Math.floor(phaseTimer * 2) % 2 === 0) ? 1 : -1;
             boss.dashVx = (perpX * dir * 0.8 + (dx / dist) * 0.4) * en.speed * mult;
             boss.dashVy = (perpY * dir * 0.8 + (dy / dist) * 0.4) * en.speed * mult;
           } else {
@@ -555,8 +577,8 @@ export function updateEnemyAI({
           boss.state = 'idle';
         }
       } else {
-        // Persistent advance in idle state (boosted by 1.28x when in Phase 2 Overdrive)
-        const moveMult = isEnraged ? 1.28 : 1.0;
+        // Persistent advance in idle state (boosted by 1.18x when in Phase 2 Overdrive)
+        const moveMult = isEnraged ? 1.18 : 1.0;
         en.x += (dx / dist) * en.speed * dt * moveMult;
         en.y += (dy / dist) * en.speed * dt * moveMult;
       }
@@ -566,14 +588,13 @@ export function updateEnemyAI({
 
       // Primary Attack (aiTimer): Variant-specific signature + radial pressure
       if (en.aiTimer <= 0) {
-        en.aiTimer = isEnraged
-          ? Math.max(0.55, (1.35 - floorNum * 0.08) * 0.72)
-          : Math.max(0.75, 1.35 - floorNum * 0.08);
+        const baseAiCooldown = Math.max(0.75, 1.35 - floorNum * 0.08);
+        en.aiTimer = isEnraged ? baseAiCooldown * 0.85 : baseAiCooldown;
         const count = 8 + Math.min(6, floorNum * 2) + (isEnraged ? 4 : 0);
 
         // Baseline radial nova (keeps classic bullet-hell density & test compatibility)
         for (let k = 0; k < count; k++) {
-          const a = en.angle + (k * Math.PI * 2) / count + (boss.bossVariant === 1 ? (boss.phase || 0) * 0.9 : 0);
+          const a = en.angle + (k * Math.PI * 2) / count + (boss.bossVariant === 1 ? phaseTimer * 0.9 : 0);
           enemyBullets.push({
             x: en.x,
             y: en.y,
@@ -601,7 +622,7 @@ export function updateEnemyAI({
         } else if (boss.bossVariant === 1) {
           // Siege Behemoth: rotating gatling spiral burst
           for (let s = 0; s < 4; s++) {
-            const sa = en.angle + (boss.phase || 0) * 2.2 + (s * Math.PI) / 2;
+            const sa = en.angle + phaseTimer * 2.2 + (s * Math.PI) / 2;
             enemyBullets.push({
               x: en.x,
               y: en.y,
@@ -675,9 +696,9 @@ export function updateEnemyAI({
         }
       }
 
-      // Secondary Attack (subTimer): every 2.8s (or 2.1s in Phase 2 Overdrive)
+      // Secondary Attack (subTimer): every 2.8s (reduced by 15% in Phase 2 Overdrive)
       if (boss.subTimer <= 0) {
-        boss.subTimer = isEnraged ? 2.1 : 2.8;
+        boss.subTimer = isEnraged ? 2.8 * 0.85 : 2.8;
         if (boss.bossVariant === 0) {
           // Scrap Goliath: Bulldozer Ram Charge
           boss.state = 'windup';
@@ -730,7 +751,7 @@ export function updateEnemyAI({
           boss.state = 'windup';
           boss.specialTimer = 0.35;
           for (let k = 0; k < 12; k++) {
-            const a = (k * Math.PI * 2) / 12 + (boss.phase || 0);
+            const a = (k * Math.PI * 2) / 12 + phaseTimer;
             enemyBullets.push({
               x: en.x,
               y: en.y,
@@ -803,6 +824,18 @@ export function updateEnemyAI({
     }
   }
 
+  // Expose Pre-Fire Telegraph timer (final 0.30s before firing) for ranged enemies
+  if (
+    en.type === 'turret' ||
+    en.type === 'trishot' ||
+    en.type === 'bomber' ||
+    en.type === 'brute' ||
+    en.type === 'sniper' ||
+    en.type === 'pyro'
+  ) {
+    (en as any).telegraphTimer = en.aiTimer > 0 && en.aiTimer <= 0.30 ? en.aiTimer : 0;
+  }
+
   // Arena wall clamping and obstacle physics collision
   en.x = Math.max(WALL_THICKNESS + en.radius, Math.min(ARENA_WIDTH - WALL_THICKNESS - en.radius, en.x));
   en.y = Math.max(WALL_THICKNESS + en.radius, Math.min(ARENA_HEIGHT - WALL_THICKNESS - en.radius, en.y));
@@ -858,7 +891,11 @@ export function generateBossDefeatRewards(
       x: Math.max(WALL_THICKNESS + 40, Math.min(ARENA_WIDTH - WALL_THICKNESS - 40, boss.x + 70)),
       y: boss.y,
       type: 'loot',
-      item: genLoot(floor),
+      item: genLoot(
+        floor,
+        floor >= 2 ? (Math.max(1, rollRarity(floor + 1, rng)) as RarityTier) : undefined,
+        rng
+      ),
       radius: 20
     },
     itemDropPickup: {

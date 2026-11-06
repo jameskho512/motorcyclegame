@@ -12,7 +12,8 @@ import {
   createBoss,
   getFloorScale,
   OBSTACLE_PATTERNS,
-  resetEntityId
+  resetEntityId,
+  enableChoicePedestalsInTreasureRooms
 } from '@/world/dungeon';
 import {
   ARENA_WIDTH,
@@ -342,6 +343,89 @@ describe('World Module: Procedural Dungeon Generation (src/world/dungeon.ts)', (
 
       expect(eliteSwarmer.hp).toBe(Math.round(normalSwarmer.hp * 1.65));
       expect(eliteSwarmer.speed).toBeCloseTo(normalSwarmer.speed * 1.15, 2);
+    });
+
+    it('enforces simultaneous sniper/turret cap (<= 3) per regular combat room and rerolls excess', () => {
+      // Floor 1: pool has ['swarmer', 'turret', 'charger'], index 1 is 'turret' (rng ~ 0.45)
+      const roomF1: Room = {
+        x: 1,
+        y: 0,
+        type: 'combat',
+        cleared: false,
+        visited: false,
+        doors: { N: false, S: false, E: false, W: true },
+        obstacles: [],
+        enemies: [],
+        pickups: [],
+        hazards: [],
+        skids: [],
+        trapdoor: false
+      };
+      populateRoom(roomF1, 1, () => 0.45);
+      const f1SnipersAndTurrets = roomF1.enemies.filter(e => e.type === 'sniper' || e.type === 'turret');
+      expect(roomF1.enemies.length).toBeGreaterThan(3);
+      expect(f1SnipersAndTurrets.length).toBeLessThanOrEqual(3);
+
+      // Floor 4: pool has 9 types (index 1 is 'turret', index 7 is 'sniper' -> rng = 0.82 selects 'sniper')
+      const roomF4: Room = {
+        ...roomF1,
+        obstacles: [],
+        enemies: []
+      };
+      populateRoom(roomF4, 4, () => 0.82);
+      const f4SnipersAndTurrets = roomF4.enemies.filter(e => e.type === 'sniper' || e.type === 'turret');
+      expect(roomF4.enemies.length).toBeGreaterThan(5);
+      expect(f4SnipersAndTurrets.length).toBeLessThanOrEqual(3);
+      const rerolled = roomF4.enemies.filter(e => e.type !== 'sniper' && e.type !== 'turret');
+      expect(rerolled.length).toBeGreaterThan(0);
+      for (const en of rerolled) {
+        expect(['swarmer', 'charger', 'trishot']).toContain(en.type);
+      }
+    });
+
+    it('enables Choice-of-2 free mod pedestals in treasure rooms and despawns sibling when claimed', () => {
+      const dungeonGraph = generateDungeon(2);
+      enableChoicePedestalsInTreasureRooms(dungeonGraph.rooms);
+
+      const treasureRoom = Object.values(dungeonGraph.rooms).find(r => r.type === 'treasure')!;
+      expect(treasureRoom.pickups.length).toBe(2);
+
+      const [pedestal1, pedestal2] = treasureRoom.pickups;
+      expect(pedestal1.type).toBe('mod_pedestal');
+      expect(pedestal2.type).toBe('mod_pedestal');
+      expect(pedestal1.x).toBe(ARENA_WIDTH / 2 - 72);
+      expect(pedestal1.y).toBe(ARENA_HEIGHT / 2);
+      expect(pedestal2.x).toBe(ARENA_WIDTH / 2 + 72);
+      expect(pedestal2.y).toBe(ARENA_HEIGHT / 2);
+      expect((pedestal1 as any).choiceGroup).toBe('treasure_choice');
+      expect((pedestal2 as any).choiceGroup).toBe('treasure_choice');
+
+      if (pedestal1.type === 'mod_pedestal' && pedestal2.type === 'mod_pedestal') {
+        expect(pedestal1.cost).toBe(0);
+        expect(pedestal2.cost).toBe(0);
+        expect(pedestal2.mod.id).not.toBe(pedestal1.mod.id);
+
+        // Claiming pedestal1 automatically despawns sibling pedestal2
+        const dummyPlayer: any = {
+          dmgMult: 1,
+          fireRateMult: 1,
+          speedMult: 1,
+          projSpeedMult: 1,
+          blastMult: 1,
+          pierce: 0,
+          bounce: 0,
+          multiShot: 1,
+          vampChance: 0,
+          hp: 6,
+          maxHp: 6,
+          nos: 100,
+          nosMax: 100,
+          items: [],
+          itemStacks: {}
+        };
+        pedestal1.mod.apply(dummyPlayer);
+        expect(treasureRoom.pickups).not.toContain(pedestal2);
+      }
     });
   });
 });

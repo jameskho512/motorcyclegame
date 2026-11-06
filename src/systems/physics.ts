@@ -161,6 +161,8 @@ export function updateBikeKinematics(
     effSpeed *= 1.15;
   }
 
+  const activePowerslide = !!(player as any).spacePowerslide && (ix !== 0 || iy !== 0);
+
   if (ix !== 0 || iy !== 0) {
     moved = true;
     const len = Math.hypot(ix, iy);
@@ -184,9 +186,13 @@ export function updateBikeKinematics(
     if (isOilSlick) {
       steerLerp *= 0.6;
     }
+    if (activePowerslide) {
+      steerLerp *= 0.45;
+    }
     player.bikeAngle += diff * steerLerp;
 
-    if ((Math.abs(diff) > SKID_MARK_THRESHOLD || isOilSlick) && room) {
+    const skidThreshold = activePowerslide ? 0.18 : SKID_MARK_THRESHOLD;
+    if ((Math.abs(diff) > skidThreshold || activePowerslide || isOilSlick) && room) {
       if (room.skids.length < MAX_SKIDS_PER_ROOM) {
         room.skids.push({ x: player.x, y: player.y, angle: player.bikeAngle });
         skidCreated = true;
@@ -199,10 +205,15 @@ export function updateBikeKinematics(
     player.vy *= frictionFactor;
   }
 
-  if (Math.abs(diff) > SKID_MARK_THRESHOLD) {
+  const highSpeed = boosting || Math.hypot(player.vx, player.vy) > 220;
+  if (activePowerslide && (Math.abs(diff) > 0.18 || activePowerslide)) {
+    player.driftCharge = Math.min(1.0, (player.driftCharge || 0) + dt * 1.85);
+  } else if (Math.abs(diff) > 0.28 && highSpeed) {
+    player.driftCharge = Math.min(1.0, (player.driftCharge || 0) + dt * 1.45);
+  } else if (Math.abs(diff) > SKID_MARK_THRESHOLD) {
     player.driftCharge = Math.min(1.0, (player.driftCharge || 0) + dt * 1.35);
   } else {
-    player.driftCharge = Math.max(0, (player.driftCharge || 0) - dt * 0.55);
+    player.driftCharge = Math.max(0, (player.driftCharge || 0) - dt * (highSpeed ? 0.35 : 0.55));
   }
 
   return { moved, skidCreated, diff };

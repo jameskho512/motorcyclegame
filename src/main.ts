@@ -28,8 +28,9 @@ import {
 import { StateManager } from './core/state';
 import { InputManager } from './core/input';
 import { SoundSynthesizer } from './audio/sfx';
-import { generateDungeon, createHomeBaseRoom } from './world/dungeon';
+import { generateDungeon, createHomeBaseRoom, enableChoicePedestalsInTreasureRooms } from './world/dungeon';
 import { genLoot } from './data/equipment';
+import { KISS_CURSE_MOD_POOL, getActiveDuoSynergies } from './data/upgrades';
 import {
   updateBikeKinematics,
   updateNos,
@@ -71,6 +72,15 @@ export class MotoRogueApp {
   public inHomeBase: boolean = false;
   public bountyClaimedInHub: boolean = false;
   public codexBuffClaimedInHub: boolean = false;
+
+  public hitStopTimer: number = 0;
+  public hitStopCooldown: number = 0;
+  public killStreakCount: number = 0;
+  public killStreakTimer: number = 0;
+  public lastKnownKillCount: number = 0;
+  public styleGraceTimer: number = 0;
+  public grazeCalloutCooldown: number = 0;
+  private wasSpaceDown: boolean = false;
 
   public curRoomX: number = 0;
   public curRoomY: number = 0;
@@ -352,6 +362,7 @@ export class MotoRogueApp {
     const dungeonGraph = generateDungeon(floor, {
       isWeaponAvailable: (wId: WeaponId) => !!meta.unlocked[wId as UnlockableWeaponId] || wId === 'pistol'
     });
+    enableChoicePedestalsInTreasureRooms(dungeonGraph.rooms, KISS_CURSE_MOD_POOL);
 
     const heatLevel = meta.heatLevel || 0;
     if (heatLevel > 0) {
@@ -382,6 +393,15 @@ export class MotoRogueApp {
     player.vx = 0;
     player.vy = 0;
     player.stunTimer = 0;
+    player.styleScore = player.styleScore || 12;
+    player.styleRank = player.styleRank || 'D';
+    this.hitStopTimer = 0;
+    this.hitStopCooldown = 0;
+    this.killStreakCount = 0;
+    this.killStreakTimer = 0;
+    this.lastKnownKillCount = player.killCount || 0;
+    this.styleGraceTimer = 0;
+    this.grazeCalloutCooldown = 0;
 
     this.combatState = createCombatState();
     this.hud.hideToast();
@@ -434,7 +454,6 @@ export class MotoRogueApp {
     const canvas = document.getElementById('canvas') as HTMLCanvasElement;
     const miniCanvas = document.getElementById('minimap-canvas') as HTMLCanvasElement;
     const fuelCanvas = document.getElementById('fuel-gauge') as HTMLCanvasElement;
-    const bikeCanvas = document.getElementById('bike-canvas') as HTMLCanvasElement;
 
     if (!wrapper || !canvas) return;
 
@@ -467,7 +486,6 @@ export class MotoRogueApp {
 
     if (miniCanvas) fitCanvas(miniCanvas, 340, 215);
     if (fuelCanvas) fitCanvas(fuelCanvas, 220, 110);
-    if (bikeCanvas) fitCanvas(bikeCanvas, 260, 165);
 
     this.updateHUD();
     this.garage.drawBikeLift(this.stateManager.metaSave);
@@ -578,7 +596,28 @@ export class MotoRogueApp {
       return;
     }
 
-    // 2. Player Invulnerability timer
+    // 2. Player Invulnerability & Juice Cooldown timers
+    if (this.hitStopCooldown > 0) {
+      this.hitStopCooldown = Math.max(0, this.hitStopCooldown - dt);
+    }
+    if (this.grazeCalloutCooldown > 0) {
+      this.grazeCalloutCooldown = Math.max(0, this.grazeCalloutCooldown - dt);
+    }
+    if (this.styleGraceTimer > 0) {
+      this.styleGraceTimer = Math.max(0, this.styleGraceTimer - dt);
+    }
+    if (this.killStreakTimer > 0) {
+      this.killStreakTimer = Math.max(0, this.killStreakTimer - dt);
+      if (this.killStreakTimer === 0) {
+        this.killStreakCount = 0;
+      }
+    }
+    if (this.hitStopTimer > 0) {
+      this.hitStopTimer = Math.max(0, this.hitStopTimer - dt);
+      this.stage.update(dt * 0.15);
+      return;
+    }
+
     if (player.invuln > 0) {
       player.invuln = Math.max(0, player.invuln - dt);
     }
@@ -588,7 +627,7 @@ export class MotoRogueApp {
     }
     const isStunned = (player.stunTimer || 0) > 0;
 
-    // 3. Bike Kinematics & NOS
+    // 3. Bike Kinematics, Spacebar Handbrake Powerslide & NOS
     let ix = (inputState.right ? 1 : 0) - (inputState.left ? 1 : 0);
     let iy = (inputState.down ? 1 : 0) - (inputState.up ? 1 : 0);
 
@@ -597,6 +636,11 @@ export class MotoRogueApp {
       iy = 0;
     }
 
+    const spaceDown = this.inputManager.isKeyDown(' ') || this.inputManager.isKeyDown('space');
+    const releasedSpace = this.wasSpaceDown && !spaceDown;
+    this.wasSpaceDown = spaceDown;
+    player.spacePowerslide = spaceDown && isMoving && !isStunned;
+
     const { boosting } = updateNos(player, isShiftHeld && !isStunned, isMoving && !isStunned, dt);
 
     // Per-frame NOS bar visual update
@@ -604,17 +648,20 @@ export class MotoRogueApp {
 
     updateBikeKinematics(player, ix, iy, boosting, dt, room);
 
-    if ((player.driftCharge || 0) >= 0.85) {
+    const driftVal = player.driftCharge || 0;
+    if (driftVal >= 0.85 || (releasedSpace && driftVal >= 0.50)) {
       player.driftCharge = 0;
-      player.driftBoostTimer = 2.2;
+      player.driftBoostTimer = 2.4;
+      player.styleScore = Math.min(100, (player.styleScore || 12) + 14);
+      this.styleGraceTimer = 2.5;
 
-      for (let i = 0; i < 6; i++) {
-        const a = (i * Math.PI) / 3;
+      for (let i = 0; i < 8; i++) {
+        const a = (i * Math.PI) / 4;
         this.combatState.bullets.push({
           x: player.x,
           y: player.y,
-          vx: Math.cos(a) * 420,
-          vy: Math.sin(a) * 420,
+          vx: Math.cos(a) * 440,
+          vy: Math.sin(a) * 440,
           radius: 4.5,
           dmg: 14 * player.dmgMult,
           pierceLeft: 1,
@@ -628,7 +675,7 @@ export class MotoRogueApp {
       this.combatState.damageNumbers.push({
         x: player.x,
         y: player.y - 26,
-        text: 'DRIFT OVERCHARGE! +FIRE RATE!',
+        text: '⚡ DRIFT OVERCHARGE! +FIRE RATE!',
         color: '#ffd60a',
         life: 1.0,
         maxLife: 1.0
@@ -637,6 +684,35 @@ export class MotoRogueApp {
 
     if ((player.driftBoostTimer || 0) > 0) {
       player.fireTimer = Math.max(0, player.fireTimer - dt * 0.35);
+    }
+
+    // Functional Outlaw Style Rank Engine (D -> SSS) & Adrenaline Multipliers
+    const hasLiveEnemies = !room.cleared && room.enemies.some(e => !e.isDummy && e.hp > 0);
+    if (hasLiveEnemies) {
+      if (speed > 200) {
+        player.styleScore = Math.min(100, (player.styleScore || 12) + dt * 2.5);
+      }
+      if (player.spacePowerslide || (player.driftCharge || 0) > 0.1) {
+        player.styleScore = Math.min(100, (player.styleScore || 12) + dt * 7.5);
+      }
+      if (this.styleGraceTimer <= 0 && !player.spacePowerslide) {
+        player.styleScore = Math.max(8, (player.styleScore || 12) - dt * 5.0);
+      }
+    }
+    const curStyle = player.styleScore || 12;
+    if (curStyle >= 92) {
+      player.nos = Math.min(player.nosMax, player.nos + dt * 4.0);
+      player.fireTimer = Math.max(0, player.fireTimer - dt * 0.25);
+    } else if (curStyle >= 80) {
+      player.nos = Math.min(player.nosMax, player.nos + dt * 2.5);
+      player.fireTimer = Math.max(0, player.fireTimer - dt * 0.20);
+    } else if (curStyle >= 66) {
+      player.nos = Math.min(player.nosMax, player.nos + dt * 1.5);
+      player.fireTimer = Math.max(0, player.fireTimer - dt * 0.15);
+    } else if (curStyle >= 52) {
+      player.fireTimer = Math.max(0, player.fireTimer - dt * 0.10);
+    } else if (curStyle >= 38) {
+      player.fireTimer = Math.max(0, player.fireTimer - dt * 0.06);
     }
 
     // Apply movement displacement
@@ -742,6 +818,62 @@ export class MotoRogueApp {
       });
     }
 
+    // 6b. Boss Phase-2 "OVERDRIVE ENRAGE" Cut-In (<= 50% HP)
+    if (activeBoss && activeBoss.hp > 0 && activeBoss.hp <= activeBoss.maxHp * 0.5 && !activeBoss.enrageAnnounced) {
+      activeBoss.enrageAnnounced = true;
+      activeBoss.enraged = true;
+      this.combatState.screenShake = Math.max(this.combatState.screenShake, 14);
+      if (this.hitStopCooldown <= 0) {
+        this.hitStopTimer = 0.06;
+        this.hitStopCooldown = 0.45;
+      }
+      this.hud.showToast('⚠️ PHASE II OVERDRIVE', `${activeBoss.name} LIMITER RELEASED!`, '#ff1f4b', 2400);
+      this.combatState.damageNumbers.push({
+        x: activeBoss.x,
+        y: activeBoss.y - activeBoss.radius - 18,
+        text: '⚠️ OVERDRIVE ENRAGE!!',
+        color: '#ff1f4b',
+        life: 1.4,
+        maxLife: 1.4
+      });
+    }
+
+    // 6c. 28px Near-Miss Bullet Graze Detection (+8 NOS & +12 Style)
+    for (const eb of this.combatState.enemyBullets) {
+      if (eb.grazed) continue;
+      const dist = Math.hypot(eb.x - player.x, eb.y - player.y);
+      const hitR = player.radius + eb.radius;
+      const grazeR = hitR + 26;
+      if (dist > hitR && dist <= grazeR && player.invuln <= 0) {
+        eb.grazed = true;
+        player.nos = Math.min(player.nosMax, player.nos + 8);
+        player.styleScore = Math.min(100, (player.styleScore || 12) + 12);
+        this.styleGraceTimer = 2.4;
+        this.combatState.beamEffects.push({
+          x1: player.x,
+          y1: player.y,
+          x2: eb.x,
+          y2: eb.y,
+          color: '#00f5d4',
+          width: 2.5,
+          life: 0.14,
+          maxLife: 0.14,
+          isLightning: true
+        });
+        if (this.grazeCalloutCooldown <= 0) {
+          this.grazeCalloutCooldown = 0.35;
+          this.combatState.damageNumbers.push({
+            x: player.x,
+            y: player.y - 24,
+            text: '⚡ GRAZE! +8 NOS',
+            color: '#00f5d4',
+            life: 0.75,
+            maxLife: 0.75
+          });
+        }
+      }
+    }
+
     // 7. Combat Pipeline
     updateCombatPipeline(
       dt,
@@ -754,6 +886,7 @@ export class MotoRogueApp {
         if (player.invuln <= 0) {
           player.hp = Math.max(0, player.hp - dmg);
           player.invuln = 1.05; // 1.05s i-frames
+          player.styleScore = Math.max(0, (player.styleScore || 12) - 35);
           this.combatState.screenShake = 6;
           this.audio.playerHurt();
           this.updateHUD();
@@ -764,6 +897,64 @@ export class MotoRogueApp {
         }
       }
     );
+
+    // 7b. Arcade Killstreak Combo Announcer & Heavy-Impact Hit-Stop
+    const currentKills = player.killCount || 0;
+    if (currentKills > this.lastKnownKillCount) {
+      const deltaKills = currentKills - this.lastKnownKillCount;
+      this.lastKnownKillCount = currentKills;
+      this.killStreakCount += deltaKills;
+      this.killStreakTimer = 3.2;
+      this.styleGraceTimer = 2.6;
+      player.styleScore = Math.min(100, (player.styleScore || 12) + deltaKills * 9);
+
+      if (boosting && this.hitStopCooldown <= 0) {
+        this.hitStopTimer = 0.035;
+        this.hitStopCooldown = 0.45;
+      }
+
+      if (this.killStreakCount === 3) {
+        this.combatState.damageNumbers.push({
+          x: player.x,
+          y: player.y - 34,
+          text: '★ DOUBLE TAP! ★',
+          color: '#ffd60a',
+          life: 1.0,
+          maxLife: 1.0
+        });
+      } else if (this.killStreakCount === 5) {
+        player.nos = Math.min(player.nosMax, player.nos + 10);
+        this.combatState.damageNumbers.push({
+          x: player.x,
+          y: player.y - 36,
+          text: '🔥 RAMPAGE! +10 NOS',
+          color: '#ff5400',
+          life: 1.15,
+          maxLife: 1.15
+        });
+      } else if (this.killStreakCount === 8) {
+        player.nos = Math.min(player.nosMax, player.nos + 15);
+        this.combatState.damageNumbers.push({
+          x: player.x,
+          y: player.y - 38,
+          text: '⚡ ROADKILL OVERDRIVE!',
+          color: '#00f5d4',
+          life: 1.25,
+          maxLife: 1.25
+        });
+      } else if (this.killStreakCount >= 12 && this.killStreakCount % 4 === 0) {
+        player.nos = Math.min(player.nosMax, player.nos + 25);
+        this.combatState.damageNumbers.push({
+          x: player.x,
+          y: player.y - 40,
+          text: '☠️ VALHALLA UNSTOPPABLE!!',
+          color: '#ff1f4b',
+          life: 1.4,
+          maxLife: 1.4
+        });
+      }
+      this.updateHUD();
+    }
 
     // 8. Room Clearance Check
     if (!room.cleared && room.enemies.length === 0) {
@@ -802,22 +993,53 @@ export class MotoRogueApp {
           this.updateHUD();
         } else if (p.type === 'item_drop') {
           const wasEvo = isWeaponEvolved(player.weapon, player);
+          const prevDuos = new Set(getActiveDuoSynergies(player).map(d => d.id));
           player.itemStacks[p.itemId] = (player.itemStacks[p.itemId] || 0) + 1;
           this.audio.pickupItem();
           room.pickups.splice(i, 1);
           if (!wasEvo && isWeaponEvolved(player.weapon, player)) {
             this.hud.showToast('OVERCLOCK EVOLUTION', `⚡ ${WEAPON_EVOLUTIONS[player.weapon].evolvedName} ONLINE!`, '#ffd60a', 2600);
+          } else {
+            const newDuo = getActiveDuoSynergies(player).find(d => !prevDuos.has(d.id));
+            if (newDuo) {
+              this.hud.showToast('✦ DUO SYNERGY ONLINE', `${newDuo.name.toUpperCase()} ACTIVATED!`, newDuo.color, 2500);
+            }
           }
           this.updateHUD();
         } else if (p.type === 'mod_pedestal' && p.cost === 0) {
-          // Free mod
+          // Free mod (or Choice-of-2 Treasure Pedestal)
           const wasEvo = isWeaponEvolved(player.weapon, player);
+          const prevDuos = new Set(getActiveDuoSynergies(player).map(d => d.id));
+          const choiceGroup = p.choiceGroup;
           p.mod.apply(player);
           player.items.push(p.mod.name);
           this.audio.pickupItem();
-          room.pickups.splice(i, 1);
+          const idxNow = room.pickups.indexOf(p);
+          if (idxNow >= 0) {
+            room.pickups.splice(idxNow, 1);
+          }
+          if (choiceGroup) {
+            for (let k = room.pickups.length - 1; k >= 0; k--) {
+              if ((room.pickups[k] as any).choiceGroup === choiceGroup) {
+                room.pickups.splice(k, 1);
+              }
+            }
+            this.combatState.damageNumbers.push({
+              x: p.x,
+              y: p.y - 28,
+              text: '⚖️ CHOICE LOCKED!',
+              color: '#ffd60a',
+              life: 1.1,
+              maxLife: 1.1
+            });
+          }
           if (!wasEvo && isWeaponEvolved(player.weapon, player)) {
             this.hud.showToast('OVERCLOCK EVOLUTION', `⚡ ${WEAPON_EVOLUTIONS[player.weapon].evolvedName} ONLINE!`, '#ffd60a', 2600);
+          } else {
+            const newDuo = getActiveDuoSynergies(player).find(d => !prevDuos.has(d.id));
+            if (newDuo) {
+              this.hud.showToast('✦ DUO SYNERGY ONLINE', `${newDuo.name.toUpperCase()} ACTIVATED!`, newDuo.color, 2500);
+            }
           }
           this.updateHUD();
         } else if (p.type === 'shop_heart' || p.type === 'mod_pedestal' || p.type === 'run_weapon') {
@@ -833,6 +1055,7 @@ export class MotoRogueApp {
                 this.dismissedPickup = null;
                 if (player.coins >= p.cost) {
                   const wasEvo = isWeaponEvolved(player.weapon, player);
+                  const prevDuos = new Set(getActiveDuoSynergies(player).map(d => d.id));
                   player.coins -= p.cost;
                   this.audio.shopBuy();
                   if (p.type === 'shop_heart') {
@@ -848,6 +1071,11 @@ export class MotoRogueApp {
                   if (pIdx >= 0) room.pickups.splice(pIdx, 1);
                   if (!wasEvo && isWeaponEvolved(player.weapon, player)) {
                     this.hud.showToast('OVERCLOCK EVOLUTION', `⚡ ${WEAPON_EVOLUTIONS[player.weapon].evolvedName} ONLINE!`, '#ffd60a', 2600);
+                  } else {
+                    const newDuo = getActiveDuoSynergies(player).find(d => !prevDuos.has(d.id));
+                    if (newDuo) {
+                      this.hud.showToast('✦ DUO SYNERGY ONLINE', `${newDuo.name.toUpperCase()} ACTIVATED!`, newDuo.color, 2500);
+                    }
                   }
                   this.updateHUD();
                 } else {
@@ -864,7 +1092,8 @@ export class MotoRogueApp {
               },
               () => {
                 this.dismissedPickup = p;
-              }
+              },
+              player.coins
             );
           }
         } else if ((p as any).type === 'hub_npc') {
@@ -934,13 +1163,14 @@ export class MotoRogueApp {
             });
             if (!this.codexBuffClaimedInHub) {
               this.codexBuffClaimedInHub = true;
+              player.scannerBuff = true;
               player.projSpeedMult += 0.15;
-              player.dmgMult += 0.08;
+              player.dmgMult += 0.08 + Math.min(0.12, (meta.bossesSlain || 0) * 0.02);
               this.audio.pickupItem();
               this.combatState.damageNumbers.push({
                 x: p.x,
                 y: p.y - 22,
-                text: 'TACTICAL SCANNER: +8% DMG & +15% PROJ SPD!',
+                text: 'TACTICAL SCANNER: +DMG & +15% PROJ SPD!',
                 color: '#ffd60a',
                 life: 1.8,
                 maxLife: 1.8
@@ -998,14 +1228,39 @@ export class MotoRogueApp {
               this.stateManager.player.hp = this.stateManager.player.maxHp;
             }
             if (savedScanner) {
+              this.stateManager.player.scannerBuff = true;
               this.stateManager.player.projSpeedMult += 0.15;
-              this.stateManager.player.dmgMult += 0.08;
+              this.stateManager.player.dmgMult += 0.08 + Math.min(0.12, (this.stateManager.metaSave.bossesSlain || 0) * 0.02);
             }
             this.updateHUD();
             return;
           }
         }
       }
+    }
+
+    // 9b. Combat-Cleared Proximity Auto-Inspect (<75px nearest pickup)
+    if (room.cleared && room.pickups.length > 0) {
+      let nearestPickup: Pickup | null = null;
+      let nearestDist = 75;
+      for (const pk of room.pickups) {
+        const d = Math.hypot(pk.x - player.x, pk.y - player.y);
+        if (d < nearestDist) {
+          nearestDist = d;
+          nearestPickup = pk;
+        }
+      }
+      const canvasEl = document.getElementById('canvas');
+      if (canvasEl && nearestPickup) {
+        const rect = canvasEl.getBoundingClientRect();
+        const clientX = rect.left + (nearestPickup.x / ARENA_WIDTH) * rect.width;
+        const clientY = rect.top + (nearestPickup.y / ARENA_HEIGHT) * rect.height - 24;
+        this.tooltip.updateProximityAutoInspect(nearestPickup, clientX, clientY, isPaused);
+      } else {
+        this.tooltip.updateProximityAutoInspect(null, 0, 0, isPaused);
+      }
+    } else {
+      this.tooltip.updateProximityAutoInspect(null, 0, 0, isPaused);
     }
 
     // 10. Stage VFX & Post-processing updates

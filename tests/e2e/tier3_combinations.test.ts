@@ -20,8 +20,8 @@ import {
   Room
 } from '@/types/game';
 
-import { WEAPONS } from '@/data/weapons';
-import { RUN_MOD_POOL } from '@/data/upgrades';
+import { WEAPONS, isWeaponEvolved } from '@/data/weapons';
+import { RUN_MOD_POOL, KISS_CURSE_MOD_POOL, getActiveDuoSynergies } from '@/data/upgrades';
 import {
   createDefaultPlayerState,
   createDefaultMetaSave,
@@ -36,6 +36,8 @@ import {
   applyTireIronBonus,
   rollCrit,
   updatePlayerBullets,
+  updateGrenades,
+  updateEnemyCollisions,
   handleEnemyDeath
 } from '@/systems/combat';
 
@@ -356,6 +358,254 @@ describe('Tier 3: Cross-Feature Combinations & Synergies', () => {
       expect(state.bullets).toHaveLength(1);
       expect(state.bullets[0].pierceLeft).toBe(1);
       expect(state.bullets[0].bounceLeft).toBe(1);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Combination 11: BUG-01 — Weapon Evolutions via Signature Mod Display Names & 3+ Item Stacks
+  // --------------------------------------------------------------------------
+  describe('Combination 11: BUG-01 — Weapon Evolutions via Signature Mod Display Names & 3+ Item Stacks', () => {
+    it('evolves all 7 weapons when picking up signature mods by display name and via 3+ item stacks', () => {
+      const signaturePairs: Array<{ weapon: keyof typeof WEAPONS; displayName: string }> = [
+        { weapon: 'pistol', displayName: 'Rubberized Casings' },
+        { weapon: 'machine_gun', displayName: 'Hair-Trigger Servo' },
+        { weapon: 'flamethrower', displayName: 'Thermobaric Mix' },
+        { weapon: 'grenade_launcher', displayName: 'Thermobaric Mix' },
+        { weapon: 'shotgun', displayName: 'Twin Barrel Adapter' },
+        { weapon: 'railgun', displayName: 'Tungsten Sabot' },
+        { weapon: 'arc_coil', displayName: 'Scrap Siphon' }
+      ];
+
+      for (const { weapon, displayName } of signaturePairs) {
+        const p = createDefaultPlayerState();
+        expect(isWeaponEvolved(weapon, p)).toBe(false);
+        p.items.push(displayName);
+        expect(isWeaponEvolved(weapon, p)).toBe(true);
+      }
+
+      // Also verify 3+ item stacks evolution fallback
+      const stackPlayer = createDefaultPlayerState();
+      stackPlayer.itemStacks = { nitro_syringe: 2, chrome_lens: 1 };
+      expect(isWeaponEvolved('pistol', stackPlayer)).toBe(true);
+      expect(isWeaponEvolved('railgun', stackPlayer)).toBe(true);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Combination 12: BUG-02 & BUG-03 — Cryo-Jacketed Shells & Smart-Link Guidance Homing
+  // --------------------------------------------------------------------------
+  describe('Combination 12: BUG-02 & BUG-03 — Cryo-Jacketed Shells & Smart-Link Guidance Homing', () => {
+    it('applies slowTimer on first hit and +15% bonus damage to chilled enemies on subsequent hits', () => {
+      const state = createCombatState();
+      player.weapon = 'pistol';
+      player.items.push('Cryo-Jacketed Shells');
+
+      const enemy = createEnemy('swarmer', 300, 300, 1);
+      enemy.hp = 500;
+      enemy.maxHp = 500;
+
+      const dummyRoom: Room = {
+        x: 0,
+        y: 0,
+        type: 'combat',
+        cleared: false,
+        visited: true,
+        doors: { N: false, S: false, E: false, W: false },
+        obstacles: [],
+        enemies: [enemy],
+        pickups: [],
+        hazards: [],
+        skids: [],
+        trapdoor: false
+      };
+
+      // Hit 1: unchilled target takes base damage (13) and gets slowTimer = 2.2
+      player.fireTimer = 0;
+      fireWeapon({ player, target: { x: 300, y: 300 }, state });
+      state.bullets[0].x = 300;
+      state.bullets[0].y = 300;
+      updatePlayerBullets(0.016, state.bullets, dummyRoom, player, state);
+
+      const dmgFirst = 500 - enemy.hp;
+      expect(dmgFirst).toBeCloseTo(13);
+      expect((enemy as any).slowTimer).toBeCloseTo(2.2);
+
+      // Hit 2: chilled target takes +15% bonus damage (13 * 1.15 = 14.95)
+      const hpAfterFirst = enemy.hp;
+      player.fireTimer = 0;
+      fireWeapon({ player, target: { x: 300, y: 300 }, state });
+      state.bullets[0].x = 300;
+      state.bullets[0].y = 300;
+      updatePlayerBullets(0.016, state.bullets, dummyRoom, player, state);
+
+      const dmgSecond = hpAfterFirst - enemy.hp;
+      expect(dmgSecond).toBeCloseTo(13 * 1.15);
+    });
+
+    it('curves player bullets toward enemies within the forward cone when Smart-Link Guidance is active', () => {
+      const state = createCombatState();
+      player.weapon = 'pistol';
+      player.items.push('Smart-Link Guidance');
+
+      // Enemy slightly off-axis in forward cone (x = 460, y = 410 while player fires along +X from 360,360)
+      const enemy = createEnemy('swarmer', 460, 410, 1);
+      const dummyRoom: Room = {
+        x: 0,
+        y: 0,
+        type: 'combat',
+        cleared: false,
+        visited: true,
+        doors: { N: false, S: false, E: false, W: false },
+        obstacles: [],
+        enemies: [enemy],
+        pickups: [],
+        hazards: [],
+        skids: [],
+        trapdoor: false
+      };
+
+      player.fireTimer = 0;
+      fireWeapon({ player, target: { x: 560, y: 360 }, state, rng: () => 0.5 });
+      expect(state.bullets).toHaveLength(1);
+      expect(state.bullets[0].vy).toBeCloseTo(0);
+
+      updatePlayerBullets(0.05, state.bullets, dummyRoom, player, state);
+      // Bullet velocity vy must have curved downward (+Y) toward enemy at y=410
+      expect(state.bullets[0].vy).toBeGreaterThan(0);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Combination 13: BUG-04 — Grenade Launcher Bouncing Betty & Multi-Shot Cluster Bomblets
+  // --------------------------------------------------------------------------
+  describe('Combination 13: BUG-04 — Grenade Launcher Bouncing Betty & Multi-Shot Cluster Bomblets', () => {
+    it('bounces once on impact when bounce=1 and detonates 2 secondary cluster explosions when multiShot=3', () => {
+      const state = createCombatState();
+      player.weapon = 'grenade_launcher';
+      player.multiShot = 3; // clusterCount = 2
+      player.bounce = 1; // bouncesLeft = 1
+      player.fireTimer = 0;
+
+      const dummyRoom: Room = {
+        x: 0,
+        y: 0,
+        type: 'combat',
+        cleared: false,
+        visited: true,
+        doors: { N: false, S: false, E: false, W: false },
+        obstacles: [],
+        enemies: [],
+        pickups: [],
+        hazards: [],
+        skids: [],
+        trapdoor: false
+      };
+
+      fireWeapon({ player, target: { x: 480, y: 360 }, state });
+      expect(state.grenades).toHaveLength(1);
+      const g = state.grenades[0] as any;
+      expect(g.clusterCount).toBe(2);
+      expect(g.bouncesLeft).toBe(1);
+
+      // Step 1: advance past initial travel duration -> triggers bounce detonation, grenade stays alive with bouncesLeft=0
+      updateGrenades(g.duration + 0.05, state.grenades, dummyRoom, state);
+      expect(state.grenades).toHaveLength(1);
+      expect((state.grenades[0] as any).bouncesLeft).toBe(0);
+      const shockwavesAfterBounce = state.particles.filter(p => p.shockwaveMax !== undefined).length;
+      expect(shockwavesAfterBounce).toBe(1);
+
+      // Step 2: advance past bounce duration (0.28s) -> triggers main explosion + 2 cluster explosions (3 new shockwaves)
+      updateGrenades(0.35, state.grenades, dummyRoom, state);
+      expect(state.grenades).toHaveLength(0);
+      const totalShockwaves = state.particles.filter(p => p.shockwaveMax !== undefined).length;
+      expect(totalShockwaves).toBe(1 + 1 + 2); // 1 bounce + 1 final + 2 cluster bomblets = 4 shockwaves
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Combination 14: Active Duo Synergies & Kiss-Curse Mods
+  // --------------------------------------------------------------------------
+  describe('Combination 14: Active Duo Synergies & Kiss-Curse Mods', () => {
+    it('activates Thermal Shock, Superconductor, and Juggernaut Overdrive duo synergies and applies Kiss-Curse mods', () => {
+      const state = createCombatState();
+
+      // 1. Verify getActiveDuoSynergies detection
+      player.items.push('Cryo-Jacketed Shells', 'Thermobaric Mix');
+      player.itemStacks = { tesla_capacitor: 1, titanium_spikes: 1, adrenaline_injector: 1 };
+      const activeIds = getActiveDuoSynergies(player).map(d => d.id);
+      expect(activeIds).toContain('thermal_shock');
+      expect(activeIds).toContain('superconductor');
+      expect(activeIds).toContain('juggernaut_overdrive');
+
+      // 2. Verify Thermal Shock combat proc: chilled enemy hit by flame puff triggers 'THERMAL SHOCK!'
+      const target = createEnemy('swarmer', 300, 300, 1);
+      target.hp = 500;
+      target.maxHp = 500;
+      (target as any).slowTimer = 2.0;
+
+      const dummyRoom: Room = {
+        x: 0,
+        y: 0,
+        type: 'combat',
+        cleared: false,
+        visited: true,
+        doors: { N: false, S: false, E: false, W: false },
+        obstacles: [],
+        enemies: [target],
+        pickups: [],
+        hazards: [],
+        skids: [],
+        trapdoor: false
+      };
+
+      player.weapon = 'flamethrower';
+      player.multiShot = 1;
+      player.fireTimer = 0;
+      fireWeapon({ player, target: { x: 300, y: 300 }, state });
+      state.bullets[0].x = 300;
+      state.bullets[0].y = 300;
+      updatePlayerBullets(0.016, state.bullets, dummyRoom, player, state);
+      expect(state.damageNumbers.some(d => d.text === 'THERMAL SHOCK!')).toBe(true);
+
+      // 3. Verify Superconductor extended range (200px > 155px default) & chill propagation
+      const arcPrimary = createEnemy('swarmer', 200, 200, 1);
+      arcPrimary.hp = 500;
+      arcPrimary.maxHp = 500;
+      (arcPrimary as any).slowTimer = 2.0;
+      const arcSecondary = createEnemy('swarmer', 400, 200, 1); // 200px away
+      arcSecondary.hp = 500;
+      arcSecondary.maxHp = 500;
+      dummyRoom.enemies = [arcPrimary, arcSecondary];
+
+      player.weapon = 'arc_coil';
+      player.fireTimer = 0;
+      fireWeapon({ player, target: { x: 200, y: 200 }, state });
+      const arcBullet = state.bullets[state.bullets.length - 1];
+      arcBullet.x = 200;
+      arcBullet.y = 200;
+      updatePlayerBullets(0.016, state.bullets, dummyRoom, player, state);
+      expect(arcSecondary.hp).toBeLessThan(500);
+      expect((arcSecondary as any).slowTimer).toBeGreaterThanOrEqual(1.5);
+
+      // 4. Verify Juggernaut Overdrive on NOS Ram kill
+      const fodder = createEnemy('swarmer', player.x + 5, player.y, 1);
+      fodder.hp = 10;
+      dummyRoom.enemies = [fodder];
+      player.isBoosting = true;
+      player.nos = 40;
+      player.nosLock = false;
+      updateEnemyCollisions(dummyRoom, player, state);
+      expect(fodder.hp).toBeLessThanOrEqual(0);
+      expect(player.nos).toBe(70); // 40 + 30 refund
+      expect(state.damageNumbers.some(d => d.text === 'JUGGERNAUT OVERDRIVE!')).toBe(true);
+
+      // 5. Verify Kiss-Curse mods (Glass Cannon Bore)
+      const glassCannon = KISS_CURSE_MOD_POOL.find(m => m.id === 'glass_cannon')!;
+      expect(glassCannon).toBeDefined();
+      const p2 = createDefaultPlayerState();
+      glassCannon.apply(p2);
+      expect(p2.dmgMult).toBeCloseTo(1.65);
+      expect(p2.maxHp).toBe(4);
     });
   });
 });

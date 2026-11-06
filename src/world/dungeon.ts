@@ -431,9 +431,14 @@ export function populateRoom(
     pool.push('splitter', 'sniper', 'pyro');
   }
 
+  const fallbackPool: RegularEnemyType[] = floor >= 2
+    ? ['swarmer', 'charger', 'trishot']
+    : ['swarmer', 'charger'];
+
   const f = Math.max(1, floor);
   const baseCount = Math.min(18, Math.round(4 * Math.pow(1.22, f - 1)) + Math.floor(random() * 2));
   const eliteChance = f <= 1 ? 0 : Math.min(0.45, 0.10 * Math.pow(1.45, f - 2));
+  let sniperTurretCount = room.enemies.filter(e => e.type === 'sniper' || e.type === 'turret').length;
 
   for (let i = 0; i < baseCount; i++) {
     let ex = 0;
@@ -445,9 +450,140 @@ export function populateRoom(
       tries++;
     } while (tries < 25 && Math.hypot(ex - ARENA_WIDTH / 2, ey - ARENA_HEIGHT / 2) < 115);
 
-    const type = pool[Math.floor(random() * pool.length)];
+    let type = pool[Math.floor(random() * pool.length)];
+    if (type === 'sniper' || type === 'turret') {
+      if (sniperTurretCount >= 3) {
+        type = fallbackPool[Math.floor(random() * fallbackPool.length)];
+      } else {
+        sniperTurretCount++;
+      }
+    }
     const isElite = random() < eliteChance;
     room.enemies.push(createEnemy(type, ex, ey, floor, isElite, random));
+  }
+}
+
+/**
+ * Configures Treasure rooms with Choice-of-2 free Mod Pedestals:
+ * - Moves the existing free pedestal to x = ARENA_WIDTH / 2 - 72, y = ARENA_HEIGHT / 2 with choiceGroup = 'treasure_choice'.
+ * - Spawns a 2nd distinct free pedestal at x = ARENA_WIDTH / 2 + 72, y = ARENA_HEIGHT / 2 with choiceGroup = 'treasure_choice'.
+ * - When the player claims any pedestal with choiceGroup, the sibling pedestal in the same choiceGroup despawns automatically.
+ */
+export function enableChoicePedestalsInTreasureRooms(
+  dungeon: Dungeon,
+  extraModPool?: readonly RunModDef[],
+  random: () => number = Math.random
+): void {
+  const roomsMap: Dungeon = (dungeon as unknown as DungeonGraph).rooms
+    ? (dungeon as unknown as DungeonGraph).rooms
+    : dungeon;
+  const pool = extraModPool && extraModPool.length > 0 ? extraModPool : RUN_MOD_POOL;
+
+  for (const room of Object.values(roomsMap)) {
+    if (room.type !== 'treasure') continue;
+
+    // Locate or create the primary free mod pedestal
+    let pedestal1 = room.pickups.find(p => p.type === 'mod_pedestal');
+    if (!pedestal1 || pedestal1.type !== 'mod_pedestal') {
+      const mod1 = pool[Math.floor(random() * pool.length)];
+      pedestal1 = {
+        x: ARENA_WIDTH / 2 - 72,
+        y: ARENA_HEIGHT / 2,
+        type: 'mod_pedestal',
+        mod: mod1,
+        cost: 0,
+        radius: 22
+      };
+      room.pickups.push(pedestal1);
+    } else {
+      pedestal1.x = ARENA_WIDTH / 2 - 72;
+      pedestal1.y = ARENA_HEIGHT / 2;
+      pedestal1.cost = 0;
+    }
+    (pedestal1 as any).choiceGroup = 'treasure_choice';
+
+    // Remove any pre-existing second choice pedestal if called multiple times
+    for (let i = room.pickups.length - 1; i >= 0; i--) {
+      const p = room.pickups[i];
+      if (p !== pedestal1 && (p as any).choiceGroup === 'treasure_choice') {
+        Array.prototype.splice.call(room.pickups, i, 1);
+      }
+    }
+
+    const baseMod1 = (pedestal1.mod as any)._baseMod || pedestal1.mod;
+    const distinctCandidates = pool.filter(m => m.id !== baseMod1.id);
+    const baseMod2 = distinctCandidates.length > 0
+      ? distinctCandidates[Math.floor(random() * distinctCandidates.length)]
+      : pool[Math.floor(random() * pool.length)];
+
+    const pedestal2 = {
+      x: ARENA_WIDTH / 2 + 72,
+      y: ARENA_HEIGHT / 2,
+      type: 'mod_pedestal' as const,
+      mod: baseMod2,
+      cost: 0,
+      radius: 22,
+      choiceGroup: 'treasure_choice'
+    };
+
+    const despawnChoiceSiblings = (claimed: unknown, group: string) => {
+      for (let i = room.pickups.length - 1; i >= 0; i--) {
+        const pk = room.pickups[i];
+        if (pk !== claimed && (pk as any).choiceGroup === group) {
+          Array.prototype.splice.call(room.pickups, i, 1);
+        }
+      }
+    };
+
+    const wrapChoiceMod = (targetPedestal: typeof pedestal1, underlyingMod: RunModDef) => {
+      const wrapped = {
+        ...underlyingMod,
+        _baseMod: underlyingMod,
+        apply: (player: any) => {
+          underlyingMod.apply(player);
+          const group = (targetPedestal as any).choiceGroup;
+          if (group) {
+            despawnChoiceSiblings(targetPedestal, group);
+          }
+        }
+      };
+      targetPedestal.mod = wrapped;
+    };
+
+    wrapChoiceMod(pedestal1, baseMod1 as RunModDef);
+    wrapChoiceMod(pedestal2, baseMod2);
+    room.pickups.push(pedestal2);
+
+    // Also hook room.pickups.splice so removing any choiceGroup pedestal via splice despawns its sibling
+    if (!(room.pickups as any)._choiceSpliceHooked) {
+      Object.defineProperty(room.pickups, '_choiceSpliceHooked', {
+        value: true,
+        enumerable: false,
+        configurable: true
+      });
+      const origSplice = room.pickups.splice;
+      Object.defineProperty(room.pickups, 'splice', {
+        value: function (start: number, deleteCount?: number, ...items: any[]) {
+          const removed = deleteCount === undefined
+            ? (origSplice as any).call(this, start)
+            : (origSplice as any).call(this, start, deleteCount, ...items);
+          for (const rem of removed) {
+            const grp = rem && (rem as any).choiceGroup;
+            if (grp) {
+              for (let j = this.length - 1; j >= 0; j--) {
+                if ((this[j] as any)?.choiceGroup === grp) {
+                  origSplice.call(this, j, 1);
+                }
+              }
+            }
+          }
+          return removed;
+        },
+        enumerable: false,
+        configurable: true,
+        writable: true
+      });
+    }
   }
 }
 

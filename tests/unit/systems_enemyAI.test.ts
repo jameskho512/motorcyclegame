@@ -425,6 +425,81 @@ describe('Systems: EnemyAI — All 10 Enemy Behaviors', () => {
     expect(bullets).toHaveLength(6); // 6-bullet circular nova
     expect(bullets[0].color).toBe('#ff5400');
   });
+
+  it('sets telegraphTimer during the final 0.30s before firing on ranged enemies and resets to 0 otherwise', () => {
+    const room = createMockRoom();
+    const player = createMockPlayer({ x: 500, y: 360 });
+    const rangedTypes = ['turret', 'trishot', 'bomber', 'brute', 'sniper', 'pyro'] as const;
+
+    for (const type of rangedTypes) {
+      const en = createEnemy(type, 360, 360, 3, false);
+      en.aiTimer = 0.25;
+      updateEnemyAI({
+        room,
+        enemy: en,
+        dt: 0.05,
+        player,
+        projScale: 1,
+        enemyBullets: [],
+        enemyBombs: []
+      });
+      // aiTimer is now 0.20 (within (0, 0.30])
+      expect((en as any).telegraphTimer).toBeCloseTo(0.20, 4);
+
+      // When aiTimer > 0.30, telegraphTimer is 0
+      en.aiTimer = 0.80;
+      updateEnemyAI({
+        room,
+        enemy: en,
+        dt: 0.05,
+        player,
+        projScale: 1,
+        enemyBullets: [],
+        enemyBombs: []
+      });
+      expect((en as any).telegraphTimer).toBe(0);
+    }
+  });
+
+  it('locks aim angle during the final 0.16s window for turret, sniper, and brute when aimLockAngle was tracked', () => {
+    const room = createMockRoom();
+    const playerEast = createMockPlayer({ x: 500, y: 360 }); // angle = 0
+    const playerSouth = createMockPlayer({ x: 360, y: 500 }); // angle = PI / 2
+
+    for (const type of ['turret', 'sniper', 'brute'] as const) {
+      const en = createEnemy(type, 360, 360, 3, false);
+      en.aiTimer = 0.20; // > 0.16
+
+      // Frame 1: aiTimer > 0.16 -> tracks playerEast (angle 0) and records aimLockAngle
+      updateEnemyAI({
+        room,
+        enemy: en,
+        dt: 0.06, // aiTimer becomes 0.14 (<= 0.16)
+        player: playerEast,
+        projScale: 1,
+        enemyBullets: [],
+        enemyBombs: []
+      });
+      expect((en as any).aimLockAngle).toBeCloseTo(0, 4);
+      expect(en.angle).toBeCloseTo(0, 4);
+
+      // Frame 2: player dodges South, but aiTimer is 0.14 (<= 0.16) -> angle stays locked at 0!
+      const bullets: EnemyBullet[] = [];
+      updateEnemyAI({
+        room,
+        enemy: en,
+        dt: 0.15, // triggers shot
+        player: playerSouth,
+        projScale: 1,
+        enemyBullets: bullets,
+        enemyBombs: []
+      });
+      expect(en.angle).toBeCloseTo(0, 4);
+      expect(bullets).toHaveLength(1);
+      expect(bullets[0].vy).toBeCloseTo(0, 2);
+      expect(bullets[0].vx).toBeGreaterThan(0);
+    }
+  });
 });
 
 describe('Systems: EnemyAI — The 3 Boss Variants', () => {
@@ -576,5 +651,64 @@ describe('Systems: EnemyAI — The 3 Boss Variants', () => {
     expect(rewards.modPedestalPickup.type).toBe('mod_pedestal');
     // Trapdoor flag true
     expect(rewards.trapdoor).toBe(true);
+  });
+
+  it('activates Boss Phase-2 Overdrive Enrage (boss.phase === 2, 1.18x speed, 0.85x cooldowns) when hp <= 50%', () => {
+    const room = createMockRoom();
+    const player = createMockPlayer({ x: 600, y: 360 });
+    const boss = createBoss(2, 360, 360); // Variant 1
+    boss.aiTimer = 10;
+    boss.subTimer = 10;
+
+    // Phase 1: hp > 50%
+    updateEnemyAI({
+      room,
+      enemy: boss,
+      dt: 0.1,
+      player,
+      projScale: 1,
+      enemyBullets: [],
+      enemyBombs: [],
+      floorNum: 2
+    });
+    expect(boss.phase).toBe(1);
+    const phase1DeltaX = boss.x - 360;
+
+    // Phase 2: hp <= 50%
+    boss.x = 360;
+    boss.y = 360;
+    boss.hp = Math.floor(boss.maxHp * 0.5);
+    boss.aiTimer = 0.02;
+    boss.subTimer = 0.02;
+
+    updateEnemyAI({
+      room,
+      enemy: boss,
+      dt: 0.1,
+      player,
+      projScale: 1,
+      enemyBullets: [],
+      enemyBombs: [],
+      floorNum: 2
+    });
+
+    expect(boss.phase).toBe(2);
+    const phase2DeltaX = boss.x - 360;
+    expect(phase2DeltaX / phase1DeltaX).toBeCloseTo(1.18, 2);
+
+    // Cooldown recovery reduced by 15% (* 0.85)
+    const expectedBasePrimary = Math.max(0.75, 1.35 - 2 * 0.08);
+    expect(boss.aiTimer).toBeCloseTo(expectedBasePrimary * 0.85, 4);
+    expect(boss.subTimer).toBeCloseTo(2.8 * 0.85, 4);
+  });
+
+  it('guarantees at least Magic/Rare equipment loot drop from Boss on floor >= 2', () => {
+    const boss = createBoss(2, 360, 360);
+    // Even with rng returning 0 (which would normally roll Common rarity 0), floor >= 2 guarantees >= 1 (Magic/Rare)
+    const rewards = generateBossDefeatRewards(boss, 2, () => 0);
+    expect(rewards.lootPickup.type).toBe('loot');
+    if (rewards.lootPickup.type === 'loot') {
+      expect(rewards.lootPickup.item.rarity).toBeGreaterThanOrEqual(1);
+    }
   });
 });

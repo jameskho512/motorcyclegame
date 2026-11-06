@@ -21,7 +21,7 @@ import {
 } from '../types/game';
 
 import { WEAPONS, WEAPON_EVOLUTIONS, isWeaponEvolved } from '../data/weapons';
-import { DROP_ITEMS, RUN_MOD_POOL } from '../data/upgrades';
+import { DROP_ITEMS, RUN_MOD_POOL, ALL_RUN_MOD_POOL, getActiveDuoSynergies } from '../data/upgrades';
 import {
   WEAPON_HI_FI_SVG,
   DROP_ITEM_HI_FI_SVG,
@@ -1142,7 +1142,7 @@ export class HUDController {
         });
 
       const modBadges = player.items.map((name, index) => {
-        const m = RUN_MOD_POOL.find(x => x.name === name);
+        const m = (ALL_RUN_MOD_POOL || RUN_MOD_POOL).find(x => x.name === name || x.id === name);
         const svgIcon = getModIconSvg(m ? m.id : name);
         const rotClass = `rot-${((index + 3) % 6) + 1}`;
         return `<span class="item-badge sticker is-mod ${rotClass}" style="--ic:#ffd60a" aria-label="${name}" data-tip="<b style='color:#ffd166'>${name}</b><br/>${m ? m.desc : ''}"><span class="sticker-glyph">${svgIcon}</span><span class="sticker-peel" aria-hidden="true"></span></span>`;
@@ -1164,21 +1164,30 @@ export class HUDController {
     }
 
     // 8. Widescreen Left & Right Wing Panels (Style Rank D->SSS, Synergy Matrix & Sector Telemetry)
+    const wrapperEl = document.getElementById('game-wrapper');
+    if (wrapperEl) {
+      wrapperEl.classList.toggle('is-low-hull', isLowFuel(player.hp, player.maxHp));
+    }
+
     const speedRatio = Math.min(1, Math.hypot(player.vx || 0, player.vy || 0) / 280);
     const driftBonus = (player.driftCharge || 0) * 35 + ((player as any).driftBoostTimer > 0 ? 35 : 0);
     const killBonus = Math.min(45, (player.killCount || 0) * 2.5);
-    const styleScore = Math.min(100, Math.round(12 + speedRatio * 28 + driftBonus + killBonus));
+    const computedStyleScore = Math.min(100, Math.round(12 + speedRatio * 28 + driftBonus + killBonus));
+    const styleScore = typeof player.styleScore === 'number'
+      ? Math.max(0, Math.min(100, Math.round(player.styleScore)))
+      : computedStyleScore;
 
-    const styleGrades: Array<{ min: number; grade: string; title: string; color: string }> = [
-      { min: 92, grade: 'SSS', title: 'VALHALLA OVERDRIVE!!', color: '#00f5d4' },
-      { min: 80, grade: 'SS', title: 'APEX OUTLAW!', color: '#ffd60a' },
-      { min: 66, grade: 'S', title: 'SAVAGE DRIFTER', color: '#ff5400' },
-      { min: 52, grade: 'A', title: 'HIGH OCTANE', color: '#ff4d6d' },
-      { min: 38, grade: 'B', title: 'FULL THROTTLE', color: '#c77dff' },
-      { min: 24, grade: 'C', title: 'ROLLING THUNDER', color: '#4cc9f0' },
-      { min: 0, grade: 'D', title: 'CRUISING', color: '#adb5bd' }
+    const styleGrades: Array<{ min: number; grade: 'SSS' | 'SS' | 'S' | 'A' | 'B' | 'C' | 'D'; title: string; color: string; bonusDesc: string }> = [
+      { min: 92, grade: 'SSS', title: 'VALHALLA OVERDRIVE!!', color: '#00f5d4', bonusDesc: '+25% SPD/RATE · +55% LUCK · +4 NOS/s' },
+      { min: 80, grade: 'SS', title: 'APEX OUTLAW!', color: '#ffd60a', bonusDesc: '+20% SPD/RATE · +45% LUCK · +2.5 NOS/s' },
+      { min: 66, grade: 'S', title: 'SAVAGE DRIFTER', color: '#ff5400', bonusDesc: '+15% SPD/RATE · +35% LUCK · +1.5 NOS/s' },
+      { min: 52, grade: 'A', title: 'HIGH OCTANE', color: '#ff4d6d', bonusDesc: '+10% SPD/RATE · +25% LUCK' },
+      { min: 38, grade: 'B', title: 'FULL THROTTLE', color: '#c77dff', bonusDesc: '+6% SPD/RATE · +15% LUCK' },
+      { min: 24, grade: 'C', title: 'ROLLING THUNDER', color: '#4cc9f0', bonusDesc: '+3% SPD/RATE · +5% LUCK' },
+      { min: 0, grade: 'D', title: 'CRUISING', color: '#adb5bd', bonusDesc: 'GRAZE & DRIFT TO BUILD RANK' }
     ];
     const rankDef = styleGrades.find(g => styleScore >= g.min) || styleGrades[styleGrades.length - 1];
+    player.styleRank = rankDef.grade;
 
     const gradeEl = document.getElementById('style-rank-grade');
     if (gradeEl) {
@@ -1198,7 +1207,7 @@ export class HUDController {
     if (subEl) {
       subEl.textContent = (player as any).driftBoostTimer > 0
         ? '⚡ DRIFT OVERCHARGE ACTIVE (+35% SPD/RATE)'
-        : `DRIFT CHARGE: ${Math.round((player.driftCharge || 0) * 100)}% // KILLS: ${player.killCount || 0}`;
+        : `${rankDef.bonusDesc} // DRIFT: ${Math.round((player.driftCharge || 0) * 100)}%`;
     }
 
     const synListEl = document.getElementById('synergy-list');
@@ -1215,7 +1224,14 @@ export class HUDController {
         );
       } else {
         rows.push(
-          `<div class="synergy-pill" style="--syn-color:#ffd60a" data-tip="<b style='color:#ffd60a'>${evoDef.evolvedName}</b><br/>${evoDef.desc}<br/><i>Unlock: ${evoDef.signatureModName} or 3+ Item Stacks</i>"><span style="pointer-events:none">${activeWep.name} → ${evoDef.evolvedName}</span><small style="pointer-events:none">${evoDef.signatureModName} or ${totalStacks}/3 Stacks</small></div>`
+          `<div class="synergy-pill" style="--syn-color:#ffd60a" data-tip="<b style='color:#ffd60a'>${evoDef.evolvedName}</b><br/>${evoDef.desc}<br/><i>Unlock: ${evoDef.signatureModDisplayName || evoDef.signatureModName} or 3+ Item Stacks</i>"><span style="pointer-events:none">${activeWep.name} → ${evoDef.evolvedName}</span><small style="pointer-events:none">${evoDef.signatureModDisplayName || evoDef.signatureModName} or ${totalStacks}/3 Stacks</small></div>`
+        );
+      }
+
+      const activeDuos = getActiveDuoSynergies ? getActiveDuoSynergies(player) : [];
+      for (const duo of activeDuos) {
+        rows.push(
+          `<div class="synergy-pill" style="--syn-color:${duo.color}" data-tip="<b style='color:${duo.color}'>✦ DUO: ${duo.name}</b><br/>${duo.desc}"><span style="pointer-events:none">✦ ${duo.name.toUpperCase()}</span><small style="pointer-events:none">DUO ACTIVE</small></div>`
         );
       }
 

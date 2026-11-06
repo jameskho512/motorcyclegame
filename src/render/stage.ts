@@ -812,20 +812,130 @@ export class StageManager {
     }
 
     // 4. Pickups & Pedestals
-    for (const p of room.pickups) {
-      drawPickup(g, p, timestampMs);
-    }
+    this.renderPickups(g, room.pickups, timestampMs);
 
     // 5. Enemies & Bosses
-    for (const en of room.enemies) {
+    this.renderEnemies(g, room.enemies, timestampMs);
+
+    // 6. Player Motorcycle & Contextual 30px Drift/NOS Arc
+    this.renderPlayer(g, player, timestampMs);
+  }
+
+  private renderPickups(g: Graphics, pickups: Room['pickups'], timestampMs: number): void {
+    // Draw Choice Pedestal "VS / OR" energy tether line between paired choiceGroup pedestals
+    const choiceGroups = new Map<string, Room['pickups']>();
+    for (const p of pickups) {
+      const cg = (p as any).choiceGroup;
+      if (p.type === 'mod_pedestal' && typeof cg === 'string' && cg.length > 0) {
+        const list = choiceGroups.get(cg) || [];
+        list.push(p);
+        choiceGroups.set(cg, list);
+      }
+    }
+
+    for (const group of choiceGroups.values()) {
+      if (group.length >= 2) {
+        const p1 = group[0];
+        const p2 = group[1];
+        const midX = (p1.x + p2.x) / 2;
+        const midY = (p1.y + p2.y) / 2;
+        const pulse = 0.65 + 0.3 * Math.sin(timestampMs / 140);
+
+        // Outer comic ink backing line
+        g.moveTo(p1.x, p1.y)
+          .lineTo(p2.x, p2.y)
+          .stroke({ color: 0x0a0b10, width: 7, alpha: 0.85 });
+        // Gold energy conduit
+        g.moveTo(p1.x, p1.y)
+          .lineTo(p2.x, p2.y)
+          .stroke({ color: 0xffd60a, width: 3.5, alpha: 0.9 });
+        // Cyan animated core filament
+        g.moveTo(p1.x, p1.y)
+          .lineTo(p2.x, p2.y)
+          .stroke({ color: 0x00f5d4, width: 1.8, alpha: pulse });
+
+        // Central "VS / OR" choice node medallion
+        g.circle(midX, midY, 9)
+          .fill({ color: 0xffd60a, alpha: 0.95 })
+          .stroke({ color: 0x0a0b10, width: 2.5 });
+        g.circle(midX, midY, 4)
+          .fill({ color: 0x00f5d4, alpha: pulse });
+      }
+    }
+
+    for (const p of pickups) {
+      drawPickup(g, p, timestampMs);
+    }
+  }
+
+  private renderEnemies(g: Graphics, enemies: Room['enemies'], timestampMs: number): void {
+    for (const en of enemies) {
+      // Boss Phase-2 Enrage crimson-gold aura ring beneath the Boss
+      if (en.type === 'boss' && ((en as any).phase === 2 || en.hp <= en.maxHp * 0.5)) {
+        const enragePulse = 0.65 + 0.25 * Math.sin(timestampMs / 90);
+        const auraR = en.radius + 12 + Math.sin(timestampMs / 110) * 4;
+        g.circle(en.x, en.y, auraR)
+          .fill({ color: 0xff1f4b, alpha: 0.22 * enragePulse })
+          .stroke({ color: 0xff1f4b, width: 3.5, alpha: enragePulse });
+        g.circle(en.x, en.y, en.radius + 6)
+          .stroke({ color: 0xffd60a, width: 2.2, alpha: 0.9 });
+      }
+
       drawEnemy(g, en, timestampMs);
+
+      // Enemy Hit-Flash pure-white comic impact overlay & hit sparks
+      const hitFlashTimer = Number((en as any).hitFlashTimer) || 0;
+      if (hitFlashTimer > 0) {
+        g.circle(en.x, en.y, en.radius)
+          .fill({ color: 0xffffff, alpha: 0.75 });
+        if (hitFlashTimer > 0.05) {
+          (this.vfx as any).addHitSpark(en.x, en.y, 0x00f5d4, 4);
+        }
+      }
+
+      // High-contrast collapsing crimson-and-white Pre-Fire Telegraph Ring
+      const telegraphTimer = Number((en as any).telegraphTimer) || 0;
+      if (telegraphTimer > 0) {
+        const teleRadius = en.radius + 4 + telegraphTimer * 36;
+        g.circle(en.x, en.y, teleRadius)
+          .stroke({ color: 0xff1f4b, width: 3, alpha: 0.92 });
+        g.circle(en.x, en.y, Math.max(2, teleRadius - 2))
+          .stroke({ color: 0xffffff, width: 1.5, alpha: 0.95 });
+      }
+    }
+  }
+
+  private renderPlayer(g: Graphics, player: PlayerState, timestampMs: number): void {
+    // Contextual 30px Bike-Tethered Drift & NOS Overheat Arc directly beneath the player bike
+    const driftCharge = Number((player as any).driftCharge) || 0;
+    const driftBoostTimer = Number((player as any).driftBoostTimer) || 0;
+    if (driftCharge > 0.05 || driftBoostTimer > 0 || player.nosLock) {
+      if (driftCharge > 0.05 || driftBoostTimer > 0) {
+        const prog = driftBoostTimer > 0 ? 1 : Math.min(1, driftCharge);
+        const startAngle = -Math.PI * 0.75;
+        const sweep = Math.PI * 1.5;
+        const arcColor = (driftCharge >= 0.95 || driftBoostTimer > 0) ? 0x00f5d4 : 0xffd60a;
+
+        g.arc(player.x, player.y, 30, startAngle, startAngle + sweep)
+          .stroke({ color: 0x0a0b10, width: 6, alpha: 0.85 });
+        g.arc(player.x, player.y, 30, startAngle, startAngle + sweep * prog)
+          .stroke({ color: arcColor, width: 3.5, alpha: 0.95 });
+      }
+
+      if (player.nosLock === true) {
+        const lockPulse = 0.55 + 0.35 * Math.abs(Math.sin(timestampMs / 90));
+        g.circle(player.x, player.y, 30)
+          .stroke({ color: 0x0a0b10, width: 5.5, alpha: 0.8 });
+        g.circle(player.x, player.y, 30)
+          .stroke({ color: 0xff1f4b, width: 3, alpha: lockPulse });
+      }
     }
 
     // Directional afterburner jet cones and subtle rim aura rendered UNDER player motorcycle
     const isBoosting = (player.nos > 0 && !player.nosLock);
     this.vfx.renderKiAura(g, player, isBoosting);
 
-    // 6. Player Motorcycle (Always on top of aura and exhaust plumes)
+    // Player Motorcycle (Always on top of aura and exhaust plumes)
     drawMotorcycle(g, player, timestampMs);
   }
 
@@ -841,7 +951,7 @@ export class StageManager {
     beamEffects: BeamEffect[],
     _timestampMs: number
   ): void {
-    // 1. Floor Fire Hazards
+    // Tier 1: Floor Fire Hazards
     for (const hz of room.hazards) {
       const alpha = Math.min(0.65, (hz.life / hz.maxLife) * 0.7);
       g.circle(hz.x, hz.y, hz.radius)
@@ -849,7 +959,7 @@ export class StageManager {
         .stroke({ color: 0xffd166, width: 2, alpha });
     }
 
-    // 2. Player Bullets & Flames (Streamlined single circle fill, capped at 120)
+    // Tier 2: Player Bullets, Flames & Arcing Grenades
     const bulletCount = Math.min(bullets.length, 120);
     for (let i = 0; i < bulletCount; i++) {
       const b = bullets[i];
@@ -865,20 +975,6 @@ export class StageManager {
       }
     }
 
-    // 3. Enemy Bullets (Streamlined single circle fill, capped at 120)
-    const enemyBulletCount = Math.min(enemyBullets.length, 120);
-    for (let i = 0; i < enemyBulletCount; i++) {
-      const eb = enemyBullets[i];
-      const ebColor = parseColor(eb.color, 0xef233c);
-      g.circle(eb.x, eb.y, eb.radius)
-        .fill({ color: ebColor });
-      if (eb.radius > 2.5) {
-        g.circle(eb.x, eb.y, eb.radius * 0.45)
-          .fill({ color: 0xffffff });
-      }
-    }
-
-    // 4. Arcing Grenades
     for (const gr of grenades) {
       // Crosshair landing target
       g.circle(gr.targetX, gr.targetY, 16)
@@ -894,24 +990,13 @@ export class StageManager {
         .stroke({ color: 0x0a0b10, width: 2 });
     }
 
-    // 5. Enemy Mortar Bombs
-    for (const eb of enemyBombs) {
-      g.circle(eb.targetX, eb.targetY, 36)
-        .stroke({ color: 0xff9f1c, width: 2, alpha: 0.55 });
-      const arcLift = Math.sin(eb.t * Math.PI) * 60;
-      g.circle(eb.x, eb.y - arcLift, 7)
-        .fill({ color: 0xff9f1c })
-        .stroke({ color: 0x0a0b10, width: 2 });
-    }
-
-    // 6. Action Beams & Lightning
+    // Tier 3: Action Beams & Lightning
     this.vfx.renderBeams(g, beamEffects);
 
-    // 7. Shockwaves & Manga Hit Sparks
+    // Tier 4: Shockwaves, Manga Hit Sparks, Normal Particle Sparks & Anime Speed Lines
     this.vfx.renderShockwaves(g, particles);
     this.vfx.renderHitSparks(g);
 
-    // 8. Normal Particle Sparks (Streamlined single circle fill, capped at 150)
     const particleCount = Math.min(particles.length, 150);
     for (let i = 0; i < particleCount; i++) {
       const pt = particles[i];
@@ -923,9 +1008,29 @@ export class StageManager {
       }
     }
 
-    // 9. Anime Speed Lines during NOS Boost (Ki aura rendered underneath player in entityLayer)
     const isBoosting = (player.nos > 0 && !player.nosLock);
     this.vfx.renderSpeedLines(g, player, isBoosting);
+
+    // Tier 5 (TOP OF ALL PLAYER VFX): Enemy Mortar Bombs & High-Contrast Enemy Bullets
+    for (const eb of enemyBombs) {
+      g.circle(eb.targetX, eb.targetY, 36)
+        .stroke({ color: 0xff9f1c, width: 2, alpha: 0.55 });
+      const arcLift = Math.sin(eb.t * Math.PI) * 60;
+      g.circle(eb.x, eb.y - arcLift, 7)
+        .fill({ color: 0xff9f1c })
+        .stroke({ color: 0x0a0b10, width: 2 });
+    }
+
+    const enemyBulletCount = Math.min(enemyBullets.length, 120);
+    for (let i = 0; i < enemyBulletCount; i++) {
+      const eb = enemyBullets[i];
+      const ebRadius = Math.max(2.5, eb.radius || 5);
+      g.circle(eb.x, eb.y, ebRadius)
+        .fill({ color: 0xff1f4b })
+        .stroke({ color: 0x0a0b10, width: 2.5 });
+      g.circle(eb.x, eb.y, ebRadius * 0.45)
+        .fill({ color: 0xffffff });
+    }
   }
 
   private renderHUD(

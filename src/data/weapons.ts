@@ -198,12 +198,24 @@ export function getWeaponDef(id: string): WeaponDef {
 }
 
 // ============================================================================
-// WEAPON EVOLUTIONS (OVERCLOCK PROTOCOL)
+// WEAPON EVOLUTIONS (OVERCLOCK PROTOCOL) & PROC COEFFICIENTS
 // ============================================================================
+
+export const WEAPON_PROC_COEFFICIENTS: Record<WeaponId, number> = {
+  pistol: 1.0,
+  machine_gun: 0.45,
+  flamethrower: 0.35,
+  shotgun: 0.35,
+  grenade_launcher: 1.0,
+  railgun: 1.0,
+  arc_coil: 0.75
+};
 
 export interface WeaponEvolutionDef {
   weaponId: WeaponId;
   evolvedName: string;
+  signatureModId: string;
+  signatureModDisplayName: string;
   signatureModName: string;
   evolvedColor: string;
   desc: string;
@@ -213,6 +225,8 @@ export const WEAPON_EVOLUTIONS: Record<WeaponId, WeaponEvolutionDef> = {
   pistol: {
     weaponId: 'pistol',
     evolvedName: 'RICOCHET REVOLVER',
+    signatureModId: 'ricochet_mod',
+    signatureModDisplayName: 'Rubberized Casings',
     signatureModName: 'Ricochet Rounds',
     evolvedColor: '#ffd60a',
     desc: '+2 Bounces, +35% Damage & Golden Tracer Rounds'
@@ -220,6 +234,8 @@ export const WEAPON_EVOLUTIONS: Record<WeaponId, WeaponEvolutionDef> = {
   machine_gun: {
     weaponId: 'machine_gun',
     evolvedName: 'HYPER-VULCAN GATLING',
+    signatureModId: 'hair_trigger',
+    signatureModDisplayName: 'Hair-Trigger Servo',
     signatureModName: 'Hair Trigger',
     evolvedColor: '#00f5d4',
     desc: 'Twin Parallel Streams & Tightened Spread'
@@ -227,6 +243,8 @@ export const WEAPON_EVOLUTIONS: Record<WeaponId, WeaponEvolutionDef> = {
   flamethrower: {
     weaponId: 'flamethrower',
     evolvedName: 'PLASMA MELTDOWN TORCH',
+    signatureModId: 'high_explosive',
+    signatureModDisplayName: 'Thermobaric Mix',
     signatureModName: 'High Explosive',
     evolvedColor: '#72efdd',
     desc: 'Blue-White Plasma Cone & +45% Burn Power'
@@ -234,6 +252,8 @@ export const WEAPON_EVOLUTIONS: Record<WeaponId, WeaponEvolutionDef> = {
   grenade_launcher: {
     weaponId: 'grenade_launcher',
     evolvedName: 'CARPET CLUSTER MORTAR',
+    signatureModId: 'high_explosive',
+    signatureModDisplayName: 'Thermobaric Mix',
     signatureModName: 'High Explosive',
     evolvedColor: '#ff0055',
     desc: 'Spawns 3 Secondary Cluster Bomblets on Impact'
@@ -241,6 +261,8 @@ export const WEAPON_EVOLUTIONS: Record<WeaponId, WeaponEvolutionDef> = {
   shotgun: {
     weaponId: 'shotgun',
     evolvedName: 'HELLFIRE FLAK CANNON',
+    signatureModId: 'split_chamber',
+    signatureModDisplayName: 'Twin Barrel Adapter',
     signatureModName: 'Split Chamber',
     evolvedColor: '#ff5400',
     desc: '10 Incendiary Pellets & 20px Blast Knockback'
@@ -248,6 +270,8 @@ export const WEAPON_EVOLUTIONS: Record<WeaponId, WeaponEvolutionDef> = {
   railgun: {
     weaponId: 'railgun',
     evolvedName: 'ORBITAL ION LANCE',
+    signatureModId: 'piercing_core',
+    signatureModDisplayName: 'Tungsten Sabot',
     signatureModName: 'Piercing Core',
     evolvedColor: '#ffbe0b',
     desc: 'Hyper-Wide Golden Ion Lance & +35% Damage'
@@ -255,6 +279,8 @@ export const WEAPON_EVOLUTIONS: Record<WeaponId, WeaponEvolutionDef> = {
   arc_coil: {
     weaponId: 'arc_coil',
     evolvedName: 'THUNDERLORD STORM COIL',
+    signatureModId: 'vamp_siphon',
+    signatureModDisplayName: 'Scrap Siphon',
     signatureModName: 'Vampiric Siphon',
     evolvedColor: '#e0aaff',
     desc: 'Chains to 6 Targets for 85% Damage'
@@ -263,14 +289,21 @@ export const WEAPON_EVOLUTIONS: Record<WeaponId, WeaponEvolutionDef> = {
 
 /**
  * Returns true if the player's build has unlocked the weapon evolution:
- * Either possesses the weapon's signature upgrade item/mod, OR has >= 3 total item stacks.
+ * Either possesses the weapon's signature upgrade item/mod (by ID, display name, or legacy name),
+ * OR has >= 3 total item stacks.
  */
 export function isWeaponEvolved(
   weaponId: WeaponId,
   player: { items?: string[]; itemStacks?: Record<string, number> }
 ): boolean {
   if (!weaponId || !WEAPON_EVOLUTIONS[weaponId]) return false;
-  if (player.items?.includes(WEAPON_EVOLUTIONS[weaponId].signatureModName)) {
+  const evo = WEAPON_EVOLUTIONS[weaponId];
+  if (
+    player.items &&
+    (player.items.includes(evo.signatureModName) ||
+      player.items.includes(evo.signatureModDisplayName) ||
+      player.items.includes(evo.signatureModId))
+  ) {
     return true;
   }
   if (player.itemStacks) {
@@ -283,5 +316,18 @@ export function isWeaponEvolved(
     if (sum >= 3) return true;
   }
   return false;
+}
+
+/**
+ * Returns all weapon evolution defs triggered by a given mod ID or name (for UI tooltip badges).
+ */
+export function getEvolutionsForMod(modIdOrName: string): WeaponEvolutionDef[] {
+  if (!modIdOrName) return [];
+  return Object.values(WEAPON_EVOLUTIONS).filter(
+    evo =>
+      evo.signatureModId === modIdOrName ||
+      evo.signatureModDisplayName === modIdOrName ||
+      evo.signatureModName === modIdOrName
+  );
 }
 

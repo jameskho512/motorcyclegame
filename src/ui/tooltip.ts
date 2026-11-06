@@ -23,9 +23,70 @@ function tipCost(text: string): string {
   return `<span class="tip-cost">${text}</span>`;
 }
 
+const EVOLUTION_MOD_MAP: Record<string, string> = {
+  'Rubberized Casings': 'Pistol',
+  'bounce_rounds': 'Pistol',
+  'Hair-Trigger Servo': 'Machine Gun',
+  'hair_trigger': 'Machine Gun',
+  'Thermobaric Mix': 'Flamethrower / Grenade Launcher',
+  'napalm_mix': 'Flamethrower / Grenade Launcher',
+  'Twin Barrel Adapter': 'Shotgun',
+  'split_barrel': 'Shotgun',
+  'Tungsten Sabot': 'Plasma Railgun',
+  'pierce_core': 'Plasma Railgun',
+  'Scrap Siphon': 'Arc Tesla Coil',
+  'vampiric_siphon': 'Arc Tesla Coil'
+};
+
+const DELTA_LABELS: Record<string, string> = {
+  dmgMult: 'Damage',
+  dmg: 'Damage',
+  fireRateMult: 'Fire Rate',
+  fireRate: 'Fire Rate',
+  speedMult: 'Speed',
+  speed: 'Speed',
+  projSpeedMult: 'Proj Speed',
+  blastMult: 'Blast Radius',
+  blast: 'Blast Radius',
+  pierce: 'Pierce',
+  bounce: 'Ricochet',
+  multiShot: 'Multi-Shot',
+  vampChance: 'Siphon',
+  maxHp: 'Max Fuel',
+  hp: 'Fuel'
+};
+
+export function formatModStatDeltas(statDeltas?: Record<string, number>): string {
+  if (!statDeltas || typeof statDeltas !== 'object') return '';
+  const chips: string[] = [];
+  for (const [key, rawVal] of Object.entries(statDeltas)) {
+    if (typeof rawVal !== 'number' || rawVal === 0) continue;
+    const isPositive = rawVal > 0;
+    const color = isPositive ? '#06d6a0' : '#ff4d6d';
+    const sign = isPositive ? '+' : '';
+    const label = DELTA_LABELS[key] || key;
+    const isFlat = key === 'pierce' || key === 'bounce' || key === 'multiShot' || key === 'maxHp' || key === 'hp';
+    const valStr = isFlat || Math.abs(rawVal) >= 1
+      ? `${sign}${rawVal} ${label}`
+      : `${sign}${Math.round(rawVal * 100)}% ${label}`;
+    chips.push(`<span style="color:${color};font-weight:700">${valStr}</span>`);
+  }
+  return chips.length > 0 ? `<div style="margin-top:3px">${chips.join(' &middot; ')}</div>` : '';
+}
+
+export function getModEvolutionTarget(mod: { id?: string; name?: string; [k: string]: any }): string | null {
+  if (!mod) return null;
+  if (typeof mod.evolutionWeapon === 'string' && mod.evolutionWeapon) return mod.evolutionWeapon;
+  if (mod.name && EVOLUTION_MOD_MAP[mod.name]) return EVOLUTION_MOD_MAP[mod.name];
+  if (mod.id && EVOLUTION_MOD_MAP[mod.id]) return EVOLUTION_MOD_MAP[mod.id];
+  return null;
+}
+
 export class TooltipManager {
   private tipEl: HTMLElement | null = null;
   private isVisible: boolean = false;
+  private hoveringMouse: boolean = false;
+  private autoInspectActive: boolean = false;
 
   constructor(elementId: string = 'tooltip') {
     if (typeof document !== 'undefined') {
@@ -99,11 +160,20 @@ export class TooltipManager {
       return `${tipTitle(npc.name, '#ffd60a', 'Home Base')}<br/>${npc.subtitle}${costLine}`;
     }
 
+    const choiceBadge = (p as any).choiceGroup
+      ? '<div style="color:#ffd60a;font-weight:800;margin-top:3px">⚖️ CHOICE PEDESTAL — OTHER DESPAWNS</div>'
+      : '';
+
     if (p.type === 'mod_pedestal') {
       const costHtml = p.cost > 0
         ? tipCost(`Cost: ${p.cost} coins`)
         : '<span class="tip-free">Free</span>';
-      return `${tipTitle(p.mod.name, '#ffd166', 'Mod')}<br/>${p.mod.desc}<br/>${costHtml}`;
+      const deltasHtml = formatModStatDeltas((p.mod as any).statDeltas);
+      const evoTarget = getModEvolutionTarget(p.mod as any);
+      const evoBadge = evoTarget
+        ? '<div style="color:#00f5d4;font-weight:800;margin-top:3px">⚡ OVERCLOCK EVOLUTION MOD</div>'
+        : '';
+      return `${tipTitle(p.mod.name, '#ffd166', 'Mod')}<br/>${p.mod.desc}${deltasHtml}${evoBadge}${choiceBadge}<br/>${costHtml}`;
     }
 
     if (p.type === 'loot') {
@@ -111,19 +181,23 @@ export class TooltipManager {
       const statsList = Object.keys(p.item.stats)
         .map(k => fmtStat(k as any, (p.item.stats as any)[k]))
         .join('<br/>');
-      return `${tipTitle(`${R.name} ${p.item.name}`, R.color, 'Gear')}<br/>${statsList}`;
+      return `${tipTitle(`${R.name} ${p.item.name}`, R.color, 'Gear')}<br/>${statsList}${choiceBadge}`;
     }
 
     if (p.type === 'item_drop') {
       const it = DROP_ITEMS[p.itemId];
       if (!it) return null;
-      return `${tipTitle(it.name, it.color, 'Item')}<br/>${it.desc}`;
+      const evoTarget = getModEvolutionTarget({ id: p.itemId, name: it.name });
+      const evoBadge = evoTarget
+        ? '<div style="color:#00f5d4;font-weight:800;margin-top:3px">⚡ OVERCLOCK EVOLUTION MOD</div>'
+        : '';
+      return `${tipTitle(it.name, it.color, 'Item')}<br/>${it.desc}${evoBadge}${choiceBadge}`;
     }
 
     if (p.type === 'run_weapon') {
       const w = WEAPONS[p.weaponId];
       if (!w) return null;
-      return `${tipTitle(`${w.name} (this run)`, w.color, 'Weapon')}<br/>${w.desc}<br/>${tipCost(`Cost: ${p.cost} coins`)}`;
+      return `${tipTitle(`${w.name} (this run)`, w.color, 'Weapon')}<br/>${w.desc}${choiceBadge}<br/>${tipCost(`Cost: ${p.cost} coins`)}`;
     }
 
     if (p.type === 'shop_heart') {
@@ -135,6 +209,11 @@ export class TooltipManager {
     }
 
     return null;
+  }
+
+  /** Alias for formatPickupTooltip matching spec terminology. */
+  public buildPickupHTML(p: Pickup): string | null {
+    return this.formatPickupTooltip(p);
   }
 
   /**
@@ -151,6 +230,8 @@ export class TooltipManager {
       const target = e.target as HTMLElement | null;
       const tipTarget = target?.closest ? target.closest('[data-tip]') as HTMLElement | null : null;
       if (tipTarget && tipTarget.dataset.tip) {
+        this.hoveringMouse = true;
+        this.autoInspectActive = false;
         this.show(tipTarget.dataset.tip, e.clientX, e.clientY);
         return;
       }
@@ -161,16 +242,54 @@ export class TooltipManager {
         if (pickup) {
           const html = this.formatPickupTooltip(pickup);
           if (html) {
+            this.hoveringMouse = true;
+            this.autoInspectActive = false;
             this.show(html, e.clientX, e.clientY);
             return;
           }
         }
       }
 
-      this.hide();
+      this.hoveringMouse = false;
+      if (!this.autoInspectActive) {
+        this.hide();
+      }
     };
 
     document.addEventListener('mousemove', handler);
     return () => document.removeEventListener('mousemove', handler);
+  }
+
+  /**
+   * Auto-inspects the nearest pickup within <75px when combat is cleared and no modal/mouse-hover is active.
+   */
+  public updateProximityAutoInspect(
+    pickup: Pickup | null,
+    clientX: number,
+    clientY: number,
+    modalOpen: boolean
+  ): void {
+    if (modalOpen) {
+      if (this.autoInspectActive) {
+        this.autoInspectActive = false;
+        this.hide();
+      }
+      return;
+    }
+    if (this.hoveringMouse) return;
+
+    if (pickup) {
+      const html = this.formatPickupTooltip(pickup);
+      if (html) {
+        this.autoInspectActive = true;
+        this.show(html, clientX, clientY);
+        return;
+      }
+    }
+
+    if (this.autoInspectActive) {
+      this.autoInspectActive = false;
+      this.hide();
+    }
   }
 }

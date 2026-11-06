@@ -247,3 +247,81 @@ export function applyItemStats(
     player.hp = Math.max(1, Math.min(player.maxHp, player.hp + (sign > 0 ? s.hp : 0)));
   }
 }
+
+// ---------------------------------------------------------------------------
+// LEGENDARY SLOT PASSIVES & SET BONUSES
+// ---------------------------------------------------------------------------
+
+export const LEGENDARY_SLOT_PASSIVES: Record<EquipSlotId, { title: string; desc: string }> = {
+  tires: {
+    title: 'APEX DRIFT TURBO',
+    desc: 'Drift Overcharge charges 35% faster & grants +20 NOS'
+  },
+  engine: {
+    title: 'TWIN-CAM OVERCLOCK',
+    desc: '+18% Crit Damage & +12% Boss Damage'
+  },
+  handlebars: {
+    title: 'GYRO STABILIZER',
+    desc: 'Tightens weapon spread by 30% & +15% Bullet Speed'
+  },
+  exhaust: {
+    title: 'PLASMA AFTERBURNER',
+    desc: 'NOS Boost emits periodic shockwaves & +25% Burn Damage'
+  },
+  frame: {
+    title: 'REACTIVE AEGIS',
+    desc: 'Extends post-hit invulnerability by +0.35s & blocks 1st hazard tick'
+  },
+  tank: {
+    title: 'OVERHEAL CONVERTER',
+    desc: 'Siphon procs at full HP grant +15 NOS & +2 Coins'
+  }
+};
+
+export function getEquippedSetBonus(
+  equipped: Partial<Record<EquipSlotId, EquipmentItem>>
+): {
+  rareCount: number;
+  legendaryCount: number;
+  dmgBonus: number;
+  speedBonus: number;
+  label: string;
+} {
+  let rareCount = 0;
+  let legendaryCount = 0;
+  if (equipped) {
+    for (const item of Object.values(equipped)) {
+      if (!item) continue;
+      if (item.rarity >= 2) rareCount++;
+      if (item.rarity >= 3) legendaryCount++;
+    }
+  }
+  let dmgBonus = 0;
+  let speedBonus = 0;
+  const labels: string[] = [];
+
+  if (rareCount >= 4) {
+    dmgBonus += 0.12;
+    speedBonus += 0.08;
+    labels.push('4pc Rare Tuning (+12% Dmg, +8% Spd)');
+  } else if (rareCount >= 2) {
+    dmgBonus += 0.06;
+    speedBonus += 0.04;
+    labels.push('2pc Rare Tuning (+6% Dmg, +4% Spd)');
+  }
+
+  if (legendaryCount >= 3) {
+    dmgBonus += 0.15;
+    speedBonus += 0.10;
+    labels.push('3pc Valhalla Set (+15% Dmg, +10% Spd)');
+  }
+
+  return {
+    rareCount,
+    legendaryCount,
+    dmgBonus: Math.round(dmgBonus * 1000) / 1000,
+    speedBonus: Math.round(speedBonus * 1000) / 1000,
+    label: labels.join(' • ')
+  };
+}

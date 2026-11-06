@@ -412,4 +412,39 @@ describe('Physics Module: Kinematics, NOS, and Collisions (src/systems/physics.t
       expect(result.transition).toBeNull();
     });
   });
+
+  describe('Active Powerslide & Drift Overcharge', () => {
+    it('lowers effective steerLerp by 0.45x, lowers skid threshold to 0.18 rad, and charges driftCharge at 1.85/s when spacePowerslide is active', () => {
+      player.vx = 200;
+      player.vy = 60; // targetAngle ~ 0.291 rad (< 0.45 default skid threshold, > 0.18 powerslide threshold)
+      player.bikeAngle = 0;
+      player.driftCharge = 0;
+      (player as any).spacePowerslide = true;
+
+      const dt = 0.05;
+      const { skidCreated, diff } = updateBikeKinematics(player, 1, 0.3, false, dt, room);
+
+      expect(Math.abs(diff)).toBeGreaterThan(0.18);
+      expect(Math.abs(diff)).toBeLessThan(SKID_MARK_THRESHOLD);
+      expect(skidCreated).toBe(true);
+      expect(room.skids.length).toBe(1);
+      expect(player.driftCharge).toBeCloseTo(dt * 1.85, 4);
+
+      const expectedSteerLerp = Math.min(1, dt * STEER_LERP_FACTOR) * 0.45;
+      expect(player.bikeAngle).toBeCloseTo(diff * expectedSteerLerp, 4);
+    });
+
+    it('naturally builds driftCharge at 1.45/s around corners (|diff| > 0.28) at high speed even without spacePowerslide', () => {
+      player.vx = 240;
+      player.vy = 85; // speed > 220, angle ~ 0.34 rad (> 0.28, < 0.45)
+      player.bikeAngle = 0;
+      player.driftCharge = 0.2;
+
+      const dt = 0.05;
+      const { diff } = updateBikeKinematics(player, 1, 0.35, false, dt, room);
+      expect(Math.abs(diff)).toBeGreaterThan(0.28);
+      expect(Math.abs(diff)).toBeLessThan(SKID_MARK_THRESHOLD);
+      expect(player.driftCharge).toBeCloseTo(0.2 + dt * 1.45, 4);
+    });
+  });
 });

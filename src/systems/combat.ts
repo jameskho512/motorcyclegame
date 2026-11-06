@@ -173,6 +173,7 @@ export function applyTireIronBonus(
 
 /**
  * Crit Lens (Chrome Lens) roll: 10% crit chance per stack (capped at 80%) dealing 2x damage.
+ * At >= 9 stacks, crits can roll into 3.0x SUPER CRIT!
  * Flame damage cannot crit.
  */
 export function rollCrit(
@@ -184,15 +185,59 @@ export function rollCrit(
     return { isCrit: false, mult: 1 };
   }
   const critChance = Math.min(0.8, 0.1 * chromeLensStacks);
-  const isCrit = rng() < critChance;
+  const r = rng();
+  const isCrit = r < critChance;
+  if (!isCrit) {
+    return { isCrit: false, mult: 1 };
+  }
+  if (chromeLensStacks >= 9) {
+    const superCritChance = Math.min(0.75, (chromeLensStacks - 8) * 0.12);
+    if (r < superCritChance) {
+      return { isCrit: true, mult: 3 };
+    }
+  }
   return {
-    isCrit,
-    mult: isCrit ? 2 : 1
+    isCrit: true,
+    mult: 2
   };
 }
 
 /**
- * Applies damage to an enemy entity and records floating combat text.
+ * Checks whether the player has Cryo-Jacketed Shells (via mods, items, or itemStacks).
+ */
+export function hasCryoRounds(player: PlayerState): boolean {
+  const mods = (player as any).mods;
+  if (Array.isArray(mods) && (mods.includes('cryo_rounds') || mods.includes('Cryo-Jacketed Shells'))) {
+    return true;
+  }
+  if (Array.isArray(player.items) && (player.items.includes('Cryo-Jacketed Shells') || player.items.includes('cryo_rounds'))) {
+    return true;
+  }
+  if ((player.itemStacks?.cryo_rounds ?? 0) > 0) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Checks whether the player has Smart-Link Guidance homing (via items, mods, or itemStacks).
+ */
+export function hasHomingMissiles(player: PlayerState): boolean {
+  const mods = (player as any).mods;
+  if (Array.isArray(mods) && (mods.includes('homing_missiles') || mods.includes('Smart-Link Guidance'))) {
+    return true;
+  }
+  if (Array.isArray(player.items) && (player.items.includes('Smart-Link Guidance') || player.items.includes('homing_missiles'))) {
+    return true;
+  }
+  if ((player.itemStacks?.homing_missiles ?? 0) > 0) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Applies damage to an enemy entity and records floating combat text + 70ms white hit flash.
  */
 export function damageEnemy(
   en: Enemy,
@@ -201,6 +246,7 @@ export function damageEnemy(
   state?: CombatState
 ): void {
   en.hp -= amount;
+  (en as any).hitFlashTimer = 0.07;
   if (en.isDummy && en.hp <= 500) {
     en.hp = en.maxHp;
   }
@@ -423,6 +469,8 @@ export function fireWeapon({
           blastRadius: (evolved ? 112 : 92) * player.blastMult,
           dmg: w.baseDmg * player.dmgMult * player.blastMult * (evolved ? 1.25 : 1)
         };
+        (grenade as any).clusterCount = Math.max(0, (player.multiShot || 1) - 1);
+        (grenade as any).bouncesLeft = player.bounce || 0;
         if (evolved) {
           (grenade as any).cluster = true;
         }
@@ -466,16 +514,19 @@ export function fireWeapon({
         const ang = baseAngle;
         const spd = w.projSpeed * player.projSpeedMult;
         const railColor = evolved ? '#ffbe0b' : w.color;
+        const pierceStacks = Math.max(0, player.pierce || 0);
+        const pierceDmgMult = 1 + 0.15 * pierceStacks;
+        const pierceRadiusBonus = 1.2 * pierceStacks;
         state.bullets.push({
           x: mx,
           y: my,
           vx: Math.cos(ang) * spd,
           vy: Math.sin(ang) * spd,
-          radius: evolved ? 8.5 : 6.5,
-          dmg: w.baseDmg * player.dmgMult * (evolved ? 1.35 : 1),
+          radius: (evolved ? 8.5 : 6.5) + pierceRadiusBonus,
+          dmg: w.baseDmg * player.dmgMult * (evolved ? 1.35 : 1) * pierceDmgMult,
           isRail: true,
           pierceLeft: 99,
-          bounceLeft: player.bounce,
+          bounceLeft: player.bounce || 0,
           hitIds: new Set(),
           color: railColor,
           life: 0.85
@@ -575,13 +626,40 @@ export function triggerExplosion(
     });
   }
 
-  // Damage enemies in range with falloff
+  // Damage enemies in range with falloff (and Void Vortex magnetic implosion if active)
+  const hasVoidVortex = !!(room as any)._voidVortexActive;
   for (const en of room.enemies) {
     const d = Math.hypot(en.x - x, en.y - y);
     const maxDist = radius + en.radius;
+    if (hasVoidVortex && d > 8 && d <= maxDist * 1.35 && !en.isDummy) {
+      en.x += (x - en.x) * 0.35;
+      en.y += (y - en.y) * 0.35;
+    }
     if (d <= maxDist) {
       const falloff = 1 - (d / maxDist) * 0.45;
-      damageEnemy(en, dmg * falloff, true, state);
+      let hitDmg = dmg * falloff;
+      const isChilled = ((en as any).slowTimer || 0) > 0;
+      if (isChilled) {
+        hitDmg *= 1.15;
+      }
+      if (isChilled && !isCryo && ((en as any).thermalShockIcd || 0) <= 0) {
+        (en as any).thermalShockIcd = 0.4;
+        hitDmg *= 1.35;
+        state.particles.push({
+          x: en.x,
+          y: en.y,
+          vx: 0,
+          vy: 0,
+          radius: 6,
+          shockwaveMax: 44,
+          color: '#72efdd',
+          life: 0.22,
+          maxLife: 0.22
+        });
+        addFloatingText(state, en.x, en.y - en.radius - 16, 'THERMAL SHOCK!', '#72efdd');
+      }
+      damageEnemy(en, hitDmg, true, state);
+      (en as any).hitFlashTimer = 0.07;
       if (isCryo) {
         (en as any).slowTimer = 3.5;
         state.damageNumbers.push({
@@ -814,10 +892,50 @@ export function updatePlayerBullets(
   audio?: AudioService,
   rng: () => number = Math.random
 ): void {
+  const homingEnabled = hasHomingMissiles(player);
+  const cryoEnabled = hasCryoRounds(player);
+
   for (let i = bullets.length - 1; i >= 0; i--) {
     const b = bullets[i];
     const prevX = b.x;
     const prevY = b.y;
+
+    // BUG-03: Smart-Link Guidance gentle homing within 190px forward cone (dot > 0.4) at up to 2.2 rad/s
+    if (homingEnabled && !b.isFlame && room.enemies.length > 0) {
+      const spd = Math.hypot(b.vx, b.vy);
+      if (spd > 0) {
+        const bvx = b.vx / spd;
+        const bvy = b.vy / spd;
+        let nearest: Enemy | null = null;
+        let bestDist = 190;
+        for (const en of room.enemies) {
+          if (en.hp <= 0) continue;
+          const dx = en.x - b.x;
+          const dy = en.y - b.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist > 0 && dist <= bestDist) {
+            const dot = (dx / dist) * bvx + (dy / dist) * bvy;
+            if (dot > 0.4) {
+              bestDist = dist;
+              nearest = en;
+            }
+          }
+        }
+        if (nearest) {
+          const curAngle = Math.atan2(b.vy, b.vx);
+          const targetAngle = Math.atan2(nearest.y - b.y, nearest.x - b.x);
+          let diff = targetAngle - curAngle;
+          while (diff > Math.PI) diff -= Math.PI * 2;
+          while (diff < -Math.PI) diff += Math.PI * 2;
+          const maxTurn = 2.2 * dt;
+          const turn = Math.max(-maxTurn, Math.min(maxTurn, diff));
+          const newAngle = curAngle + turn;
+          b.vx = Math.cos(newAngle) * spd;
+          b.vy = Math.sin(newAngle) * spd;
+        }
+      }
+    }
+
     b.x += b.vx * dt;
     b.y += b.vy * dt;
     b.life -= dt;
@@ -906,16 +1024,46 @@ export function updatePlayerBullets(
         let dmg = applyBruteArmor(b.dmg, en.type, !!b.isFlame);
         dmg = applyTireIronBonus(dmg, en.hp, en.maxHp, player.itemStacks?.tire_iron ?? 0);
 
+        const isChilled = ((en as any).slowTimer || 0) > 0;
+        if (isChilled) {
+          dmg *= 1.15;
+        }
+
+        // Thermal Shock Duo Synergy: chilled enemy hit by flame puff deals +35% shatter damage
+        if (b.isFlame && isChilled && ((en as any).thermalShockIcd || 0) <= 0) {
+          (en as any).thermalShockIcd = 0.4;
+          dmg *= 1.35;
+          state.particles.push({
+            x: en.x,
+            y: en.y,
+            vx: 0,
+            vy: 0,
+            radius: 6,
+            shockwaveMax: 44,
+            color: '#72efdd',
+            life: 0.22,
+            maxLife: 0.22
+          });
+          addFloatingText(state, en.x, en.y - en.radius - 16, 'THERMAL SHOCK!', '#72efdd');
+        }
+
         const critRoll = rollCrit(player.itemStacks?.chrome_lens ?? 0, !!b.isFlame, rng);
         dmg *= critRoll.mult;
         if (critRoll.isCrit) {
-          addFloatingText(state, en.x, en.y - en.radius - 12, 'CRIT!', '#4cc9f0');
+          addFloatingText(
+            state,
+            en.x,
+            en.y - en.radius - 12,
+            critRoll.mult >= 3 ? 'SUPER CRIT!' : 'CRIT!',
+            critRoll.mult >= 3 ? '#ffd60a' : '#4cc9f0'
+          );
         }
 
         if (audio) {
           audio.hit(critRoll.isCrit);
         }
         damageEnemy(en, dmg, false, state);
+        (en as any).hitFlashTimer = 0.07;
 
         // Shotgun 11px physics knockback
         if (b.knockback) {
@@ -924,19 +1072,25 @@ export function updatePlayerBullets(
           en.y += (b.vy / bSpd) * b.knockback;
         }
 
-        // Cryo-Jacketed Shells: slow enemy on hit
-        if (Array.isArray((player as any).mods) && (player as any).mods.includes('cryo_rounds')) {
-          (en as any).slowTimer = Math.max((en as any).slowTimer || 0, 2.0);
+        // BUG-02: Cryo-Jacketed Shells slow enemy on hit (2.2s)
+        if (cryoEnabled) {
+          (en as any).slowTimer = Math.max((en as any).slowTimer || 0, 2.2);
         }
 
-        // Tesla Capacitor: 20% chance on hit to chain lightning to a nearby enemy
+        const targetChilledNow = ((en as any).slowTimer || 0) > 0;
+
+        // Tesla Capacitor: 20% chance on hit to chain lightning to a nearby enemy (+ Superconductor synergy)
         const teslaStacks = player.itemStacks?.tesla_capacitor ?? 0;
         if (teslaStacks > 0 && !b.isArc && rng() < 0.20) {
+          const teslaRange = targetChilledNow ? 240 : 150;
           const nearTarget = room.enemies.find(
-            other => other.id !== en.id && other.hp > 0 && Math.hypot(other.x - en.x, other.y - en.y) <= 150
+            other => other.id !== en.id && other.hp > 0 && Math.hypot(other.x - en.x, other.y - en.y) <= teslaRange
           );
           if (nearTarget) {
             damageEnemy(nearTarget, dmg * 0.35 * teslaStacks, false, state);
+            if (targetChilledNow) {
+              (nearTarget as any).slowTimer = Math.max((nearTarget as any).slowTimer || 0, 1.5);
+            }
             state.beamEffects.push({
               x1: en.x,
               y1: en.y,
@@ -955,7 +1109,8 @@ export function updatePlayerBullets(
         if (b.isArc) {
           const isEvolvedArc = !!(b as any).evolvedArc;
           const chainLimit = isEvolvedArc ? 6 : 3;
-          const chainRange = isEvolvedArc ? 195 : 155;
+          const baseRange = isEvolvedArc ? 195 : 155;
+          const chainRange = targetChilledNow ? Math.max(240, baseRange * 1.6) : baseRange;
           const chainDmgMult = isEvolvedArc ? 0.85 : 0.65;
           const beamColor = isEvolvedArc ? '#e0aaff' : '#c77dff';
 
@@ -971,6 +1126,9 @@ export function updatePlayerBullets(
           let fromY = en.y;
           for (const ct of chainTargets) {
             damageEnemy(ct, dmg * chainDmgMult, false, state);
+            if (targetChilledNow) {
+              (ct as any).slowTimer = Math.max((ct as any).slowTimer || 0, 1.5);
+            }
             state.beamEffects.push({
               x1: fromX,
               y1: fromY,
@@ -1021,7 +1179,46 @@ export function updateGrenades(
     if (g.t >= 1) {
       g.x = g.targetX;
       g.y = g.targetY;
+
+      // BUG-04: Bouncing Betty grenades when bouncesLeft > 0
+      if (((g as any).bouncesLeft || 0) > 0) {
+        (g as any).bouncesLeft -= 1;
+        triggerExplosion(g.x, g.y, g.blastRadius, g.dmg * 0.65, room, state, audio, rng);
+        const bounceAngle = Math.atan2(g.targetY - g.startY, g.targetX - g.startX);
+        g.startX = g.x;
+        g.startY = g.y;
+        g.targetX = Math.max(
+          WALL_THICKNESS + 20,
+          Math.min(ARENA_WIDTH - WALL_THICKNESS - 20, g.x + Math.cos(bounceAngle) * 55)
+        );
+        g.targetY = Math.max(
+          WALL_THICKNESS + 20,
+          Math.min(ARENA_HEIGHT - WALL_THICKNESS - 20, g.y + Math.sin(bounceAngle) * 55)
+        );
+        g.t = 0;
+        g.duration = 0.28;
+        continue;
+      }
+
       triggerExplosion(g.targetX, g.targetY, g.blastRadius, g.dmg, room, state, audio, rng);
+
+      // BUG-04: Multi-shot cluster sub-munitions on final detonation
+      const clusterCount = (g as any).clusterCount || 0;
+      if (clusterCount > 0) {
+        for (let c = 0; c < clusterCount; c++) {
+          const clusterAngle = (c * Math.PI * 2) / clusterCount;
+          const clusterDist = 34;
+          const cx = Math.max(
+            WALL_THICKNESS + 15,
+            Math.min(ARENA_WIDTH - WALL_THICKNESS - 15, g.targetX + Math.cos(clusterAngle) * clusterDist)
+          );
+          const cy = Math.max(
+            WALL_THICKNESS + 15,
+            Math.min(ARENA_HEIGHT - WALL_THICKNESS - 15, g.targetY + Math.sin(clusterAngle) * clusterDist)
+          );
+          triggerExplosion(cx, cy, g.blastRadius * 0.58, g.dmg * 0.45, room, state, audio, rng);
+        }
+      }
 
       // Carpet Cluster Mortar: trigger 3 cluster explosions at 120deg offsets
       if ((g as any).cluster) {
@@ -1171,15 +1368,29 @@ export function updateEnemyCollisions(
       const playerMass = player.radius || 17;
       const enemyMass = getEnemyMass(en);
 
-      // NOS Battering Ram: high-speed ram flings lighter/equal enemies back, deals heavy damage, 0 hurt to player
-      if (en.type !== 'boss' && isBoosting && enemyMass <= playerMass * 1.2) {
+      // Universal NOS Battering Ram: high-speed ram flings any non-boss enemy back, deals heavy damage, 0 hurt to player
+      if (en.type !== 'boss' && isBoosting) {
         en.x -= nx * (overlap + 26);
         en.y -= ny * (overlap + 26);
+        if (enemyMass > 20.4) {
+          player.nos = Math.max(0, player.nos - 15);
+          player.invuln = Math.max(player.invuln || 0, 0.25);
+        }
         const spikeStacks = player.itemStacks?.titanium_spikes ?? 0;
+        const adrenStacks = player.itemStacks?.adrenaline_injector ?? 0;
         const ramDmg = 35 * player.dmgMult * (1 + 0.45 * spikeStacks);
         damageEnemy(en, ramDmg, true, state);
+        (en as any).hitFlashTimer = 0.07;
         addFloatingText(state, en.x, en.y - 20, 'NOS RAM!!', '#ffd60a');
         state.screenShake = Math.max(state.screenShake, 6);
+
+        // Juggernaut Overdrive Duo Synergy: titanium_spikes + adrenaline_injector
+        if (en.hp <= 0 && spikeStacks > 0 && adrenStacks > 0) {
+          player.nos = Math.min(player.nosMax || 100, player.nos + 30);
+          player.nosLock = false;
+          triggerExplosion(en.x, en.y, 70, 28 * player.dmgMult, room, state);
+          addFloatingText(state, en.x, en.y - 34, 'JUGGERNAUT OVERDRIVE!', '#ff0055');
+        }
         continue;
       }
 
@@ -1325,8 +1536,16 @@ export function updateCombatPipeline(
     onPlayerHurt?.(dmg);
   };
 
-  // Exhaust Afterburner: leave scorching flame trail when NOS boosting
+  // Exhaust Afterburner (+ Voltaic Wake Duo Synergy with Oil Infusion): leave scorching/plasma trail when NOS boosting
+  (room as any)._voidVortexActive =
+    (player.itemStacks?.magnet_coil ?? 0) > 0 &&
+    (player.items?.includes('High-Explosive Payload') ||
+      player.items?.includes('high_explosive') ||
+      player.items?.includes('Thermobaric Mix') ||
+      player.blastMult > 1.15);
+
   const afterburnerStacks = player.itemStacks?.exhaust_afterburner ?? 0;
+  const hasVoltaicWake = afterburnerStacks > 0 && (player.itemStacks?.oil_infusion ?? 0) > 0;
   if (afterburnerStacks > 0 && (player as any).isBoosting && player.nos > 0 && !player.nosLock && rng() < 0.35) {
     const bikeAngle = (player as any).angle ?? player.aimAngle ?? 0;
     state.bullets.push({
@@ -1334,16 +1553,17 @@ export function updateCombatPipeline(
       y: player.y - Math.sin(bikeAngle) * 18,
       vx: (rng() - 0.5) * 35,
       vy: (rng() - 0.5) * 35,
-      radius: 9,
-      maxRadius: 19,
-      dmg: (8 * afterburnerStacks) * player.dmgMult,
+      radius: hasVoltaicWake ? 12 : 9,
+      maxRadius: hasVoltaicWake ? 26 : 19,
+      dmg: (8 * afterburnerStacks * (hasVoltaicWake ? 1.5 : 1)) * player.dmgMult,
       isFlame: true,
+      isArc: hasVoltaicWake,
       pierceLeft: 99,
       bounceLeft: 0,
       hitIds: new Set(),
-      color: '#ff5400',
-      life: 0.42,
-      maxLife: 0.42
+      color: hasVoltaicWake ? '#ff9e00' : '#ff5400',
+      life: hasVoltaicWake ? 0.65 : 0.42,
+      maxLife: hasVoltaicWake ? 0.65 : 0.42
     });
   }
 
@@ -1362,12 +1582,18 @@ export function updateCombatPipeline(
     }
   }
 
-  // Slow timer & enemy displacement damping
+  // Slow timer, hit-flash, thermal shock ICD & enemy displacement damping
   for (const en of room.enemies) {
     if ((en as any).slowTimer && (en as any).slowTimer > 0) {
       (en as any).slowTimer = Math.max(0, (en as any).slowTimer - dt);
       en.x -= en.vx * dt * 0.45;
       en.y -= en.vy * dt * 0.45;
+    }
+    if ((en as any).hitFlashTimer && (en as any).hitFlashTimer > 0) {
+      (en as any).hitFlashTimer = Math.max(0, (en as any).hitFlashTimer - dt);
+    }
+    if ((en as any).thermalShockIcd && (en as any).thermalShockIcd > 0) {
+      (en as any).thermalShockIcd = Math.max(0, (en as any).thermalShockIcd - dt);
     }
   }
 

@@ -114,7 +114,11 @@ export type RunModId =
   | 'overcharge_dynamo'
   | 'executioner_optics'
   | 'berserker_chassis'
-  | 'nanite_repair';
+  | 'nanite_repair'
+  | 'glass_cannon'
+  | 'heavy_ordnance'
+  | 'point_blank'
+  | 'overclock_core';
 
 /**
  * Minimal interface representing player stats that mods can mutate.
@@ -344,6 +348,69 @@ export const RUN_MOD_POOL: readonly RunModDef[] = [
   }
 ] as const;
 
+/**
+ * 4 High-Risk / High-Reward Build-Defining Mods (Kiss/Curse & Overclock Pool)
+ */
+export const KISS_CURSE_MOD_POOL: readonly RunModDef[] = [
+  {
+    id: 'glass_cannon',
+    name: 'Glass Cannon Bore',
+    desc: '+65% Weapon Damage, -2 Max Hull HP',
+    description: '+65% Weapon Damage, -2 Max Hull HP',
+    cost: 22,
+    statDeltas: { dmgMult: 0.65, maxHp: -2 },
+    apply: (p: ModPlayerTarget) => {
+      p.dmgMult += 0.65;
+      p.maxHp = Math.max(2, p.maxHp - 2);
+      p.hp = Math.min(p.hp, p.maxHp);
+    }
+  },
+  {
+    id: 'heavy_ordnance',
+    name: 'Heavy Ordnance Chamber',
+    desc: '+85% Weapon Damage & +40% Blast, -25% Fire Rate',
+    description: '+85% Weapon Damage & +40% Blast, -25% Fire Rate',
+    cost: 22,
+    statDeltas: { dmgMult: 0.85, blastMult: 0.40, fireRateMult: -0.25 },
+    apply: (p: ModPlayerTarget) => {
+      p.dmgMult += 0.85;
+      p.blastMult += 0.40;
+      p.fireRateMult = Math.max(0.5, p.fireRateMult - 0.25);
+    }
+  },
+  {
+    id: 'point_blank',
+    name: 'Point-Blank Choke',
+    desc: '+1 Projectile & +40% Damage, -20% Bullet Speed',
+    description: '+1 Projectile & +40% Damage, -20% Bullet Speed',
+    cost: 24,
+    statDeltas: { multiShot: 1, dmgMult: 0.40, projSpeedMult: -0.20 },
+    apply: (p: ModPlayerTarget) => {
+      p.multiShot += 1;
+      p.dmgMult += 0.40;
+      p.projSpeedMult = Math.max(0.55, p.projSpeedMult - 0.20);
+    }
+  },
+  {
+    id: 'overclock_core',
+    name: 'Overclock Synergy Core',
+    desc: '+25% Damage, +20% Fire Rate & +1 Pierce',
+    description: '+25% Damage, +20% Fire Rate & +1 Pierce',
+    cost: 28,
+    statDeltas: { dmgMult: 0.25, fireRateMult: 0.20, pierce: 1 },
+    apply: (p: ModPlayerTarget) => {
+      p.dmgMult += 0.25;
+      p.fireRateMult += 0.20;
+      p.pierce += 1;
+    }
+  }
+] as const;
+
+export const ALL_RUN_MOD_POOL: readonly RunModDef[] = [
+  ...RUN_MOD_POOL,
+  ...KISS_CURSE_MOD_POOL
+];
+
 // ---------------------------------------------------------------------------
 // RISK OF RAIN 2-STYLE STACKING DROP ITEMS
 // ---------------------------------------------------------------------------
@@ -510,3 +577,149 @@ export const DROP_ITEM_IDS: readonly DropItemId[] = [
   'adrenaline_injector',
   'titanium_spikes'
 ] as const;
+
+// ---------------------------------------------------------------------------
+// DUO ITEM SYNERGIES (CROSS-ITEM & ELEMENTAL COMBINATIONS)
+// ---------------------------------------------------------------------------
+
+export type DuoSynergyId =
+  | 'thermal_shock'
+  | 'superconductor'
+  | 'void_vortex'
+  | 'juggernaut_overdrive'
+  | 'voltaic_wake';
+
+export interface DuoSynergyPlayerSnapshot {
+  weapon?: string;
+  items?: string[];
+  itemStacks?: Record<string, number>;
+}
+
+export interface DuoSynergyDef {
+  id: DuoSynergyId;
+  name: string;
+  color: string;
+  desc: string;
+  components: readonly string[];
+  isActive: (p: DuoSynergyPlayerSnapshot) => boolean;
+}
+
+function hasItemOrMod(p: DuoSynergyPlayerSnapshot, key: string): boolean {
+  if (p.weapon === key) return true;
+  if (p.items?.includes(key)) return true;
+  if (p.itemStacks && (p.itemStacks[key] ?? 0) > 0) return true;
+  return false;
+}
+
+export const DUO_SYNERGIES: readonly DuoSynergyDef[] = [
+  {
+    id: 'thermal_shock',
+    name: 'THERMAL SHOCK',
+    color: '#00f5d4',
+    desc: 'Chilled enemies hit by Fire/Blast trigger a Cyan-Gold Shatter Nova',
+    components: ['Cryo-Jacketed Shells', 'cryo_rounds', 'flamethrower', 'Thermobaric Mix', 'high_explosive', 'gasoline', 'Spilled Gasoline', 'exhaust_afterburner', 'Exhaust Afterburner'],
+    isActive: (p) => {
+      const hasCryo = hasItemOrMod(p, 'Cryo-Jacketed Shells') || hasItemOrMod(p, 'cryo_rounds');
+      const hasFire =
+        p.weapon === 'flamethrower' ||
+        hasItemOrMod(p, 'Thermobaric Mix') ||
+        hasItemOrMod(p, 'high_explosive') ||
+        hasItemOrMod(p, 'gasoline') ||
+        hasItemOrMod(p, 'Spilled Gasoline') ||
+        hasItemOrMod(p, 'exhaust_afterburner') ||
+        hasItemOrMod(p, 'Exhaust Afterburner');
+      return hasCryo && hasFire;
+    }
+  },
+  {
+    id: 'superconductor',
+    name: 'SUPERCONDUCTOR',
+    color: '#c77dff',
+    desc: 'Chilled enemies double Lightning chain range (220px) & +40% Arc Dmg',
+    components: ['Cryo-Jacketed Shells', 'cryo_rounds', 'tesla_capacitor', 'Tesla Capacitor', 'arc_coil'],
+    isActive: (p) => {
+      const hasCryo = hasItemOrMod(p, 'Cryo-Jacketed Shells') || hasItemOrMod(p, 'cryo_rounds');
+      const hasVolt =
+        p.weapon === 'arc_coil' ||
+        hasItemOrMod(p, 'tesla_capacitor') ||
+        hasItemOrMod(p, 'Tesla Capacitor');
+      return hasCryo && hasVolt;
+    }
+  },
+  {
+    id: 'void_vortex',
+    name: 'VOID VORTEX',
+    color: '#4cc9f0',
+    desc: 'Explosions pull nearby enemies inward with a magnetic implosion',
+    components: ['magnet_coil', 'Magnet Coil', 'grenade_launcher', 'Thermobaric Mix', 'high_explosive', 'gasoline', 'Spilled Gasoline'],
+    isActive: (p) => {
+      const hasMagnet = hasItemOrMod(p, 'magnet_coil') || hasItemOrMod(p, 'Magnet Coil');
+      const hasBlast =
+        p.weapon === 'grenade_launcher' ||
+        hasItemOrMod(p, 'Thermobaric Mix') ||
+        hasItemOrMod(p, 'high_explosive') ||
+        hasItemOrMod(p, 'gasoline') ||
+        hasItemOrMod(p, 'Spilled Gasoline');
+      return hasMagnet && hasBlast;
+    }
+  },
+  {
+    id: 'juggernaut_overdrive',
+    name: 'JUGGERNAUT OVERDRIVE',
+    color: '#ffd60a',
+    desc: 'NOS Ram kills refund +35 NOS & unleash a 75px Golden Shockwave',
+    components: ['titanium_spikes', 'Titanium Ram Spikes', 'adrenaline_injector', 'Adrenaline Injector', 'Nitrous Injector', 'turbo_charger'],
+    isActive: (p) => {
+      const hasSpikes = hasItemOrMod(p, 'titanium_spikes') || hasItemOrMod(p, 'Titanium Ram Spikes');
+      const hasNos =
+        hasItemOrMod(p, 'adrenaline_injector') ||
+        hasItemOrMod(p, 'Adrenaline Injector') ||
+        hasItemOrMod(p, 'Nitrous Injector') ||
+        hasItemOrMod(p, 'turbo_charger');
+      return hasSpikes && hasNos;
+    }
+  },
+  {
+    id: 'voltaic_wake',
+    name: 'VOLTAIC WAKE',
+    color: '#00bbf9',
+    desc: 'NOS Boost leaves Blue-Gold Plasma Pools that ignite & shock enemies',
+    components: ['exhaust_afterburner', 'Exhaust Afterburner', 'gasoline', 'Spilled Gasoline', 'tesla_capacitor', 'Tesla Capacitor'],
+    isActive: (p) => {
+      const hasAfterburner = hasItemOrMod(p, 'exhaust_afterburner') || hasItemOrMod(p, 'Exhaust Afterburner');
+      const hasSecondary =
+        hasItemOrMod(p, 'gasoline') ||
+        hasItemOrMod(p, 'Spilled Gasoline') ||
+        hasItemOrMod(p, 'tesla_capacitor') ||
+        hasItemOrMod(p, 'Tesla Capacitor');
+      return hasAfterburner && hasSecondary;
+    }
+  }
+] as const;
+
+export function getActiveDuoSynergies(
+  player: DuoSynergyPlayerSnapshot
+): DuoSynergyDef[] {
+  if (!player) return [];
+  return DUO_SYNERGIES.filter(syn => syn.isActive(player));
+}
+
+export function getPotentialDuoSynergiesForItem(
+  itemIdOrName: string,
+  player: DuoSynergyPlayerSnapshot
+): DuoSynergyDef[] {
+  if (!itemIdOrName || !player) return [];
+  const simulatedItems = [...(player.items ?? []), itemIdOrName];
+  const simulatedStacks: Record<string, number> = {
+    ...(player.itemStacks ?? {}),
+    [itemIdOrName]: ((player.itemStacks ?? {})[itemIdOrName] ?? 0) + 1
+  };
+  const simulated: DuoSynergyPlayerSnapshot = {
+    weapon: player.weapon,
+    items: simulatedItems,
+    itemStacks: simulatedStacks
+  };
+  return DUO_SYNERGIES.filter(
+    syn => syn.components.includes(itemIdOrName) && syn.isActive(simulated)
+  );
+}

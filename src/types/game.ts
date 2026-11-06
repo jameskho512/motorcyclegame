@@ -111,6 +111,8 @@ export interface PlayerBullet {
   isRail?: boolean;
   isArc?: boolean;
   knockback?: number; // Shotgun knockback (11px)
+  procMask?: number;
+  isHoming?: boolean;
 }
 
 export interface EnemyBullet {
@@ -121,6 +123,7 @@ export interface EnemyBullet {
   radius: number;
   color: string;
   life?: number;
+  grazed?: boolean;
 }
 
 export interface Grenade {
@@ -135,6 +138,8 @@ export interface Grenade {
   radius: number;
   blastRadius: number;
   dmg: number;
+  clusterCount?: number;
+  bouncesLeft?: number;
 }
 
 export interface EnemyBomb {
@@ -247,6 +252,13 @@ export interface PlayerState {
   // Bike livery & meta modifiers
   livery?: BikeLiveryId;
   heatLevel?: number;
+  styleScore?: number;
+  styleRank?: 'D' | 'C' | 'B' | 'A' | 'S' | 'SS' | 'SSS';
+  styleTimer?: number;
+  siphonCooldown?: number;
+  spacePowerslide?: boolean;
+  SpacePowerslide?: boolean;
+  scannerBuff?: boolean;
 }
 
 export type RegularEnemyType =
@@ -282,6 +294,9 @@ export interface BaseEnemy {
   isElite: boolean;
   isDummy?: boolean;
   color: string;
+  hitFlashTimer?: number;
+  telegraphTimer?: number;
+  aimLockAngle?: number;
 }
 
 export interface RegularEnemy extends BaseEnemy {
@@ -311,6 +326,8 @@ export interface Boss extends BaseEnemy {
   dashVx?: number;
   dashVy?: number;
   phase?: number;
+  enraged?: boolean;
+  enrageAnnounced?: boolean;
   isElite: false;
 }
 
@@ -454,7 +471,11 @@ export type ModId =
   | 'overcharge_dynamo'
   | 'executioner_optics'
   | 'berserker_chassis'
-  | 'nanite_repair';
+  | 'nanite_repair'
+  | 'glass_cannon'
+  | 'heavy_ordnance'
+  | 'point_blank'
+  | 'overclock_core';
 
 export interface ModDef {
   id: ModId | string;
@@ -511,6 +532,7 @@ export interface ModPedestalPickup extends BasePickup {
   type: 'mod_pedestal';
   mod: ModDef;
   cost: number;
+  choiceGroup?: string;
 }
 
 export interface RunWeaponPickup extends BasePickup {

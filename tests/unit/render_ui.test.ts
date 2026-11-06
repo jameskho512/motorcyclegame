@@ -182,6 +182,31 @@ describe('Render & UI Subsystems', () => {
       expect(tooltip.formatPickupTooltip(shopHeart)).toContain('Hull Repair');
       expect(tooltip.formatPickupTooltip(shopHeart)).toContain('Cost: 12 coins');
     });
+
+    it('renders choice pedestal badge, kiss-curse statDeltas, and overclock evolution badge in tooltips', () => {
+      const pickup: any = {
+        x: 100,
+        y: 100,
+        radius: 20,
+        type: 'mod_pedestal',
+        choiceGroup: 'treasure_choice_1',
+        mod: {
+          id: 'bounce_rounds',
+          name: 'Rubberized Casings',
+          desc: '+1 Wall Ricochet',
+          cost: 0,
+          statDeltas: { bounce: 1, dmgMult: -0.1 },
+          apply: vi.fn()
+        },
+        cost: 0
+      };
+
+      const html = tooltip.formatPickupTooltip(pickup);
+      expect(html).toContain('⚖️ CHOICE PEDESTAL — OTHER DESPAWNS');
+      expect(html).toContain('⚡ OVERCLOCK EVOLUTION MOD');
+      expect(html).toContain('#06d6a0');
+      expect(html).toContain('#ff4d6d');
+    });
   });
 
   describe('Shop Modal Controller', () => {
@@ -238,6 +263,84 @@ describe('Render & UI Subsystems', () => {
 
       fm.update(0.05);
       expect(fm.isImpactActive()).toBe(false);
+    });
+
+    it('renders 5-tier VFX z-order (enemyBullets on top), enemy hit-flash/telegraph, choice tether, and bike drift/lock arc', () => {
+      const stage = new StageManager();
+      const hitSparkSpy = vi.spyOn(stage.vfx, 'addHitSpark');
+      const g = (stage as any).vfxGraphics;
+      const circleSpy = vi.spyOn(g, 'circle');
+      const strokeSpy = vi.spyOn(g, 'stroke');
+
+      const dummyPlayer: any = {
+        x: 360,
+        y: 360,
+        vx: 0,
+        vy: 0,
+        radius: 17,
+        bikeAngle: 0,
+        aimAngle: 0,
+        weapon: 'pistol',
+        nos: 0,
+        nosMax: 100,
+        nosLock: true,
+        driftCharge: 0.96,
+        driftBoostTimer: 0
+      };
+      const dummyRoom: any = {
+        x: 0,
+        y: 0,
+        type: 'combat',
+        cleared: false,
+        doors: {},
+        obstacles: [],
+        hazards: [],
+        skids: [],
+        pickups: [
+          { x: 260, y: 360, radius: 18, type: 'mod_pedestal', choiceGroup: 'cg1', cost: 0, mod: { id: 'm1', name: 'M1', desc: '', cost: 0, apply: vi.fn() } },
+          { x: 460, y: 360, radius: 18, type: 'mod_pedestal', choiceGroup: 'cg1', cost: 0, mod: { id: 'm2', name: 'M2', desc: '', cost: 0, apply: vi.fn() } }
+        ],
+        enemies: [
+          {
+            x: 200,
+            y: 200,
+            vx: 0,
+            vy: 0,
+            radius: 28,
+            type: 'boss',
+            hp: 40,
+            maxHp: 100,
+            phase: 2,
+            hitFlashTimer: 0.08,
+            telegraphTimer: 0.25
+          }
+        ]
+      };
+
+      (stage as any).renderPickups(g, dummyRoom.pickups, 1000);
+      (stage as any).renderEnemies(g, dummyRoom.enemies, 1000);
+      expect(hitSparkSpy).toHaveBeenCalledWith(200, 200, 0x00f5d4, 4);
+
+      (stage as any).renderPlayer(g, dummyPlayer, 1000);
+      (stage as any).renderVFX(
+        g,
+        dummyPlayer,
+        dummyRoom,
+        [{ x: 100, y: 100, vx: 1, vy: 0, radius: 4, dmg: 1, life: 1, maxLife: 1, color: '#ffd166', pierce: 0, bounce: 0 }],
+        [{ x: 300, y: 300, vx: -1, vy: 0, radius: 5, dmg: 1, color: '#ef233c' }],
+        [],
+        [],
+        [{ x: 150, y: 150, vx: 0, vy: 0, radius: 3, life: 0.5, maxLife: 1, color: '#ffffff' }],
+        [],
+        1000
+      );
+
+      // Verify enemy bullet (300, 300) was drawn after particle (150, 150)
+      const calls = circleSpy.mock.calls.map(c => `${c[0]},${c[1]}`);
+      const partIdx = calls.lastIndexOf('150,150');
+      const ebIdx = calls.lastIndexOf('300,300');
+      expect(ebIdx).toBeGreaterThan(partIdx);
+      expect(strokeSpy).toHaveBeenCalled();
     });
   });
 
@@ -459,6 +562,33 @@ describe('Render & UI Subsystems', () => {
       const backBtn = document.getElementById('btn-back');
       backBtn?.click();
       expect(garage.isOpen()).toBe(false);
+    });
+
+    it('renders live stat-diff upgrade/downgrade badges on stash items and enforces 2-step safe reset', () => {
+      metaSave.stash = [
+        { slot: 'engine', rarity: 2, name: 'Racing Engine', stats: { dmg: 0.2 } },
+        { slot: 'tires', rarity: 0, name: 'Worn Tires', stats: { speed: 0.05 } }
+      ];
+      const garage = new GarageController(callbacks);
+      garage.open(false, 1, metaSave, player);
+
+      const stashItems = document.querySelectorAll('#stash-list .stash-item');
+      expect(stashItems.length).toBe(2);
+      // Engine slot is empty -> ▲ UPGRADE
+      expect(stashItems[0].innerHTML).toContain('gx-stash-diff is-up');
+      expect(stashItems[0].innerHTML).toContain('▲ UPGRADE');
+      // Tires slot has Legendary Apex Tires (0.25) vs Worn Tires (0.05) -> ▼ downgrade
+      expect(stashItems[1].innerHTML).toContain('gx-stash-diff is-down');
+      expect(stashItems[1].innerHTML).toContain('▼');
+
+      // 2-step reset confirmation
+      const resetBtn = document.getElementById('btn-reset-save') as HTMLButtonElement;
+      resetBtn.click();
+      expect(callbacks.onResetSave).not.toHaveBeenCalled();
+      expect(resetBtn.textContent).toBe('CONFIRM FULL RESET?');
+
+      resetBtn.click();
+      expect(callbacks.onResetSave).toHaveBeenCalledTimes(1);
     });
   });
 });

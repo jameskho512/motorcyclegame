@@ -406,8 +406,8 @@ canvas#canvas {
 
 /* Left-Wing Stats Grid (Bold 2-Column Telemetry Rack) */
 .hud-stats {
-  transform: skewX(-12deg);
-  transform-origin: left top;
+  transform: skewX(-6deg);
+  transform-origin: center;
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 8px;
@@ -592,18 +592,21 @@ canvas#fuel-gauge {
 .hud-tr {
   top: 18px;
   right: 22px;
+  width: clamp(260px, calc((100vw - min(calc(100vh - 136px), 100vw)) / 2 - 48px), 348px);
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 12px;
+  align-items: stretch;
+  gap: 10px;
 }
 
 /* Trapezoidal / Tilted Comic Minimap Frame (Matches Concept Art) */
 .hud-map {
-  transform: rotate(-2deg) skewX(-8deg);
-  transform-origin: right top;
+  transform: skewX(-6deg);
+  transform-origin: center;
+  width: 100%;
+  box-sizing: border-box;
   background: #0a0b10;
-  border: 4.5px solid #ffffff;
+  border: 4px solid #ffffff;
   outline: 3px solid #0a0b10;
   box-shadow:
     6px 6px 0 #0a0b10,
@@ -632,8 +635,8 @@ canvas#fuel-gauge {
 
 #minimap-canvas {
   display: block;
-  width: 340px;
-  height: 215px;
+  width: 100%;
+  height: 205px;
   background: #08070f;
 }
 
@@ -731,6 +734,8 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
   letter-spacing: 1.4px;
   padding: 2px 7px;
   text-transform: uppercase;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .hud-toast-title {
@@ -746,9 +751,11 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
 
 /* Slanted Currency Counters (Matches Concept Art Crimson COINS & Cyan SCRAP Plates) */
 .hud-counter {
-  transform: rotate(-1.5deg) skewX(-12deg);
-  transform-origin: right center;
-  height: 44px;
+  transform: skewX(-6deg);
+  transform-origin: center;
+  width: 100%;
+  box-sizing: border-box;
+  height: 42px;
   display: inline-flex;
   align-items: center;
   justify-content: space-between;
@@ -757,7 +764,7 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
   font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
   font-size: 16px;
   font-style: italic;
-  min-width: clamp(210px, 15vw, 270px);
+  min-width: 0;
   position: relative;
   border-width: 3px;
 }
@@ -821,11 +828,14 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
 .hud-buttons {
   display: flex;
   gap: 8px;
-  margin-top: 4px;
+  margin-top: 2px;
+  width: 100%;
 }
 
 .hud-btn {
-  transform: skewX(-12deg);
+  flex: 1;
+  text-align: center;
+  transform: skewX(-6deg);
   background: #16141c;
   border: 2.5px solid #55516a;
   color: #eeeeee;
@@ -833,7 +843,7 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
   font-size: 13.5px;
   font-style: italic;
   letter-spacing: 0.5px;
-  padding: 7px 14px;
+  padding: 7px 10px;
   cursor: pointer;
   box-shadow: 2px 2px 0 #0a0b10;
   transition: all 0.12s var(--ease-snap);
@@ -957,7 +967,8 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
 }
 
 .wcard-icon {
-  margin: auto 0 2px 0;
+  margin: 20px auto 4px auto;
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -966,7 +977,8 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
 
 .wcard-icon svg {
   width: 78px;
-  height: 48px;
+  height: 50px;
+  display: block;
   filter: drop-shadow(2px 3px 0 rgba(10, 11, 16, 0.92));
 }
 
@@ -1772,9 +1784,10 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   font-size: 11px;
   font-weight: 800;
-  padding: 3px 7px;
+  padding: 4px 8px;
   background: rgba(255, 255, 255, 0.05);
   border-left: 3px solid var(--syn-color, #ffd60a);
   color: #eef1f8;
@@ -1785,11 +1798,21 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
   font-weight: 900;
   color: var(--syn-color, #ffd60a);
   letter-spacing: 0.5px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  text-align: right;
 }
 
 .hud-wing-right {
-  min-width: 225px;
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
   gap: 6px;
+}
+
+.controls-legend-card {
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .wing-telemetry-row {
@@ -1825,5 +1848,28 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
 @media (max-width: 1180px), (max-height: 760px) {
   .hud-wing-panel {
     display: none;
+  }
+}
+
+/* Low-Hull Peripheral Crimson Pulse Vignette (<= 34% HP) */
+#game-wrapper.is-low-hull::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+  box-shadow:
+    inset 0 0 42px rgba(255, 23, 68, 0.72),
+    inset 0 0 90px rgba(229, 32, 58, 0.38);
+  border: 2px solid rgba(255, 42, 75, 0.75);
+  animation: lowHullPulse 0.85s ease-in-out infinite alternate;
+}
+
+@keyframes lowHullPulse {
+  0% {
+    opacity: 0.45;
+  }
+  100% {
+    opacity: 0.95;
   }
 }
