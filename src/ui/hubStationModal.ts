@@ -94,6 +94,82 @@ export function getForgeStationAdvisor(
   };
 }
 
+export interface WarRoomStationAdvisor {
+  bountyClaimed: boolean;
+  currentHeat: number;
+  scrapBonusPct: number;
+  recommendedMaxHeat: number;
+  summaryLine: string;
+}
+
+/**
+ * Computes sanctuary outlaw war room heat risk/reward and pre-run cache readiness advisor intelligence.
+ */
+export function getWarRoomStationAdvisor(
+  metaSave: any,
+  bountyClaimed: boolean = false
+): WarRoomStationAdvisor {
+  const currentHeat =
+    typeof metaSave?.heatLevel === 'number' && Number.isFinite(metaSave.heatLevel)
+      ? Math.max(0, Math.min(3, Math.floor(metaSave.heatLevel)))
+      : 0;
+
+  const scrapBonusPct = currentHeat * 25;
+
+  let equippedCount = 0;
+  if (metaSave && metaSave.equipped && typeof metaSave.equipped === 'object') {
+    equippedCount = Object.values(metaSave.equipped).filter(
+      (item) => item !== null && item !== undefined && item !== false
+    ).length;
+  }
+  equippedCount = Math.max(0, Math.min(6, equippedCount));
+
+  let totalRanks = 0;
+  if (metaSave && metaSave.ranks && typeof metaSave.ranks === 'object') {
+    for (const val of Object.values(metaSave.ranks)) {
+      if (typeof val === 'number' && Number.isFinite(val)) {
+        totalRanks += Math.max(0, Math.floor(val));
+      }
+    }
+  }
+  totalRanks = Math.max(0, Math.min(25, totalRanks));
+
+  const readinessScore = equippedCount * 2 + totalRanks;
+
+  let recommendedMaxHeat = 0;
+  if (readinessScore >= 18) {
+    recommendedMaxHeat = 3;
+  } else if (readinessScore >= 10) {
+    recommendedMaxHeat = 2;
+  } else if (readinessScore >= 4) {
+    recommendedMaxHeat = 1;
+  } else {
+    recommendedMaxHeat = 0;
+  }
+
+  const isBountyClaimed = Boolean(bountyClaimed);
+  const cachePrefix = isBountyClaimed
+    ? 'CACHE: ✓ CLAIMED (+15 🪙 / +1 ❤️)'
+    : 'CACHE: ⚡ FREE DROP READY (+15 🪙 / +1 ❤️)';
+
+  const summaryLine =
+    cachePrefix +
+    ' // HEAT ' +
+    currentHeat +
+    ' (+' +
+    scrapBonusPct +
+    '% SCRAP) // REC HEAT: <= ' +
+    recommendedMaxHeat;
+
+  return {
+    bountyClaimed: isBountyClaimed,
+    currentHeat,
+    scrapBonusPct,
+    recommendedMaxHeat,
+    summaryLine
+  };
+}
+
 export interface HubStationPromptInfo {
   title: string;
   summary: string;
@@ -225,6 +301,8 @@ export class HubStationModalController {
   public getForgeStationAdvisor = getForgeStationAdvisor;
   public static getScannerStationAdvisor = getScannerStationAdvisor;
   public getScannerStationAdvisor = getScannerStationAdvisor;
+  public static getWarRoomStationAdvisor = getWarRoomStationAdvisor;
+  public getWarRoomStationAdvisor = getWarRoomStationAdvisor;
 
   constructor() {
     if (typeof document !== 'undefined') {
@@ -389,6 +467,13 @@ export class HubStationModalController {
         this.overlay.setAttribute('data-scanner-active', scanAdv.scannerActive ? 'true' : 'false');
         this.overlay.setAttribute('data-scanner-advisor', scanAdv.summaryLine);
       }
+
+      if (options.npcId === 'bounty') {
+        const warAdv = getWarRoomStationAdvisor(options.metaSave, !!options.bountyClaimed);
+        this.overlay.setAttribute('data-war-room-heat', String(warAdv.currentHeat));
+        this.overlay.setAttribute('data-war-room-rec-heat', String(warAdv.recommendedMaxHeat));
+        this.overlay.setAttribute('data-war-room-advisor', warAdv.summaryLine);
+      }
     }
 
     this.renderHeaderAndPurpose(options.npcId);
@@ -420,6 +505,13 @@ export class HubStationModalController {
         const scanAdv = getScannerStationAdvisor(this.currentOptions.player, 1);
         this.overlay.setAttribute('data-scanner-active', scanAdv.scannerActive ? 'true' : 'false');
         this.overlay.setAttribute('data-scanner-advisor', scanAdv.summaryLine);
+      }
+
+      if (this.currentOptions.npcId === 'bounty') {
+        const warAdv = getWarRoomStationAdvisor(this.currentOptions.metaSave, !!this.currentOptions.bountyClaimed);
+        this.overlay.setAttribute('data-war-room-heat', String(warAdv.currentHeat));
+        this.overlay.setAttribute('data-war-room-rec-heat', String(warAdv.recommendedMaxHeat));
+        this.overlay.setAttribute('data-war-room-advisor', warAdv.summaryLine);
       }
     }
     this.renderHeaderAndPurpose(this.currentOptions.npcId);
@@ -467,6 +559,22 @@ export class HubStationModalController {
     const opts = options || this.currentOptions;
     if (opts) {
       this.renderArmoryBody(opts.metaSave, opts.player);
+    }
+  }
+
+  /**
+   * Renders the outlaw war room & bounty station view.
+   */
+  public renderBounty(options?: HubStationOpenOptions): void {
+    const opts = options || this.currentOptions;
+    if (opts) {
+      if (options?.metaSave && this.currentOptions) {
+        this.currentOptions.metaSave = options.metaSave;
+      }
+      if (options?.bountyClaimed !== undefined && this.currentOptions) {
+        this.currentOptions.bountyClaimed = options.bountyClaimed;
+      }
+      this.renderBountyBody(opts.metaSave, opts.bountyClaimed);
     }
   }
 
@@ -590,6 +698,15 @@ export class HubStationModalController {
   private renderBody(): void {
     if (!this.bodyEl || !this.currentOptions) return;
     const { npcId, metaSave, player, scannerClaimed, bountyClaimed } = this.currentOptions;
+
+    if (npcId === 'bounty') {
+      const advisor = getWarRoomStationAdvisor(metaSave, bountyClaimed);
+      if (this.overlayEl) {
+        this.overlayEl.setAttribute('data-war-room-heat', String(advisor.currentHeat));
+        this.overlayEl.setAttribute('data-war-room-rec-heat', String(advisor.recommendedMaxHeat));
+        this.overlayEl.setAttribute('data-war-room-advisor', advisor.summaryLine);
+      }
+    }
 
     switch (npcId) {
       case 'blacksmith':
@@ -787,20 +904,32 @@ export class HubStationModalController {
 
   private renderBountyBody(metaSave: any, bountyClaimed: boolean): void {
     if (!this.bodyEl || !this.currentOptions) return;
-    const currentHeat = metaSave?.heatLevel || 0;
+    const effectiveMetaSave = metaSave ?? this.currentOptions?.metaSave;
+    const effectiveBountyClaimed = bountyClaimed !== undefined ? !!bountyClaimed : !!this.currentOptions?.bountyClaimed;
+    const advisor = getWarRoomStationAdvisor(effectiveMetaSave, effectiveBountyClaimed);
+    if (this.overlayEl) {
+      this.overlayEl.setAttribute('data-war-room-heat', String(advisor.currentHeat));
+      this.overlayEl.setAttribute('data-war-room-rec-heat', String(advisor.recommendedMaxHeat));
+      this.overlayEl.setAttribute('data-war-room-advisor', advisor.summaryLine);
+    }
+    const currentHeat = advisor.currentHeat;
 
     this.bodyEl.innerHTML = `
+      <div class="hub-war-room-advisor-banner" data-heat="${advisor.currentHeat}" data-rec-heat="${advisor.recommendedMaxHeat}">
+        <span class="hub-war-room-advisor-text">${advisor.summaryLine.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>
+      </div>
+
       <!-- 1. War Room Supply Cache Box -->
-      <div class="hub-bounty-box hub-supply-box ${bountyClaimed ? 'is-claimed' : ''}">
+      <div class="hub-bounty-box hub-supply-box ${effectiveBountyClaimed ? 'is-claimed' : ''}">
         <div class="hub-box-head">
           <strong>1. WAR ROOM SUPPLY CACHE</strong>
-          <span class="hub-status-tag ${bountyClaimed ? 'claimed' : 'free'}">
-            ${bountyClaimed ? '✓ CLAIMED' : 'FREE DROP'}
+          <span class="hub-status-tag ${effectiveBountyClaimed ? 'claimed' : 'free'}">
+            ${effectiveBountyClaimed ? '✓ CLAIMED' : 'FREE DROP'}
           </span>
         </div>
         <p class="hub-box-copy">Free pre-run supply drop: +15 Coins 🪙 (for Shop rooms) and +1 Max Hull Integrity ❤️.</p>
-        <button type="button" class="hub-action-btn ${bountyClaimed ? 'is-claimed' : ''}" id="btn-hub-claim-cache" ${bountyClaimed ? 'disabled' : ''}>
-          ${bountyClaimed ? '✓ SUPPLY CACHE CLAIMED (+15 🪙 & +1 ❤️)' : '🎁 CLAIM FREE SUPPLY CACHE (+15 🪙 & +1 ❤️)'}
+        <button type="button" class="hub-action-btn ${effectiveBountyClaimed ? 'is-claimed' : ''}" id="btn-hub-claim-cache" ${effectiveBountyClaimed ? 'disabled' : ''}>
+          ${effectiveBountyClaimed ? '✓ SUPPLY CACHE CLAIMED (+15 🪙 & +1 ❤️)' : '🎁 CLAIM FREE SUPPLY CACHE (+15 🪙 & +1 ❤️)'}
         </button>
       </div>
 
@@ -841,7 +970,7 @@ export class HubStationModalController {
     `;
 
     const cacheBtn = this.bodyEl.querySelector('#btn-hub-claim-cache') as HTMLButtonElement | null;
-    if (cacheBtn && !bountyClaimed) {
+    if (cacheBtn && !effectiveBountyClaimed) {
       cacheBtn.onclick = () => {
         if (!this.currentOptions) return;
         const res = this.currentOptions.onClaimBountyCache();

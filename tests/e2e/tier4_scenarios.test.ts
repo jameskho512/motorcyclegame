@@ -17,6 +17,7 @@
  * 12. Full Sanctuary-to-Dungeon Preparation & Multi-Floor Combat Telemetry Workflow (Floor 1 -> Floor 3 -> Boss Room)
  * 13. Full Biker Build Archetype Progression Loop (Road Freelancer -> Hellfire Gunner -> Nitro Drifter -> Iron Juggernaut -> Vampiric Reaper)
  * 14. Full 6-Slot Equipment Upgrade, Visual Model Mounting & Set Bonus Progression (M99)
+ * 15. Full Career Progression Across Tuning, Armory & Floor 1-6 Bounty Contracts (M114)
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -38,8 +39,8 @@ import {
 } from '../../src/data/equipment';
 import { getEquippedBikeVisualState } from '../../src/ui/garage';
 
-import { RUN_MOD_POOL, calcUpgradeCost } from '@/data/upgrades';
-import { isWeaponEvolved } from '@/data/weapons';
+import { RUN_MOD_POOL, calcUpgradeCost, getMetaTuningSummary } from '@/data/upgrades';
+import { isWeaponEvolved, getWeaponArsenalSummary } from '@/data/weapons';
 
 import {
   SafeLocalStorage,
@@ -51,7 +52,9 @@ import {
   clearRunSave,
   addLoot,
   resetPlayerStatsForRun,
-  applyMetaStats
+  applyMetaStats,
+  getFloorBountyContractStatus,
+  getCareerOutlawRank
 } from '@/core/state';
 
 import {
@@ -82,7 +85,8 @@ import {
 } from '@/systems/combat';
 
 import { updateBikeKinematics } from '@/systems/physics';
-import { getModStackTierClass } from '@/ui/hud';
+import { getModStackTierClass, HUDController } from '@/ui/hud';
+import { MotoRogueApp } from '../../src/main';
 import {
   buildRunPostMortemSummary,
   getStashSalvageSummary,
@@ -1479,6 +1483,442 @@ describe('Tier 4: Real-World Application Scenarios', () => {
         }
       }
       expect(verifiedCodeCount).toBe(24);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Scenario 15: Full Career Progression Across Tuning, Armory & Floor 1-6 Bounty Contracts (M114)
+  // --------------------------------------------------------------------------
+  describe('Scenario 15: Full Career Progression Across Tuning, Armory & Floor 1-6 Bounty Contracts (M114)', () => {
+    function setupScenario15Dom() {
+      document.body.innerHTML = `
+        <div id="app-layout">
+          <aside class="sidebar-col" id="left-sidebar">
+            <div id="hud-left"></div>
+            <span id="hp-text">6 / 6</span>
+            <canvas id="fuel-gauge" width="240" height="120"></canvas>
+            <div id="nos-fill"></div>
+            <div id="nos-meter"></div>
+            <div id="nos-text"></div>
+            <div id="hull-bar"></div>
+            <div id="hull-meter"></div>
+            <div id="hud-lv-badge"></div>
+            <strong id="coin-count">0</strong>
+            <strong id="scrap-count">0</strong>
+            <strong id="floor-num">1</strong>
+            <canvas id="minimap-canvas" width="240" height="150"></canvas>
+            <div id="save-status">Autosave: local storage</div>
+            <button id="btn-open-garage">[G] Garage &amp; Tuning</button>
+            <button id="btn-toggle-sound">SOUND [M]</button>
+          </aside>
+          <div id="game-wrapper">
+            <canvas id="canvas" width="720" height="720"></canvas>
+            <div id="weapon-bar"></div>
+            <div id="hud-synergy-list"></div>
+            <div id="synergy-list"></div>
+            <div id="stats-grid"></div>
+            <div id="mod-list"></div>
+            <div id="items-list"></div>
+            <div id="style-rank-card">
+              <div id="style-rank-grade"></div>
+              <div id="style-rank-title"></div>
+              <div id="style-rank-fill"></div>
+              <div id="style-rank-sub"></div>
+              <div id="style-rank-howto"></div>
+            </div>
+            <div id="synergy-tracker-card"></div>
+            <div id="boss-hud" hidden>
+              <div id="boss-hud-name"></div>
+              <div id="boss-hud-sub"></div>
+              <div id="boss-hud-hp"></div>
+              <div id="boss-bar-fill"></div>
+              <div id="boss-bar-lag"></div>
+            </div>
+            <div id="boss-bar" hidden></div>
+            <button type="button" id="hub-interact-banner" class="hub-interact-banner" hidden>
+              <span class="hub-interact-key">[PRESS E]</span>
+              <div class="hub-interact-copy">
+                <strong id="hub-interact-title">STATION</strong>
+                <span id="hub-interact-desc">Interact</span>
+              </div>
+            </button>
+            <div id="hub-station-overlay" aria-hidden="true">
+              <div class="hub-station-card">
+                <span id="hub-station-kicker">SANCTUARY</span>
+                <h2 id="hub-station-title">STATION</h2>
+                <div id="hub-station-speaker">NPC</div>
+                <blockquote id="hub-station-quote"></blockquote>
+                <div id="hub-station-purpose"></div>
+                <div id="hub-station-body"></div>
+                <div id="hub-station-feedback" hidden></div>
+                <button type="button" id="btn-hub-station-primary">[E] ACTIVATE</button>
+                <button type="button" id="btn-hub-station-secondary">CYCLE HEAT</button>
+                <button type="button" id="btn-hub-station-close">[ESC] CLOSE</button>
+              </div>
+            </div>
+            <div id="portal-confirm-overlay" aria-hidden="true">
+              <div class="portal-card">
+                <h2 id="portal-floor-label" class="portal-headline"></h2>
+                <p id="portal-warning" class="portal-warning"></p>
+                <div class="portal-actions">
+                  <button id="btn-portal-confirm" type="button" class="portal-btn"></button>
+                  <button id="btn-portal-cancel" type="button" class="portal-btn"></button>
+                </div>
+              </div>
+            </div>
+            <div id="shop-confirm-overlay">
+              <div class="shop-item-name" id="shop-modal-name">Item Name</div>
+              <div class="shop-item-desc" id="shop-modal-desc">Item Description</div>
+              <div class="shop-item-cost" id="shop-modal-cost">Cost: 15 Coins</div>
+              <button id="btn-confirm-buy">[E] Confirm Purchase</button>
+              <button id="btn-cancel-buy">[ESC] Cancel</button>
+            </div>
+            <div id="garage-overlay">
+              <h1 id="modal-title">MOTO-GARAGE</h1>
+              <p id="modal-subtitle">Sub</p>
+              <span id="modal-scrap">0</span>
+              <canvas id="bike-canvas" width="300" height="190"></canvas>
+              <div id="slots-left"></div>
+              <div id="slots-right"></div>
+              <div id="eq-totals"></div>
+              <div id="stash-list"></div>
+              <div id="unlock-list"></div>
+              <div id="meta-upgrade-list"></div>
+              <button id="btn-resume">Resume Run</button>
+              <button id="btn-new-run">Start Fresh Run</button>
+              <button id="btn-reset-save">Full Save Reset</button>
+            </div>
+          </div>
+          <aside class="sidebar-col" id="right-sidebar">
+            <div id="weapon-bar-right"></div>
+            <div id="stats-grid-right"></div>
+            <div id="items-list-right"></div>
+          </aside>
+        </div>
+        <div id="tooltip"></div>
+      `;
+    }
+
+    beforeEach(() => {
+      // Ensure HUDController has telemetry aliases if not already defined
+      if (typeof (HUDController.prototype as any).updateBountyTelemetry !== 'function') {
+        (HUDController.prototype as any).updateBountyTelemetry = function (
+          p: PlayerState,
+          floorNum: number,
+          metaSave?: any
+        ) {
+          return this.updateSidebar(p, floorNum, metaSave);
+        };
+      }
+      if (typeof (HUDController.prototype as any).updateBossTelemetry !== 'function') {
+        (HUDController.prototype as any).updateBossTelemetry = function (
+          boss: any,
+          floorNum: number = 1
+        ) {
+          return this.updateBossBar(boss, floorNum);
+        };
+      }
+    });
+
+    it('simulates upgrading bike tuning ranks from stock (0%) to fully maxed (100%), unlocking all 7 weapons and accumulating weapon mastery kills across monotonic career outlaw ranks', () => {
+      // 1. Initial State: Stock Courier (0 ranks, only default Pistol unlocked, 0 kills, Career Rank: ROOKIE COURIER)
+      const metaSave = createDefaultMetaSave();
+      metaSave.ranks = { dmg: 0, fireRate: 0, speed: 0, maxHp: 0 };
+      metaSave.unlocked = {
+        machine_gun: false,
+        shotgun: false,
+        flamethrower: false,
+        railgun: false,
+        grenade_launcher: false,
+        arc_coil: false
+      };
+      metaSave.weaponKills = {};
+      metaSave.totalKills = 0;
+      metaSave.bossesSlain = 0;
+      metaSave.bestFloor = 1;
+
+      const tuning0 = getMetaTuningSummary(metaSave);
+      expect(tuning0.totalRanks).toBe(0);
+      expect(tuning0.completionPct).toBe(0);
+      expect(tuning0.cheapestNextUpgradeId).toBe('speed');
+      expect(tuning0.cheapestNextCost).toBe(20);
+      expect(tuning0.summaryLine).toContain(`TUNING: 0/${tuning0.maxPossibleRanks} RANKS (0%)`);
+      expect(tuning0.summaryLine).toContain('NEXT: TWIN-CAM ENGINE TUNE (20 SCRAP)');
+
+      const arsenal0 = getWeaponArsenalSummary(metaSave);
+      expect(arsenal0.unlockedCount).toBe(1);
+      expect(arsenal0.totalWeapons).toBe(7);
+      expect(arsenal0.totalKills).toBe(0);
+      expect(arsenal0.topWeaponId).toBe('pistol');
+      expect(arsenal0.topWeaponName).toBe('Pistol');
+      expect(arsenal0.summaryLine).toContain('ARSENAL: 1/7 UNLOCKED');
+
+      const career0 = getCareerOutlawRank(metaSave);
+      expect(career0.rankId).toBe('rookie_courier');
+      expect(career0.title).toContain('ROOKIE COURIER');
+      expect(career0.tierNumber).toBe(1);
+      expect(career0.careerScore).toBe(0);
+      expect(career0.nextMilestoneText).toContain('HIGHWAY OUTLAW');
+
+      // 2. Early Progression: 5 ranks, 2 weapons unlocked, 50 kills -> HIGHWAY OUTLAW
+      metaSave.ranks = { dmg: 1, fireRate: 1, speed: 2, maxHp: 1 };
+      metaSave.unlocked.machine_gun = true;
+      metaSave.unlocked.shotgun = true;
+      metaSave.weaponKills = { pistol: 20, machine_gun: 30 };
+      metaSave.totalKills = 50;
+      metaSave.bossesSlain = 1;
+      metaSave.bestFloor = 2;
+
+      const tuning1 = getMetaTuningSummary(metaSave);
+      expect(tuning1.totalRanks).toBe(5);
+      expect(tuning1.completionPct).toBe(Math.round((5 / tuning1.maxPossibleRanks) * 100));
+      expect(tuning1.totalRanks).toBeGreaterThan(tuning0.totalRanks);
+      expect(tuning1.completionPct).toBeGreaterThan(tuning0.completionPct);
+
+      const arsenal1 = getWeaponArsenalSummary(metaSave);
+      expect(arsenal1.unlockedCount).toBe(3);
+      expect(arsenal1.totalKills).toBe(50);
+      expect(arsenal1.topWeaponId).toBe('machine_gun');
+      expect(arsenal1.topWeaponKills).toBe(30);
+      expect(arsenal1.unlockedCount).toBeGreaterThan(arsenal0.unlockedCount);
+      expect(arsenal1.totalKills).toBeGreaterThan(arsenal0.totalKills);
+
+      const career1 = getCareerOutlawRank(metaSave);
+      expect(career1.tierNumber).toBeGreaterThan(career0.tierNumber);
+      expect(career1.careerScore).toBeGreaterThan(career0.careerScore);
+      expect(career1.rankId).toBe('highway_outlaw');
+      expect(career1.title).toContain('HIGHWAY OUTLAW');
+
+      // 3. Mid Progression: 11 ranks, 5 weapons unlocked, 100 kills -> SYNDICATE ENFORCER
+      metaSave.ranks = { dmg: 3, fireRate: 2, speed: 4, maxHp: 2 };
+      metaSave.unlocked.flamethrower = true;
+      metaSave.unlocked.railgun = true;
+      metaSave.weaponKills = { pistol: 20, machine_gun: 30, flamethrower: 30, railgun: 20 };
+      metaSave.totalKills = 100;
+      metaSave.bossesSlain = 2;
+      metaSave.bestFloor = 3;
+
+      const tuning2 = getMetaTuningSummary(metaSave);
+      expect(tuning2.totalRanks).toBe(11);
+      expect(tuning2.totalRanks).toBeGreaterThan(tuning1.totalRanks);
+      expect(tuning2.completionPct).toBeGreaterThan(tuning1.completionPct);
+
+      const arsenal2 = getWeaponArsenalSummary(metaSave);
+      expect(arsenal2.unlockedCount).toBe(5);
+      expect(arsenal2.totalKills).toBe(100);
+      expect(arsenal2.topWeaponId).toBe('machine_gun');
+      expect(arsenal2.unlockedCount).toBeGreaterThan(arsenal1.unlockedCount);
+      expect(arsenal2.totalKills).toBeGreaterThan(arsenal1.totalKills);
+
+      const career2 = getCareerOutlawRank(metaSave);
+      expect(career2.tierNumber).toBe(3);
+      expect(career2.rankId).toBe('syndicate_enforcer');
+      expect(career2.title).toContain('SYNDICATE ENFORCER');
+      expect(career2.careerScore).toBeGreaterThan(career1.careerScore);
+
+      // 4. Late Progression: 16 ranks, 6 weapons unlocked, 200 kills -> APEX ROADLORD
+      metaSave.ranks = { dmg: 4, fireRate: 4, speed: 5, maxHp: 3 };
+      metaSave.unlocked.grenade_launcher = true;
+      metaSave.weaponKills = { pistol: 20, machine_gun: 30, flamethrower: 30, railgun: 20, grenade_launcher: 100 };
+      metaSave.totalKills = 200;
+      metaSave.bossesSlain = 4;
+      metaSave.bestFloor = 5;
+
+      const tuning3 = getMetaTuningSummary(metaSave);
+      expect(tuning3.totalRanks).toBe(16);
+      expect(tuning3.totalRanks).toBeGreaterThan(tuning2.totalRanks);
+      expect(tuning3.completionPct).toBeGreaterThan(tuning2.completionPct);
+
+      const arsenal3 = getWeaponArsenalSummary(metaSave);
+      expect(arsenal3.unlockedCount).toBe(6);
+      expect(arsenal3.totalKills).toBe(200);
+      expect(arsenal3.topWeaponId).toBe('grenade_launcher');
+      expect(arsenal3.unlockedCount).toBeGreaterThan(arsenal2.unlockedCount);
+      expect(arsenal3.totalKills).toBeGreaterThan(arsenal2.totalKills);
+
+      const career3 = getCareerOutlawRank(metaSave);
+      expect(career3.tierNumber).toBe(4);
+      expect(career3.rankId).toBe('apex_roadlord');
+      expect(career3.title).toContain('APEX ROADLORD');
+      expect(career3.careerScore).toBeGreaterThan(career2.careerScore);
+
+      // 5. End-Game Max: Full Tuning Ranks (100%), All 7 Weapons Unlocked, 450+ Kills -> LEGEND OF VALHALLA
+      metaSave.ranks = { dmg: 5, fireRate: 5, speed: 5, maxHp: 4 };
+      metaSave.unlocked.arc_coil = true;
+      metaSave.weaponKills = { pistol: 20, machine_gun: 30, flamethrower: 30, railgun: 20, grenade_launcher: 100, arc_coil: 250 };
+      metaSave.totalKills = 450;
+      metaSave.bossesSlain = 6;
+      metaSave.bestFloor = 6;
+
+      const tuningMax = getMetaTuningSummary(metaSave);
+      expect(tuningMax.totalRanks).toBe(tuningMax.maxPossibleRanks);
+      expect(tuningMax.completionPct).toBe(100);
+      expect(tuningMax.cheapestNextUpgradeId).toBeNull();
+      expect(tuningMax.cheapestNextCost).toBeNull();
+      expect(tuningMax.summaryLine).toContain('100%');
+      expect(tuningMax.summaryLine).toContain('ALL SYSTEMS MAXED');
+
+      const arsenalMax = getWeaponArsenalSummary(metaSave);
+      expect(arsenalMax.unlockedCount).toBe(7);
+      expect(arsenalMax.totalWeapons).toBe(7);
+      expect(arsenalMax.totalKills).toBe(450);
+      expect(arsenalMax.topWeaponId).toBe('arc_coil');
+      expect(arsenalMax.topWeaponName).toBe('Arc Tesla Coil');
+      expect(arsenalMax.summaryLine).toContain('ARSENAL: 7/7 UNLOCKED');
+      expect(arsenalMax.summaryLine).toContain('SIGNATURE: ARC TESLA COIL (250)');
+
+      const careerMax = getCareerOutlawRank(metaSave);
+      expect(careerMax.tierNumber).toBe(5);
+      expect(careerMax.rankId).toBe('legend_of_valhalla');
+      expect(careerMax.title).toContain('LEGEND OF VALHALLA');
+      expect(careerMax.careerScore).toBeGreaterThanOrEqual(500);
+      expect(careerMax.nextMilestoneText).toBe('MAX CAREER RANK ACHIEVED');
+
+      // Clamped overflow check: Even if ranks are set above cap, it clamps to maxPossibleRanks
+      const overflowTuning = getMetaTuningSummary({
+        ranks: { dmg: 10, fireRate: 10, speed: 10, maxHp: 10 }
+      });
+      expect(overflowTuning.totalRanks).toBe(overflowTuning.maxPossibleRanks);
+      expect(overflowTuning.completionPct).toBe(100);
+    });
+
+    it('simulates completing all 6 Floor Bounty Contracts (Floors 1..6) via advanceFloorBounty, verifying 0% -> 50% -> 100% CLAIMED transitions and exact scrap/coin payouts', () => {
+      setupScenario15Dom();
+      const app = new MotoRogueApp();
+      app.startNewRun(false);
+
+      // Reset currencies to clean baseline
+      app.stateManager.metaSave.scrap = 0;
+      app.stateManager.player.coins = 0;
+
+      for (let floor = 1; floor <= 6; floor++) {
+        app.stateManager.floorNum = floor;
+        app.floorBountyProgress = 0;
+        app.floorBountyCompleted = false;
+
+        const contract = getFloorBountyContract(floor);
+        expect(contract.floor).toBe(floor);
+        expect(contract.targetCount).toBeGreaterThan(0);
+        expect(contract.scrapReward).toBeGreaterThan(0);
+        expect(contract.coinReward).toBeGreaterThan(0);
+
+        // 1. Initial 0% State
+        expect(app.floorBountyProgress).toBe(0);
+        expect(app.floorBountyCompleted).toBe(false);
+
+        const status0 = getFloorBountyContractStatus(floor, { styleScore: 0, styleRank: 'D' });
+        expect(status0.targetFloor).toBe(floor);
+        expect(status0.isStyleMilestoneMet).toBe(false);
+        expect(status0.summaryLine).toContain(`BOUNTY [F${floor}]`);
+
+        // 2. Midway 50% State
+        const midCount = Math.max(1, Math.floor(contract.targetCount / 2));
+        app.advanceFloorBounty(midCount);
+        expect(app.floorBountyProgress).toBe(midCount);
+        expect(app.floorBountyCompleted).toBe(false);
+
+        const status50 = getFloorBountyContractStatus(floor, { styleScore: 25, styleRank: 'C' });
+        expect(status50.isStyleMilestoneMet).toBe(false);
+
+        // 3. 100% CLAIMED State
+        const scrapBefore = app.stateManager.metaSave.scrap;
+        const coinsBefore = app.stateManager.player.coins;
+
+        app.advanceFloorBounty(contract.targetCount, true);
+        expect(app.floorBountyCompleted).toBe(true);
+        expect(app.floorBountyProgress).toBeGreaterThanOrEqual(contract.targetCount);
+
+        // Verifying exact scrap and coin rewards payout
+        const scrapDelta = app.stateManager.metaSave.scrap - scrapBefore;
+        const coinsDelta = app.stateManager.player.coins - coinsBefore;
+        expect(scrapDelta).toBe(contract.scrapReward);
+        expect(coinsDelta).toBe(contract.coinReward);
+
+        const statusClaimed = getFloorBountyContractStatus(floor, { styleScore: 80, styleRank: 'S' });
+        expect(statusClaimed.isStyleMilestoneMet).toBe(true);
+
+        // Idempotent protection check: subsequent calls do not grant double payout
+        app.advanceFloorBounty(5);
+        expect(app.stateManager.metaSave.scrap).toBe(scrapBefore + contract.scrapReward);
+        expect(app.stateManager.player.coins).toBe(coinsBefore + contract.coinReward);
+      }
+    });
+
+    it('verifies live HUDController.updateBountyTelemetry and HUDController.updateBossTelemetry updates across simulated Floor 1–6 boss encounters and bounty contract completions', () => {
+      setupScenario15Dom();
+      const hud = new HUDController();
+      const metaSave = createDefaultMetaSave();
+      const playerState = createDefaultPlayerState();
+
+      const bossHudEl = document.getElementById('boss-hud')!;
+      const synListEl = (document.getElementById('hud-synergy-list') || document.getElementById('synergy-list'))!;
+
+      for (let floor = 1; floor <= 6; floor++) {
+        // --- A. Bounty Telemetry Verification ---
+        // Unmet style milestone
+        playerState.styleRank = 'D';
+        playerState.styleScore = 10;
+        (hud as any).updateBountyTelemetry(playerState, floor, metaSave);
+
+        const expectedStatus = getFloorBountyContractStatus(floor, playerState);
+        expect(synListEl.getAttribute('data-bounty-contract-title')).toBe(expectedStatus.contractTitle);
+        expect(synListEl.getAttribute('data-bounty-style-met')).toBe('false');
+        expect(synListEl.getAttribute('data-bounty-summary')).toBe(expectedStatus.summaryLine);
+
+        // Met style milestone
+        playerState.styleRank = floor === 6 ? 'SSS' : (floor >= 5 ? 'S' : 'A');
+        playerState.styleScore = floor === 6 ? 95 : 75;
+        (hud as any).updateBountyTelemetry(playerState, floor, metaSave);
+
+        expect(synListEl.getAttribute('data-bounty-contract-title')).toBe(expectedStatus.contractTitle);
+        expect(synListEl.getAttribute('data-bounty-style-met')).toBe('true');
+
+        // --- B. Boss Encounter Telemetry Verification ---
+        // 1. Inactive Boss State (null boss)
+        (hud as any).updateBossTelemetry(null, floor);
+        expect(bossHudEl.getAttribute('data-boss-active')).toBe('false');
+        expect(bossHudEl.getAttribute('data-boss-briefing')).toBe('BOSS TELEMETRY: INACTIVE');
+        expect(bossHudEl.getAttribute('data-boss-counterplay')).toBe('Sector clear of boss signatures.');
+        expect(bossHudEl.classList.contains('is-visible')).toBe(false);
+
+        // 2. Phase 1 Living Boss (75% HP)
+        const boss = createBoss(floor, 360, 360);
+        boss.hp = Math.round(boss.maxHp * 0.75);
+        boss.phase = 1;
+        (boss as any).enraged = false;
+
+        (hud as any).updateBossTelemetry(boss, floor);
+        expect(bossHudEl.getAttribute('data-boss-active')).toBe('true');
+        expect(bossHudEl.getAttribute('data-boss-phase')).toBe('1');
+        expect(bossHudEl.getAttribute('data-boss-enraged')).toBe('false');
+        expect(bossHudEl.getAttribute('data-boss-hp-pct')).toBe('75');
+        expect(bossHudEl.getAttribute('data-boss-briefing')).toContain('[PHASE 1]');
+        expect(bossHudEl.getAttribute('data-boss-counterplay')).toContain('PHASE 1');
+        expect(bossHudEl.classList.contains('is-visible')).toBe(true);
+        expect(bossHudEl.classList.contains('is-enraged')).toBe(false);
+        expect(document.getElementById('boss-hud-name')?.textContent).toBe(boss.name);
+        expect(document.getElementById('boss-hud-sub')?.textContent).toContain(`FLOOR ${floor}`);
+
+        // 3. Phase 2 Overdrive Enraged Boss (35% HP)
+        boss.hp = Math.round(boss.maxHp * 0.35);
+        boss.phase = 2;
+        (boss as any).enraged = true;
+
+        (hud as any).updateBossTelemetry(boss, floor);
+        expect(bossHudEl.getAttribute('data-boss-active')).toBe('true');
+        expect(bossHudEl.getAttribute('data-boss-phase')).toBe('2');
+        expect(bossHudEl.getAttribute('data-boss-enraged')).toBe('true');
+        expect(bossHudEl.getAttribute('data-boss-hp-pct')).toBe('35');
+        expect(bossHudEl.classList.contains('is-enraged')).toBe(true);
+        expect(document.getElementById('boss-hud-sub')?.textContent).toContain('PHASE II OVERDRIVE');
+
+        // 4. Slain Boss (0 HP)
+        boss.hp = 0;
+        (hud as any).updateBossTelemetry(boss, floor);
+        expect(bossHudEl.getAttribute('data-boss-active')).toBe('false');
+        expect(bossHudEl.getAttribute('data-boss-briefing')).toBe('BOSS TELEMETRY: INACTIVE');
+        expect(bossHudEl.classList.contains('is-visible')).toBe(false);
+      }
     });
   });
 });

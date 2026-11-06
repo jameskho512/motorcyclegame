@@ -40,7 +40,9 @@ import {
   getForgeStationAdvisor,
   ForgeStationAdvisor,
   getScannerStationAdvisor,
-  ScannerStationAdvisor
+  ScannerStationAdvisor,
+  getWarRoomStationAdvisor,
+  WarRoomStationAdvisor
 } from '../../src/ui/hubStationModal';
 import { WEAPONS, WeaponId, getWeaponTacticalProfile } from '../../src/data/weapons';
 import { getCareerOutlawRank } from '../../src/core/state';
@@ -1831,6 +1833,106 @@ describe('HubStationModalController & getHubStationPromptInfo (Wave 14-15)', () 
         'SCANNER INTEL [FLOOR 1]: ONLINE (+15% CRIT) · TACTICAL UPLINK ONLINE (+15% Crit Chance & Minimap Reveal Active)'
       );
     });
+
+    it('renders bounty station and sets data-war-room-heat, data-war-room-rec-heat, and data-war-room-advisor DOM attributes on overlay', () => {
+      const options = createHubOptions({
+        npcId: 'bounty',
+        metaSave: {
+          heatLevel: 1,
+          equipped: { engine: { id: 'v1' }, tires: { id: 't1' } },
+          ranks: { dmg: 2 }
+        },
+        bountyClaimed: false
+      });
+      modal.open(options);
+
+      const overlayEl = document.getElementById('hub-station-overlay')!;
+      // readiness = 2*2 + 2 = 6 -> rec = 1
+      expect(overlayEl.getAttribute('data-war-room-heat')).toBe('1');
+      expect(overlayEl.getAttribute('data-war-room-rec-heat')).toBe('1');
+      expect(overlayEl.getAttribute('data-war-room-advisor')).toBe(
+        'CACHE: ⚡ FREE DROP READY (+15 🪙 / +1 ❤️) // HEAT 1 (+25% SCRAP) // REC HEAT: <= 1'
+      );
+      expect(document.querySelector('.hub-war-room-advisor-text')?.textContent).toBe(
+        'CACHE: ⚡ FREE DROP READY (+15 🪙 / +1 ❤️) // HEAT 1 (+25% SCRAP) // REC HEAT: <= 1'
+      );
+    });
+
+    it('updates war room advisor DOM attributes when cache is claimed and heat buttons are clicked', () => {
+      const onClaimBountyCache = vi.fn(() => ({ ok: true, message: 'Cache secured!' }));
+      const onSelectHeat = vi.fn();
+      const options = createHubOptions({
+        npcId: 'bounty',
+        metaSave: {
+          heatLevel: 0,
+          equipped: {
+            s1: { id: '1' },
+            s2: { id: '2' },
+            s3: { id: '3' },
+            s4: { id: '4' },
+            s5: { id: '5' }
+          },
+          ranks: { dmg: 3, speed: 2 }
+        },
+        bountyClaimed: false,
+        onClaimBountyCache,
+        onSelectHeat
+      });
+      // readiness = 5*2 + 5 = 15 -> rec = 2
+      modal.open(options);
+
+      const overlayEl = document.getElementById('hub-station-overlay')!;
+      expect(overlayEl.getAttribute('data-war-room-heat')).toBe('0');
+      expect(overlayEl.getAttribute('data-war-room-rec-heat')).toBe('2');
+      expect(overlayEl.getAttribute('data-war-room-advisor')).toBe(
+        'CACHE: ⚡ FREE DROP READY (+15 🪙 / +1 ❤️) // HEAT 0 (+0% SCRAP) // REC HEAT: <= 2'
+      );
+
+      // Claim cache
+      const cacheBtn = document.getElementById('btn-hub-claim-cache') as HTMLButtonElement;
+      cacheBtn.click();
+      expect(overlayEl.getAttribute('data-war-room-advisor')).toBe(
+        'CACHE: ✓ CLAIMED (+15 🪙 / +1 ❤️) // HEAT 0 (+0% SCRAP) // REC HEAT: <= 2'
+      );
+
+      // Click Heat 2
+      const heatButtons = document.querySelectorAll<HTMLButtonElement>('.hub-heat-btn');
+      heatButtons[2].click();
+      expect(overlayEl.getAttribute('data-war-room-heat')).toBe('2');
+      expect(overlayEl.getAttribute('data-war-room-advisor')).toBe(
+        'CACHE: ✓ CLAIMED (+15 🪙 / +1 ❤️) // HEAT 2 (+50% SCRAP) // REC HEAT: <= 2'
+      );
+
+      // Click Heat 3
+      heatButtons[3].click();
+      expect(overlayEl.getAttribute('data-war-room-heat')).toBe('3');
+      expect(overlayEl.getAttribute('data-war-room-advisor')).toBe(
+        'CACHE: ✓ CLAIMED (+15 🪙 / +1 ❤️) // HEAT 3 (+75% SCRAP) // REC HEAT: <= 2'
+      );
+    });
+
+    it('sets war room advisor attributes when opened with string npcId and updates via renderBounty', () => {
+      modal.open('bounty', { heatLevel: 2, ranks: { dmg: 18 } }, {}, false, true);
+      const overlayEl = document.getElementById('hub-station-overlay')!;
+      // readiness = 0*2 + 18 = 18 -> rec = 3
+      expect(overlayEl.getAttribute('data-war-room-heat')).toBe('2');
+      expect(overlayEl.getAttribute('data-war-room-rec-heat')).toBe('3');
+      expect(overlayEl.getAttribute('data-war-room-advisor')).toBe(
+        'CACHE: ✓ CLAIMED (+15 🪙 / +1 ❤️) // HEAT 2 (+50% SCRAP) // REC HEAT: <= 3'
+      );
+
+      // Re-render via renderBounty with heat 1 and unclaimed cache
+      modal.renderBounty({
+        ...modal['currentOptions']!,
+        metaSave: { heatLevel: 1 },
+        bountyClaimed: false
+      });
+      expect(overlayEl.getAttribute('data-war-room-heat')).toBe('1');
+      expect(overlayEl.getAttribute('data-war-room-rec-heat')).toBe('0');
+      expect(overlayEl.getAttribute('data-war-room-advisor')).toBe(
+        'CACHE: ⚡ FREE DROP READY (+15 🪙 / +1 ❤️) // HEAT 1 (+25% SCRAP) // REC HEAT: <= 0'
+      );
+    });
   });
 
   describe('getForgeStationAdvisor pure helper (M101)', () => {
@@ -2027,6 +2129,230 @@ describe('HubStationModalController & getHubStationPromptInfo (Wave 14-15)', () 
       const controller = new HubStationModalController();
       expect(controller.getScannerStationAdvisor(player, 2)).toEqual(
         getScannerStationAdvisor(player, 2)
+      );
+    });
+  });
+
+  describe('getWarRoomStationAdvisor pure helper (M113)', () => {
+    it('returns tier 0 recommendation (rec: 0) when readinessScore < 4', () => {
+      // Pristine / empty save
+      const adv0: WarRoomStationAdvisor = getWarRoomStationAdvisor({});
+      expect(adv0).toEqual({
+        bountyClaimed: false,
+        currentHeat: 0,
+        scrapBonusPct: 0,
+        recommendedMaxHeat: 0,
+        summaryLine:
+          'CACHE: ⚡ FREE DROP READY (+15 🪙 / +1 ❤️) // HEAT 0 (+0% SCRAP) // REC HEAT: <= 0'
+      });
+
+      // 1 item (score = 2)
+      const adv1 = getWarRoomStationAdvisor({ equipped: { engine: { id: 'v1' } } });
+      expect(adv1.recommendedMaxHeat).toBe(0);
+
+      // 0 items, 3 ranks (score = 3)
+      const adv3 = getWarRoomStationAdvisor({ ranks: { dmg: 3 } });
+      expect(adv3.recommendedMaxHeat).toBe(0);
+
+      // 1 item, 1 rank (score = 3)
+      const advBound3 = getWarRoomStationAdvisor({
+        equipped: { engine: { id: 'v1' } },
+        ranks: { dmg: 1 }
+      });
+      expect(advBound3.recommendedMaxHeat).toBe(0);
+    });
+
+    it('returns tier 1 recommendation (rec: 1) when readinessScore is 4..9', () => {
+      // Lower boundary: score = 4 (2 items, 0 ranks)
+      const adv4a = getWarRoomStationAdvisor({
+        equipped: { engine: {}, tires: {} },
+        ranks: {}
+      });
+      expect(adv4a.recommendedMaxHeat).toBe(1);
+
+      // Lower boundary: score = 4 (0 items, 4 ranks)
+      const adv4b = getWarRoomStationAdvisor({
+        equipped: {},
+        ranks: { speed: 4 }
+      });
+      expect(adv4b.recommendedMaxHeat).toBe(1);
+
+      // Mid-range: score = 7 (2 items, 3 ranks)
+      const adv7 = getWarRoomStationAdvisor({
+        equipped: { slotA: {}, slotB: {} },
+        ranks: { dmg: 2, fireRate: 1 }
+      });
+      expect(adv7.recommendedMaxHeat).toBe(1);
+
+      // Upper boundary: score = 9 (3 items, 3 ranks)
+      const adv9 = getWarRoomStationAdvisor({
+        equipped: { slotA: {}, slotB: {}, slotC: {} },
+        ranks: { dmg: 3 }
+      });
+      expect(adv9.recommendedMaxHeat).toBe(1);
+    });
+
+    it('returns tier 2 recommendation (rec: 2) when readinessScore is 10..17', () => {
+      // Lower boundary: score = 10 (5 items, 0 ranks)
+      const adv10a = getWarRoomStationAdvisor({
+        equipped: { s1: {}, s2: {}, s3: {}, s4: {}, s5: {} },
+        ranks: {}
+      });
+      expect(adv10a.recommendedMaxHeat).toBe(2);
+
+      // Lower boundary: score = 10 (0 items, 10 ranks)
+      const adv10b = getWarRoomStationAdvisor({
+        equipped: {},
+        ranks: { dmg: 5, maxHp: 5 }
+      });
+      expect(adv10b.recommendedMaxHeat).toBe(2);
+
+      // Mid-range: score = 14 (4 items, 6 ranks)
+      const adv14 = getWarRoomStationAdvisor({
+        equipped: { s1: {}, s2: {}, s3: {}, s4: {} },
+        ranks: { dmg: 3, fireRate: 3 }
+      });
+      expect(adv14.recommendedMaxHeat).toBe(2);
+
+      // Upper boundary: score = 17 (5 items, 7 ranks)
+      const adv17 = getWarRoomStationAdvisor({
+        equipped: { s1: {}, s2: {}, s3: {}, s4: {}, s5: {} },
+        ranks: { dmg: 4, speed: 3 }
+      });
+      expect(adv17.recommendedMaxHeat).toBe(2);
+    });
+
+    it('returns tier 3 recommendation (rec: 3) when readinessScore >= 18', () => {
+      // Exact lower boundary: score = 18 (6 items, 6 ranks)
+      const adv18a = getWarRoomStationAdvisor({
+        equipped: { s1: {}, s2: {}, s3: {}, s4: {}, s5: {}, s6: {} },
+        ranks: { dmg: 6 }
+      });
+      expect(adv18a.recommendedMaxHeat).toBe(3);
+
+      // Exact lower boundary: score = 18 (0 items, 18 ranks)
+      const adv18b = getWarRoomStationAdvisor({
+        equipped: {},
+        ranks: { dmg: 10, speed: 8 }
+      });
+      expect(adv18b.recommendedMaxHeat).toBe(3);
+
+      // Fully maxed build: 6 items, 25 ranks (score = 12 + 25 = 37)
+      const advMax = getWarRoomStationAdvisor({
+        equipped: { s1: {}, s2: {}, s3: {}, s4: {}, s5: {}, s6: {} },
+        ranks: { dmg: 5, fireRate: 5, speed: 5, maxHp: 5, master: 5 }
+      });
+      expect(advMax.recommendedMaxHeat).toBe(3);
+    });
+
+    it('computes scrapBonusPct and formats summaryLine across Heat levels 0..3', () => {
+      // Heat 0
+      const adv0 = getWarRoomStationAdvisor({ heatLevel: 0 });
+      expect(adv0.currentHeat).toBe(0);
+      expect(adv0.scrapBonusPct).toBe(0);
+      expect(adv0.summaryLine).toContain('HEAT 0 (+0% SCRAP)');
+
+      // Heat 1
+      const adv1 = getWarRoomStationAdvisor({ heatLevel: 1 });
+      expect(adv1.currentHeat).toBe(1);
+      expect(adv1.scrapBonusPct).toBe(25);
+      expect(adv1.summaryLine).toContain('HEAT 1 (+25% SCRAP)');
+
+      // Heat 2
+      const adv2 = getWarRoomStationAdvisor({ heatLevel: 2 });
+      expect(adv2.currentHeat).toBe(2);
+      expect(adv2.scrapBonusPct).toBe(50);
+      expect(adv2.summaryLine).toContain('HEAT 2 (+50% SCRAP)');
+
+      // Heat 3
+      const adv3 = getWarRoomStationAdvisor({ heatLevel: 3 });
+      expect(adv3.currentHeat).toBe(3);
+      expect(adv3.scrapBonusPct).toBe(75);
+      expect(adv3.summaryLine).toContain('HEAT 3 (+75% SCRAP)');
+
+      // Clamping: negative heat floors to 0
+      const advNeg = getWarRoomStationAdvisor({ heatLevel: -2 });
+      expect(advNeg.currentHeat).toBe(0);
+      expect(advNeg.scrapBonusPct).toBe(0);
+
+      // Clamping: heat > 3 clamps to 3
+      const advHigh = getWarRoomStationAdvisor({ heatLevel: 99 });
+      expect(advHigh.currentHeat).toBe(3);
+      expect(advHigh.scrapBonusPct).toBe(75);
+
+      // Floating heat levels are floored
+      const advFloat = getWarRoomStationAdvisor({ heatLevel: 2.7 });
+      expect(advFloat.currentHeat).toBe(2);
+      expect(advFloat.scrapBonusPct).toBe(50);
+    });
+
+    it('reflects bountyClaimed true/false cache status in summaryLine', () => {
+      const advUnclaimed = getWarRoomStationAdvisor({ heatLevel: 1 }, false);
+      expect(advUnclaimed.bountyClaimed).toBe(false);
+      expect(advUnclaimed.summaryLine).toBe(
+        'CACHE: ⚡ FREE DROP READY (+15 🪙 / +1 ❤️) // HEAT 1 (+25% SCRAP) // REC HEAT: <= 0'
+      );
+
+      const advClaimed = getWarRoomStationAdvisor({ heatLevel: 1 }, true);
+      expect(advClaimed.bountyClaimed).toBe(true);
+      expect(advClaimed.summaryLine).toBe(
+        'CACHE: ✓ CLAIMED (+15 🪙 / +1 ❤️) // HEAT 1 (+25% SCRAP) // REC HEAT: <= 0'
+      );
+    });
+
+    it('gracefully handles missing, null, undefined, NaN, and malformed inputs', () => {
+      // null / undefined metaSave
+      const advNull = getWarRoomStationAdvisor(null);
+      expect(advNull.currentHeat).toBe(0);
+      expect(advNull.scrapBonusPct).toBe(0);
+      expect(advNull.recommendedMaxHeat).toBe(0);
+
+      const advUndef = getWarRoomStationAdvisor(undefined);
+      expect(advUndef.currentHeat).toBe(0);
+      expect(advUndef.recommendedMaxHeat).toBe(0);
+
+      // Non-object metaSave
+      const advPrimitive = getWarRoomStationAdvisor('invalid' as any);
+      expect(advPrimitive.currentHeat).toBe(0);
+      expect(advPrimitive.recommendedMaxHeat).toBe(0);
+
+      // NaN heatLevel
+      const advNaN = getWarRoomStationAdvisor({ heatLevel: NaN });
+      expect(advNaN.currentHeat).toBe(0);
+
+      // Infinity heatLevel
+      const advInf = getWarRoomStationAdvisor({ heatLevel: Infinity });
+      expect(advInf.currentHeat).toBe(0);
+
+      // Malformed equipped: filters null, undefined, false
+      const advEq = getWarRoomStationAdvisor({
+        equipped: { s1: null, s2: undefined, s3: false, s4: { id: 'valid1' }, s5: { id: 'valid2' } }
+      });
+      // 2 valid items -> score = 4 -> rec = 1
+      expect(advEq.recommendedMaxHeat).toBe(1);
+
+      // Malformed ranks: filters NaN, strings, negative numbers
+      const advRanks = getWarRoomStationAdvisor({
+        ranks: { a: NaN, b: 'five' as any, c: -10, d: 4.9 }
+      });
+      // only 4 ranks -> score = 4 -> rec = 1
+      expect(advRanks.recommendedMaxHeat).toBe(1);
+    });
+
+    it('is accessible via HubStationModalController static and instance methods', () => {
+      const meta = {
+        heatLevel: 2,
+        equipped: { a: {}, b: {} },
+        ranks: { dmg: 6 }
+      };
+
+      expect(HubStationModalController.getWarRoomStationAdvisor(meta, true)).toEqual(
+        getWarRoomStationAdvisor(meta, true)
+      );
+
+      const controller = new HubStationModalController();
+      expect(controller.getWarRoomStationAdvisor(meta, true)).toEqual(
+        getWarRoomStationAdvisor(meta, true)
       );
     });
   });

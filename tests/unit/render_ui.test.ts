@@ -41,6 +41,7 @@ import {
   getEquippedBikeVisualState,
   getEquipmentLoadoutSummary,
   getWeaponArsenalSummary,
+  getMetaTuningSummary,
   PART_ANCHORS,
   type StashSalvageSummary
 } from '../../src/ui/garage';
@@ -1695,6 +1696,166 @@ describe('Render & UI Subsystems', () => {
       expect(overlay.getAttribute('data-arsenal-total-kills')).toBe('765');
       expect(overlay.getAttribute('data-arsenal-signature-weapon')).toBe('shotgun');
       expect(overlay.getAttribute('data-arsenal-summary')).toBe(expectedArsenal.summaryLine);
+    });
+
+    it('populates data-tuning telemetry attributes on #meta-upgrade-list and #garage-overlay for fresh save via open and renderMetaUpgrades', () => {
+      const garage = new GarageController(callbacks);
+      const freshSave: MetaSaveState = {
+        ...metaSave,
+        scrap: 0,
+        ranks: { dmg: 0, fireRate: 0, speed: 0, maxHp: 0 }
+      };
+
+      garage.open(false, 1, freshSave, player);
+
+      const list = document.getElementById('meta-upgrade-list')!;
+      const overlay = document.getElementById('garage-overlay')!;
+      const expectedTuning = getMetaTuningSummary(freshSave);
+
+      expect(expectedTuning.totalRanks).toBe(0);
+      expect(expectedTuning.completionPct).toBe(0);
+      expect(expectedTuning.cheapestNextUpgradeId).toBe('speed');
+      expect(expectedTuning.cheapestNextCost).toBe(20);
+      expect(expectedTuning.summaryLine).toBe('TUNING: 0/19 RANKS (0%) · NEXT: TWIN-CAM ENGINE TUNE (20 SCRAP)');
+
+      // Verify on #meta-upgrade-list
+      expect(list.getAttribute('data-tuning-total-ranks')).toBe('0');
+      expect(list.getAttribute('data-tuning-completion-pct')).toBe('0');
+      expect(list.getAttribute('data-tuning-next-upgrade')).toBe('speed');
+      expect(list.getAttribute('data-tuning-can-afford-next')).toBe('false');
+      expect(list.getAttribute('data-tuning-summary')).toBe(expectedTuning.summaryLine);
+
+      // Verify on #garage-overlay
+      expect(overlay.getAttribute('data-tuning-total-ranks')).toBe('0');
+      expect(overlay.getAttribute('data-tuning-completion-pct')).toBe('0');
+      expect(overlay.getAttribute('data-tuning-next-upgrade')).toBe('speed');
+      expect(overlay.getAttribute('data-tuning-can-afford-next')).toBe('false');
+      expect(overlay.getAttribute('data-tuning-summary')).toBe(expectedTuning.summaryLine);
+
+      // Test with sufficient scrap to afford cheapest next upgrade
+      const affordableFreshSave: MetaSaveState = {
+        ...freshSave,
+        scrap: 20
+      };
+      garage.renderMetaUpgrades(affordableFreshSave);
+      expect(list.getAttribute('data-tuning-can-afford-next')).toBe('true');
+      expect(overlay.getAttribute('data-tuning-can-afford-next')).toBe('true');
+    });
+
+    it('populates data-tuning telemetry attributes for partial save across affordable and unaffordable scrap levels', () => {
+      const garage = new GarageController(callbacks);
+      // Partial save: dmg 2, fireRate 1, speed 0, maxHp 0 (cheapest next is speed at 20 scrap)
+      // With scrap = 120, can afford is true
+      garage.renderMetaUpgrades(metaSave);
+
+      const list = document.getElementById('meta-upgrade-list')!;
+      const overlay = document.getElementById('garage-overlay')!;
+      const expectedTuning = getMetaTuningSummary(metaSave);
+
+      expect(expectedTuning.totalRanks).toBe(3);
+      expect(expectedTuning.completionPct).toBe(16);
+      expect(expectedTuning.cheapestNextUpgradeId).toBe('speed');
+      expect(expectedTuning.cheapestNextCost).toBe(20);
+
+      expect(list.getAttribute('data-tuning-total-ranks')).toBe('3');
+      expect(list.getAttribute('data-tuning-completion-pct')).toBe('16');
+      expect(list.getAttribute('data-tuning-next-upgrade')).toBe('speed');
+      expect(list.getAttribute('data-tuning-can-afford-next')).toBe('true');
+      expect(list.getAttribute('data-tuning-summary')).toBe(expectedTuning.summaryLine);
+
+      expect(overlay.getAttribute('data-tuning-total-ranks')).toBe('3');
+      expect(overlay.getAttribute('data-tuning-completion-pct')).toBe('16');
+      expect(overlay.getAttribute('data-tuning-next-upgrade')).toBe('speed');
+      expect(overlay.getAttribute('data-tuning-can-afford-next')).toBe('true');
+      expect(overlay.getAttribute('data-tuning-summary')).toBe(expectedTuning.summaryLine);
+
+      // Unaffordable scenario: speed 1, cheapest next is dmg at 25 scrap, with only 10 scrap
+      const unaffordableSave: MetaSaveState = {
+        ...metaSave,
+        scrap: 10,
+        ranks: { dmg: 0, fireRate: 0, speed: 1, maxHp: 0 }
+      };
+      garage.open(false, 1, unaffordableSave, player);
+
+      const unaffordableTuning = getMetaTuningSummary(unaffordableSave);
+      expect(unaffordableTuning.totalRanks).toBe(1);
+      expect(unaffordableTuning.completionPct).toBe(5);
+      expect(unaffordableTuning.cheapestNextUpgradeId).toBe('dmg');
+      expect(unaffordableTuning.cheapestNextCost).toBe(25);
+
+      expect(list.getAttribute('data-tuning-total-ranks')).toBe('1');
+      expect(list.getAttribute('data-tuning-completion-pct')).toBe('5');
+      expect(list.getAttribute('data-tuning-next-upgrade')).toBe('dmg');
+      expect(list.getAttribute('data-tuning-can-afford-next')).toBe('false');
+      expect(list.getAttribute('data-tuning-summary')).toBe(unaffordableTuning.summaryLine);
+
+      expect(overlay.getAttribute('data-tuning-total-ranks')).toBe('1');
+      expect(overlay.getAttribute('data-tuning-completion-pct')).toBe('5');
+      expect(overlay.getAttribute('data-tuning-next-upgrade')).toBe('dmg');
+      expect(overlay.getAttribute('data-tuning-can-afford-next')).toBe('false');
+      expect(overlay.getAttribute('data-tuning-summary')).toBe(unaffordableTuning.summaryLine);
+    });
+
+    it('populates data-tuning telemetry attributes for fully maxed save with MAXED and can-afford-next false', () => {
+      const garage = new GarageController(callbacks);
+      const maxedSave: MetaSaveState = {
+        ...metaSave,
+        scrap: 9999,
+        ranks: {
+          dmg: 5,
+          fireRate: 5,
+          speed: 5,
+          maxHp: 4
+        }
+      };
+
+      garage.renderMetaUpgrades(maxedSave);
+
+      const list = document.getElementById('meta-upgrade-list')!;
+      const overlay = document.getElementById('garage-overlay')!;
+      const expectedTuning = getMetaTuningSummary(maxedSave);
+
+      expect(expectedTuning.totalRanks).toBe(19);
+      expect(expectedTuning.completionPct).toBe(100);
+      expect(expectedTuning.cheapestNextUpgradeId).toBeNull();
+      expect(expectedTuning.cheapestNextCost).toBeNull();
+      expect(expectedTuning.summaryLine).toBe('TUNING: 19/19 RANKS (100%) · ALL SYSTEMS MAXED');
+
+      expect(list.getAttribute('data-tuning-total-ranks')).toBe('19');
+      expect(list.getAttribute('data-tuning-completion-pct')).toBe('100');
+      expect(list.getAttribute('data-tuning-next-upgrade')).toBe('MAXED');
+      expect(list.getAttribute('data-tuning-can-afford-next')).toBe('false');
+      expect(list.getAttribute('data-tuning-summary')).toBe(expectedTuning.summaryLine);
+
+      expect(overlay.getAttribute('data-tuning-total-ranks')).toBe('19');
+      expect(overlay.getAttribute('data-tuning-completion-pct')).toBe('100');
+      expect(overlay.getAttribute('data-tuning-next-upgrade')).toBe('MAXED');
+      expect(overlay.getAttribute('data-tuning-can-afford-next')).toBe('false');
+      expect(overlay.getAttribute('data-tuning-summary')).toBe(expectedTuning.summaryLine);
+
+      // Verify via garage.open as well
+      garage.open(false, 1, maxedSave, player);
+      expect(list.getAttribute('data-tuning-next-upgrade')).toBe('MAXED');
+      expect(list.getAttribute('data-tuning-can-afford-next')).toBe('false');
+      expect(overlay.getAttribute('data-tuning-next-upgrade')).toBe('MAXED');
+      expect(overlay.getAttribute('data-tuning-can-afford-next')).toBe('false');
+    });
+
+    it('lazily resolves metaUpgradeList and overlay elements if initially unlinked when renderMetaUpgrades is invoked', () => {
+      const garage = new GarageController(callbacks);
+      // Clear references to simulate late or unlinked DOM elements
+      (garage as any).metaUpgradeList = null;
+      (garage as any).overlay = null;
+
+      garage.renderMetaUpgrades(metaSave);
+
+      const list = document.getElementById('meta-upgrade-list')!;
+      const overlay = document.getElementById('garage-overlay')!;
+
+      expect(list.getAttribute('data-tuning-total-ranks')).toBe('3');
+      expect(list.getAttribute('data-tuning-next-upgrade')).toBe('speed');
+      expect(overlay.getAttribute('data-tuning-total-ranks')).toBe('3');
+      expect(overlay.getAttribute('data-tuning-next-upgrade')).toBe('speed');
     });
   });
 

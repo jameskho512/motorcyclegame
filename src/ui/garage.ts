@@ -28,7 +28,7 @@ import {
 } from '../types/game';
 
 import { WEAPONS, UNLOCKABLE_IDS, getWeaponArsenalSummary } from '../data/weapons';
-import { META_UPGRADES, calcUpgradeCost, DUO_SYNERGIES, getActiveDuoSynergies } from '../data/upgrades';
+import { META_UPGRADES, calcUpgradeCost, DUO_SYNERGIES, getActiveDuoSynergies, getMetaTuningSummary } from '../data/upgrades';
 import {
   EQUIP_SLOTS,
   RARITY,
@@ -48,7 +48,7 @@ import {
 import { SET08_ASSETS } from './set08Assets';
 import { getCareerOutlawRank } from '@/core/state';
 
-export { getEquipmentLoadoutSummary, getWeaponArsenalSummary };
+export { getEquipmentLoadoutSummary, getWeaponArsenalSummary, getMetaTuningSummary };
 
 export interface BikeLiveryDef {
   id: BikeLiveryId;
@@ -1098,7 +1098,39 @@ export class GarageController {
   /**
    * Renders the permanent bike tuning meta upgrades.
    */
-  private renderMetaUpgrades(metaSave: MetaSaveState): void {
+  public renderMetaUpgrades(metaSave: MetaSaveState): void {
+    if (!this.metaUpgradeList && typeof document !== 'undefined') {
+      this.metaUpgradeList = document.getElementById('meta-upgrade-list');
+    }
+    if (!this.overlay && typeof document !== 'undefined') {
+      this.overlay = document.getElementById('garage-overlay');
+    }
+
+    const baseTuning = getMetaTuningSummary(metaSave);
+    const canAffordCheapest = baseTuning.cheapestNextCost !== null &&
+      typeof metaSave?.scrap === 'number' &&
+      metaSave.scrap >= baseTuning.cheapestNextCost;
+    const tuning = {
+      ...baseTuning,
+      canAffordCheapest
+    };
+
+    if (this.metaUpgradeList) {
+      this.metaUpgradeList.setAttribute('data-tuning-total-ranks', String(tuning.totalRanks));
+      this.metaUpgradeList.setAttribute('data-tuning-completion-pct', String(tuning.completionPct));
+      this.metaUpgradeList.setAttribute('data-tuning-next-upgrade', tuning.cheapestNextUpgradeId || 'MAXED');
+      this.metaUpgradeList.setAttribute('data-tuning-can-afford-next', tuning.canAffordCheapest ? 'true' : 'false');
+      this.metaUpgradeList.setAttribute('data-tuning-summary', tuning.summaryLine);
+    }
+
+    if (this.overlayEl) {
+      this.overlayEl.setAttribute('data-tuning-total-ranks', String(tuning.totalRanks));
+      this.overlayEl.setAttribute('data-tuning-completion-pct', String(tuning.completionPct));
+      this.overlayEl.setAttribute('data-tuning-next-upgrade', tuning.cheapestNextUpgradeId || 'MAXED');
+      this.overlayEl.setAttribute('data-tuning-can-afford-next', tuning.canAffordCheapest ? 'true' : 'false');
+      this.overlayEl.setAttribute('data-tuning-summary', tuning.summaryLine);
+    }
+
     if (!this.metaUpgradeList) return;
     this.metaUpgradeList.innerHTML = '';
 
