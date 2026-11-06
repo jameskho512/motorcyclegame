@@ -211,6 +211,7 @@ export interface PlayerState {
   coins: number;
   invuln: number;
   invulnTimer?: number; // Compatibility alias
+  deathTimer?: number;
   stunTimer?: number;
   weapon: WeaponId;
   runWeapons: Partial<Record<WeaponId, boolean>>;
@@ -314,7 +315,7 @@ export interface Obstacle {
 // 4. WORLD, DUNGEON & ROOMS
 // ============================================================================
 
-export type RoomType = 'start' | 'combat' | 'boss' | 'treasure' | 'shop';
+export type RoomType = 'start' | 'combat' | 'treasure' | 'shop' | 'boss' | 'hub';
 
 export interface SkidMark {
   x: number;
@@ -481,13 +482,27 @@ export interface RunWeaponPickup extends BasePickup {
   cost: number;
 }
 
+export type HubNpcId = 'garage' | 'blacksmith' | 'bounty' | 'launch';
+
+export interface HubNpcPickup {
+  x: number;
+  y: number;
+  type: 'hub_npc';
+  npcId: HubNpcId;
+  name: string;
+  subtitle: string;
+  cost: number;
+  radius: number;
+}
+
 export type Pickup =
   | LootPickup
   | DropItemPickup
   | HeartPickup
   | ShopHeartPickup
   | ModPedestalPickup
-  | RunWeaponPickup;
+  | RunWeaponPickup
+  | HubNpcPickup;
 
 // ============================================================================
 // 7. PERSISTENCE & LOCALSTORAGE STATE

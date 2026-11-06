@@ -350,7 +350,7 @@ export function populateRoom(
   floor: number,
   random: () => number = Math.random
 ): void {
-  if (room.type === 'start' || room.type === 'treasure' || room.type === 'shop') {
+  if (room.type === 'start' || room.type === 'treasure' || room.type === 'shop' || room.type === 'hub') {
     return;
   }
 
@@ -562,5 +562,71 @@ export function generateDungeon(
     bossCoord,
     treasureCoord,
     shopCoord
+  };
+}
+
+/**
+ * Creates the persistent Outlaw Home Base Hub room.
+ * Hub stations / NPCs:
+ * 1. Garage Bay (Wrench) - Tune bike, stash, weapon unlocks
+ * 2. Scrap Forge (Sparky) - Spend 12 scrap to forge equipment part
+ * 3. War Room (Valkyrie) - Free outlaw supply cache (+15 coins, +1 hull)
+ * 4. Highway Gate - Deploy into Floor 1
+ */
+export function createHomeBaseRoom(): Room {
+  return {
+    x: 0,
+    y: 0,
+    type: 'hub',
+    cleared: true,
+    visited: true,
+    doors: { N: false, S: false, E: false, W: false },
+    obstacles: [],
+    enemies: [],
+    pickups: [
+      {
+        x: 195,
+        y: 215,
+        type: 'hub_npc',
+        npcId: 'garage',
+        name: 'WRENCH // GARAGE BAY',
+        subtitle: 'Tune bike, equip stash parts & unlock permanent weapons',
+        cost: 0,
+        radius: 34
+      },
+      {
+        x: 525,
+        y: 215,
+        type: 'hub_npc',
+        npcId: 'blacksmith',
+        name: 'SPARKY // SCRAP FORGE',
+        subtitle: 'Spend 12 Scrap to forge a random Bike Equipment Part',
+        cost: 12,
+        radius: 34
+      },
+      {
+        x: 195,
+        y: 505,
+        type: 'hub_npc',
+        npcId: 'bounty',
+        name: 'VALKYRIE // WAR ROOM',
+        subtitle: 'Claim a free Outlaw Supply Cache (+15 Coins & +1 Hull for next run)',
+        cost: 0,
+        radius: 34
+      },
+      {
+        x: 525,
+        y: 505,
+        type: 'hub_npc',
+        npcId: 'launch',
+        name: 'HIGHWAY GATE // RIDE OUT',
+        subtitle: 'Deploy from Home Base into Floor 1',
+        cost: 0,
+        radius: 38
+      }
+    ],
+    hazards: [],
+    skids: [],
+    trapdoor: false
   };
 }

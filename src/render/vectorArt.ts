@@ -49,11 +49,18 @@ export function parseColor(colorStr: string, fallback: number = 0xffffff): numbe
 // 1. PLAYER MOTORCYCLE RENDERING
 // ============================================================================
 
-export function drawMotorcycle(g: Graphics, player: PlayerState, _timestampMs: number = 0): void {
+export function drawMotorcycle(g: Graphics, player: PlayerState, timestampMs: number = 0): void {
+  const isDead = (player.deathTimer || 0) > 0;
+  const dTimer = player.deathTimer || 0;
+  // Progress from 0 (instant of death) to 1.0 (end of 2.2s countdown)
+  const deathProg = isDead ? Math.max(0, Math.min(1, (2.2 - dTimer) / 2.2)) : 0;
+  const tDeath = isDead ? Math.max(0, 2.2 - dTimer) : 0;
+  const wreckTilt = isDead ? Math.min(0.85, 0.25 + deathProg * 0.8) : 0;
+
   const px = player.x;
   const py = player.y;
-  const bAngle = player.bikeAngle;
-  const aAngle = player.aimAngle;
+  const bAngle = player.bikeAngle + wreckTilt;
+  const aAngle = isDead ? bAngle + 0.35 : player.aimAngle;
   const wDef = WEAPONS[player.weapon] || WEAPONS.pistol;
   const weaponColor = parseColor(wDef.color, 0xffd166);
 
@@ -61,34 +68,39 @@ export function drawMotorcycle(g: Graphics, player: PlayerState, _timestampMs: n
   const isBlinking = player.invuln > 0 && Math.floor(player.invuln * 16) % 2 === 0;
   const alpha = isBlinking ? 0.45 : 1.0;
 
-  // --- Volumetric Headlight Cone ---
-  const hlLength = 145;
-  const hlSpread = 42;
+  // --- Volumetric Headlight Cone (only active when bike is running) ---
+  if (!isDead) {
+    const hlLength = 145;
+    const hlSpread = 42;
+    const cosB = Math.cos(bAngle);
+    const sinB = Math.sin(bAngle);
+    const perpX = -sinB;
+    const perpY = cosB;
+
+    const hlOriginX = px + cosB * 18;
+    const hlOriginY = py + sinB * 18;
+    const hlFarCenterX = px + cosB * hlLength;
+    const hlFarCenterY = py + sinB * hlLength;
+
+    const coneCoords = [
+      hlOriginX, hlOriginY,
+      hlFarCenterX + perpX * hlSpread, hlFarCenterY + perpY * hlSpread,
+      hlFarCenterX - perpX * hlSpread, hlFarCenterY - perpY * hlSpread
+    ];
+    g.poly(coneCoords)
+      .fill({ color: 0xfffae0, alpha: 0.14 * alpha });
+
+    const innerConeCoords = [
+      hlOriginX, hlOriginY,
+      hlFarCenterX + perpX * (hlSpread * 0.42), hlFarCenterY + perpY * (hlSpread * 0.42),
+      hlFarCenterX - perpX * (hlSpread * 0.42), hlFarCenterY - perpY * (hlSpread * 0.42)
+    ];
+    g.poly(innerConeCoords)
+      .fill({ color: 0xffffff, alpha: 0.22 * alpha });
+  }
+
   const cosB = Math.cos(bAngle);
   const sinB = Math.sin(bAngle);
-  const perpX = -sinB;
-  const perpY = cosB;
-
-  const hlOriginX = px + cosB * 18;
-  const hlOriginY = py + sinB * 18;
-  const hlFarCenterX = px + cosB * hlLength;
-  const hlFarCenterY = py + sinB * hlLength;
-
-  const coneCoords = [
-    hlOriginX, hlOriginY,
-    hlFarCenterX + perpX * hlSpread, hlFarCenterY + perpY * hlSpread,
-    hlFarCenterX - perpX * hlSpread, hlFarCenterY - perpY * hlSpread
-  ];
-  g.poly(coneCoords)
-    .fill({ color: 0xfffae0, alpha: 0.14 * alpha });
-
-  const innerConeCoords = [
-    hlOriginX, hlOriginY,
-    hlFarCenterX + perpX * (hlSpread * 0.42), hlFarCenterY + perpY * (hlSpread * 0.42),
-    hlFarCenterX - perpX * (hlSpread * 0.42), hlFarCenterY - perpY * (hlSpread * 0.42)
-  ];
-  g.poly(innerConeCoords)
-    .fill({ color: 0xffffff, alpha: 0.22 * alpha });
 
   // 2.5D Height Extrusion Helper: z > 0 lifts geometry upward in screen-Y for three-quarter 3D depth
   const toWorld = (lx: number, ly: number, z: number = 0): [number, number] => {
@@ -466,6 +478,145 @@ export function drawMotorcycle(g: Graphics, player: PlayerState, _timestampMs: n
   g.moveTo(vg1x, vg1y)
     .lineTo(vg2x, vg2y)
     .stroke({ color: weaponColor, width: 2.2, alpha });
+
+  // --- 7. Anime Death / Crash Explosion & Mechanical Carnage ---
+  if (isDead) {
+    // 1. Flickering flame tongues engulfing the chassis
+    const flameTongues = [
+      { lx: -4, ly: -2, z: 4, h: 22, color: 0xff5400 },
+      { lx: 2, ly: 3, z: 5, h: 26, color: 0xe5203a },
+      { lx: -14, ly: 0, z: 4, h: 20, color: 0xff9f1c },
+      { lx: 8, ly: -3, z: 6, h: 28, color: 0xff5400 },
+      { lx: 14, ly: 2, z: 5, h: 18, color: 0xe5203a },
+      { lx: -20, ly: -5, z: 3, h: 24, color: 0xffbe0b }
+    ];
+    for (let i = 0; i < flameTongues.length; i++) {
+      const ft = flameTongues[i];
+      const [fx, fy] = toWorld(ft.lx, ft.ly, ft.z);
+      const flicker = Math.sin(timestampMs * 0.025 + i * 1.7) * 4;
+      const curH = (ft.h + flicker) * (0.8 + deathProg * 0.4);
+      const w = 7.5;
+      const flamePts = [
+        fx - w, fy + 2,
+        fx - w * 0.4, fy - curH * 0.5,
+        fx + Math.sin(timestampMs * 0.03 + i) * 3, fy - curH,
+        fx + w * 0.4, fy - curH * 0.5,
+        fx + w, fy + 2
+      ];
+      g.poly(flamePts)
+        .fill({ color: ft.color, alpha: 0.9 })
+        .stroke({ color: 0x0a0b10, width: 1.8 });
+      // Inner hot core
+      g.poly([
+        fx - w * 0.5, fy + 1,
+        fx, fy - curH * 0.7,
+        fx + w * 0.5, fy + 1
+      ]).fill({ color: 0xffffff, alpha: 0.85 });
+    }
+
+    // 2. Dark smoke rings billowing from the engine
+    const smokeCount = 7;
+    for (let s = 0; s < smokeCount; s++) {
+      const sAngle = (s * Math.PI * 2) / smokeCount + (timestampMs * 0.001);
+      const sDist = (12 + s * 7) * (0.6 + deathProg * 1.4);
+      const sRad = (9 + s * 4) * (0.8 + deathProg * 0.8);
+      const smX = px + Math.cos(sAngle) * sDist + (s % 2 === 0 ? -4 : 4);
+      const smY = py + Math.sin(sAngle) * sDist * 0.7 - (10 + s * 5);
+      const sAlpha = Math.max(0.2, 0.75 - deathProg * 0.45);
+      const sCol = (s % 2 === 0) ? 0x1b1e2a : 0x0d0e14;
+      g.circle(smX, smY, sRad)
+        .fill({ color: sCol, alpha: sAlpha })
+        .stroke({ color: 0x0a0b10, width: 2, alpha: sAlpha });
+    }
+
+    // 3. Jagged Comic Explosion Starburst Polygons
+    const burstPulse = Math.sin(timestampMs * 0.04) * 4;
+    const outerRadius = (38 + burstPulse) * (0.7 + deathProg * 0.6);
+    const innerRadius = (16 + burstPulse * 0.5) * (0.7 + deathProg * 0.6);
+    const starPts: number[] = [];
+    const numPoints = 14;
+    for (let p = 0; p < numPoints * 2; p++) {
+      const ang = (p * Math.PI) / numPoints + (timestampMs * 0.002);
+      const rad = (p % 2 === 0) ? outerRadius : innerRadius;
+      starPts.push(px + Math.cos(ang) * rad, py + Math.sin(ang) * rad);
+    }
+    // Outer Crimson Explosion Starburst
+    g.poly(starPts)
+      .fill({ color: 0xff1744, alpha: 0.88 })
+      .stroke({ color: 0x0a0b10, width: 3.5 });
+
+    // Middle Gold Comic Flash Starburst
+    const midStarPts: number[] = [];
+    for (let p = 0; p < numPoints * 2; p++) {
+      const ang = (p * Math.PI) / numPoints + 0.15 + (timestampMs * 0.003);
+      const rad = ((p % 2 === 0) ? outerRadius * 0.68 : innerRadius * 0.6);
+      midStarPts.push(px + Math.cos(ang) * rad, py + Math.sin(ang) * rad);
+    }
+    g.poly(midStarPts)
+      .fill({ color: 0xffd166, alpha: 0.95 })
+      .stroke({ color: 0x0a0b10, width: 2.2 });
+
+    // Inner White Flare Core
+    g.circle(px, py, (12 + Math.sin(timestampMs * 0.05) * 3) * (0.8 + deathProg * 0.5))
+      .fill({ color: 0xffffff, alpha: 0.95 });
+
+    // 4. Flying Mechanical Debris (spinning tire/fairing shards) radiating outward
+    const shards = [
+      { ang: 0.6, dist: 85, spin: 14, color: 0x141620, type: 'tire' },
+      { ang: 2.2, dist: 95, spin: -16, color: 0xff5c00, type: 'fairing' },
+      { ang: 3.8, dist: 78, spin: 18, color: 0xff5c00, type: 'fairing' },
+      { ang: 5.1, dist: 105, spin: -15, color: 0x5c6274, type: 'metal' },
+      { ang: 1.4, dist: 68, spin: 12, color: 0xffbe0b, type: 'fork' },
+      { ang: 4.5, dist: 90, spin: -20, color: 0x141620, type: 'tire' },
+      { ang: 3.1, dist: 110, spin: 22, color: 0xe5203a, type: 'fairing' }
+    ];
+
+    for (let i = 0; i < shards.length; i++) {
+      const sh = shards[i];
+      const curDist = deathProg * sh.dist;
+      const curAngle = sh.ang;
+      const shX = px + Math.cos(curAngle) * curDist;
+      const shY = py + Math.sin(curAngle) * curDist;
+      const rot = tDeath * sh.spin;
+      const cosR = Math.cos(rot);
+      const sinR = Math.sin(rot);
+
+      const toShard = (lx: number, ly: number): [number, number] => [
+        shX + cosR * lx - sinR * ly,
+        shY + sinR * lx + cosR * ly
+      ];
+
+      if (sh.type === 'tire') {
+        // Jagged tire tread chunk
+        const pts = [toShard(-6, -4), toShard(6, -4), toShard(8, 4), toShard(-4, 5)].flat();
+        g.poly(pts).fill({ color: sh.color }).stroke({ color: 0x0a0b10, width: 2 });
+        const [r1x, r1y] = toShard(-3, 0);
+        const [r2x, r2y] = toShard(4, 0);
+        g.moveTo(r1x, r1y).lineTo(r2x, r2y).stroke({ color: 0xff5c00, width: 1.5 });
+      } else if (sh.type === 'fairing') {
+        // Sharp triangular orange fairing fragment
+        const pts = [toShard(-7, -5), toShard(9, 0), toShard(-5, 6)].flat();
+        g.poly(pts).fill({ color: sh.color }).stroke({ color: 0x0a0b10, width: 2 });
+        const [glX, glY] = toShard(0, -1);
+        g.circle(glX, glY, 1.5).fill({ color: 0xffffff });
+      } else {
+        // Heavy metallic frame/fork fragment
+        const pts = [toShard(-8, -3), toShard(8, -3), toShard(6, 3), toShard(-8, 3)].flat();
+        g.poly(pts).fill({ color: sh.color }).stroke({ color: 0x0a0b10, width: 2 });
+      }
+
+      // 5. Orange & Cyan Electrical Short-Circuit Arcs crackling outward
+      if (deathProg > 0.08 && (i % 2 === Math.floor(timestampMs / 80) % 2)) {
+        const arcColor = (i % 2 === 0) ? 0x2ee6ff : 0xff9f1c;
+        const midX = (px + shX) / 2 + Math.sin(timestampMs * 0.05 + i) * 12;
+        const midY = (py + shY) / 2 + Math.cos(timestampMs * 0.05 + i) * 12;
+        g.moveTo(px, py)
+          .lineTo(midX, midY)
+          .lineTo(shX, shY)
+          .stroke({ color: arcColor, width: 2, alpha: 0.85 });
+      }
+    }
+  }
 }
 
 // ============================================================================
@@ -853,11 +1004,27 @@ export function drawEnemy(g: Graphics, en: Enemy, timestampMs: number = 0): void
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
 
-  const toWorld = (lx: number, ly: number): [number, number] => {
+  const toWorld = (lx: number, ly: number, z: number = 0): [number, number] => {
     return [
       ex + cos * lx - sin * ly,
-      ey + sin * lx + cos * ly
+      ey + sin * lx + cos * ly - z
     ];
+  };
+
+  // Helper to render vehicle tires with dark rubber & alloy rims
+  const drawWheel = (lx: number, ly: number, wLen: number, wWid: number, rimColor: number = 0x8d95a8) => {
+    const pts = [
+      toWorld(lx - wLen / 2, ly - wWid / 2),
+      toWorld(lx + wLen / 2, ly - wWid / 2),
+      toWorld(lx + wLen / 2, ly + wWid / 2),
+      toWorld(lx - wLen / 2, ly + wWid / 2)
+    ].flat();
+    g.poly(pts)
+      .fill({ color: 0x12141c })
+      .stroke({ color: 0x0a0b10, width: 2 });
+    const [c1x, c1y] = toWorld(lx - wLen * 0.25, ly);
+    const [c2x, c2y] = toWorld(lx + wLen * 0.25, ly);
+    g.moveTo(c1x, c1y).lineTo(c2x, c2y).stroke({ color: rimColor, width: 1.5 });
   };
 
   // Laser telegraph for sniper & charger
@@ -868,169 +1035,469 @@ export function drawEnemy(g: Graphics, en: Enemy, timestampMs: number = 0): void
       .stroke({ color: 0xff4d6d, width: 2, alpha: 0.65 });
   }
 
-  const borderWidth = reg.isElite ? 4 : 2.5;
+  const borderWidth = reg.isElite ? 3.8 : 2.5;
   const borderColor = reg.isElite ? 0xffd166 : 0x0a0b10;
 
   switch (reg.type) {
     case 'swarmer':
     case 'mini_swarmer': {
-      // Sharp Diamond-head spear silhouette
-      const points = [
-        toWorld(r * 1.3, 0),
-        toWorld(0, -r * 0.8),
-        toWorld(-r * 0.9, 0),
-        toWorld(0, r * 0.8)
-      ].flat();
+      // 1. Sport Coupe / Compact Hatchback (sleek 2-door coupe, rear spoiler, 4 wheels, angry headlights)
+      // 4 rubber wheels
+      drawWheel(r * 0.65, -r * 0.65, r * 0.52, r * 0.25);
+      drawWheel(r * 0.65, r * 0.65, r * 0.52, r * 0.25);
+      drawWheel(-r * 0.65, -r * 0.65, r * 0.52, r * 0.25);
+      drawWheel(-r * 0.65, r * 0.65, r * 0.52, r * 0.25);
 
-      g.poly(points)
+      // Aerodynamic coupe chassis
+      const coupeBody = [
+        toWorld(-r * 1.05, -r * 0.55),
+        toWorld(-r * 1.15, 0),
+        toWorld(-r * 1.05, r * 0.55),
+        toWorld(-r * 0.25, r * 0.62),
+        toWorld(r * 0.6, r * 0.58),
+        toWorld(r * 1.15, r * 0.42),
+        toWorld(r * 1.25, 0),
+        toWorld(r * 1.15, -r * 0.42),
+        toWorld(r * 0.6, -r * 0.58),
+        toWorld(-r * 0.25, -r * 0.62)
+      ].flat();
+      g.poly(coupeBody)
         .fill({ color: bodyColor })
         .stroke({ color: borderColor, width: borderWidth });
 
-      // Eye slit
-      const [eyeX, eyeY] = toWorld(r * 0.3, 0);
-      g.circle(eyeX, eyeY, Math.max(2, r * 0.22))
-        .fill({ color: 0xffffff });
+      // Specular hood highlight
+      const hoodHi = [
+        toWorld(-r * 0.1, -r * 0.45, 1.5),
+        toWorld(r * 0.8, -r * 0.35, 1.5),
+        toWorld(r * 0.7, 0, 1.5),
+        toWorld(-r * 0.1, -r * 0.1, 1.5)
+      ].flat();
+      g.poly(hoodHi).fill({ color: 0xffffff, alpha: 0.25 });
+
+      // Sloped front windshield & roof
+      const windshield = [
+        toWorld(r * 0.15, -r * 0.42, 2.5),
+        toWorld(r * 0.55, -r * 0.38, 1.5),
+        toWorld(r * 0.55, r * 0.38, 1.5),
+        toWorld(r * 0.15, r * 0.42, 2.5)
+      ].flat();
+      g.poly(windshield).fill({ color: 0x161c28 }).stroke({ color: 0x0a0b10, width: 1.8 });
+
+      const roof = [
+        toWorld(-r * 0.45, -r * 0.38, 3.5),
+        toWorld(r * 0.15, -r * 0.38, 3.5),
+        toWorld(r * 0.15, r * 0.38, 3.5),
+        toWorld(-r * 0.45, r * 0.38, 3.5)
+      ].flat();
+      g.poly(roof).fill({ color: bodyColor }).stroke({ color: 0x0a0b10, width: 1.8 });
+
+      const rearHatch = [
+        toWorld(-r * 0.75, -r * 0.38, 1.8),
+        toWorld(-r * 0.45, -r * 0.38, 3.5),
+        toWorld(-r * 0.45, r * 0.38, 3.5),
+        toWorld(-r * 0.75, r * 0.38, 1.8)
+      ].flat();
+      g.poly(rearHatch).fill({ color: 0x161c28 }).stroke({ color: 0x0a0b10, width: 1.8 });
+
+      // High-downforce rear spoiler wing
+      const spoiler = [
+        toWorld(-r * 1.08, -r * 0.65, 3.5),
+        toWorld(-r * 0.95, -r * 0.65, 3.5),
+        toWorld(-r * 0.95, r * 0.65, 3.5),
+        toWorld(-r * 1.08, r * 0.65, 3.5)
+      ].flat();
+      g.poly(spoiler).fill({ color: 0x0a0b10 }).stroke({ color: borderColor, width: 1.8 });
+
+      // Angry slanted headlights
+      const [hl1x, hl1y] = toWorld(r * 1.12, -r * 0.3, 1.5);
+      const [hl2x, hl2y] = toWorld(r * 1.12, r * 0.3, 1.5);
+      g.circle(hl1x, hl1y, Math.max(1.8, r * 0.18)).fill({ color: 0xfff3b0 }).stroke({ color: 0x0a0b10, width: 1.2 });
+      g.circle(hl2x, hl2y, Math.max(1.8, r * 0.18)).fill({ color: 0xfff3b0 }).stroke({ color: 0x0a0b10, width: 1.2 });
       break;
     }
 
-    case 'turret': {
-      // Heavy beveled Octagon fortress with rotating cannon
-      const octPoints = [
-        toWorld(r, -r * 0.4), toWorld(r * 0.4, -r),
-        toWorld(-r * 0.4, -r), toWorld(-r, -r * 0.4),
-        toWorld(-r, r * 0.4), toWorld(-r * 0.4, r),
-        toWorld(r * 0.4, r), toWorld(r, r * 0.4)
+    case 'trishot':
+    case 'sniper': {
+      // 2. 4-Door Street Sedan (classic chassis, front hood, cabin roof, windshields, 4 wheels, roof weapon)
+      drawWheel(r * 0.7, -r * 0.62, r * 0.52, r * 0.25);
+      drawWheel(r * 0.7, r * 0.62, r * 0.52, r * 0.25);
+      drawWheel(-r * 0.7, -r * 0.62, r * 0.52, r * 0.25);
+      drawWheel(-r * 0.7, r * 0.62, r * 0.52, r * 0.25);
+
+      const sedanPts = [
+        toWorld(-r * 1.2, -r * 0.55),
+        toWorld(-r * 1.25, 0),
+        toWorld(-r * 1.2, r * 0.55),
+        toWorld(-r * 0.35, r * 0.6),
+        toWorld(r * 0.45, r * 0.58),
+        toWorld(r * 1.2, r * 0.52),
+        toWorld(r * 1.28, 0),
+        toWorld(r * 1.2, -r * 0.52),
+        toWorld(r * 0.45, -r * 0.58),
+        toWorld(-r * 0.35, -r * 0.6)
       ].flat();
+      g.poly(sedanPts).fill({ color: bodyColor }).stroke({ color: borderColor, width: borderWidth });
 
-      g.poly(octPoints)
-        .fill({ color: bodyColor })
-        .stroke({ color: borderColor, width: borderWidth });
+      // Windshields & cabin
+      const frontGlass = [
+        toWorld(r * 0.15, -r * 0.45, 3),
+        toWorld(r * 0.55, -r * 0.42, 1.5),
+        toWorld(r * 0.55, r * 0.42, 1.5),
+        toWorld(r * 0.15, r * 0.45, 3)
+      ].flat();
+      const rearGlass = [
+        toWorld(-r * 0.72, -r * 0.42, 1.5),
+        toWorld(-r * 0.4, -r * 0.45, 3),
+        toWorld(-r * 0.4, r * 0.45, 3),
+        toWorld(-r * 0.72, r * 0.42, 1.5)
+      ].flat();
+      const cabinRoof = [
+        toWorld(-r * 0.4, -r * 0.45, 3.5),
+        toWorld(r * 0.15, -r * 0.45, 3.5),
+        toWorld(r * 0.15, r * 0.45, 3.5),
+        toWorld(-r * 0.4, r * 0.45, 3.5)
+      ].flat();
+      g.poly(frontGlass).fill({ color: 0x141824 }).stroke({ color: 0x0a0b10, width: 1.5 });
+      g.poly(rearGlass).fill({ color: 0x141824 }).stroke({ color: 0x0a0b10, width: 1.5 });
+      g.poly(cabinRoof).fill({ color: bodyColor }).stroke({ color: 0x0a0b10, width: 1.5 });
 
-      // Cannon barrel
-      const barrel = [toWorld(r * 0.2, -3.5), toWorld(r * 1.2, -3.5), toWorld(r * 1.2, 3.5), toWorld(r * 0.2, 3.5)].flat();
-      g.poly(barrel).fill({ color: 0x0a0b10 });
+      // Front headlights
+      const [hl1x, hl1y] = toWorld(r * 1.18, -r * 0.35, 1.5);
+      const [hl2x, hl2y] = toWorld(r * 1.18, r * 0.35, 1.5);
+      g.circle(hl1x, hl1y, Math.max(1.8, r * 0.18)).fill({ color: 0xfff3b0 }).stroke({ color: 0x0a0b10, width: 1.2 });
+      g.circle(hl2x, hl2y, Math.max(1.8, r * 0.18)).fill({ color: 0xfff3b0 }).stroke({ color: 0x0a0b10, width: 1.2 });
+
+      // Roof Weapon Mount
+      if (reg.type === 'trishot') {
+        // Roof tri-barrel gun turret
+        const [tX, tY] = toWorld(-r * 0.1, 0, 4);
+        g.circle(tX, tY, r * 0.32).fill({ color: 0x242838 }).stroke({ color: 0x0a0b10, width: 2 });
+        [-r * 0.22, 0, r * 0.22].forEach(offY => {
+          const [bStart1, bStart2] = toWorld(-r * 0.1, offY, 4.5);
+          const [bEnd1, bEnd2] = toWorld(r * 0.9, offY, 4.5);
+          g.moveTo(bStart1, bStart2).lineTo(bEnd1, bEnd2).stroke({ color: 0x0a0b10, width: 3.2 });
+          g.moveTo(bStart1, bStart2).lineTo(bEnd1, bEnd2).stroke({ color: 0xdde2eb, width: 1.6 });
+          const [muzzleX, muzzleY] = toWorld(r * 0.92, offY, 4.5);
+          g.circle(muzzleX, muzzleY, 1.8).fill({ color: 0xffd166 });
+        });
+      } else {
+        // Roof heavy sniper rifle barrel with laser scope
+        const [sBaseX, sBaseY] = toWorld(-r * 0.2, 0, 4);
+        g.circle(sBaseX, sBaseY, r * 0.28).fill({ color: 0x1b1d28 }).stroke({ color: 0x0a0b10, width: 2 });
+        const [bS1, bS2] = toWorld(-r * 0.1, 0, 4.8);
+        const [bE1, bE2] = toWorld(r * 1.65, 0, 4.8);
+        g.moveTo(bS1, bS2).lineTo(bE1, bE2).stroke({ color: 0x0a0b10, width: 4.2 });
+        g.moveTo(bS1, bS2).lineTo(bE1, bE2).stroke({ color: 0x4cc9f0, width: 2.2 });
+        const [m1, m2] = toWorld(r * 1.65, 0, 4.8);
+        g.circle(m1, m2, 3.2).fill({ color: 0x0a0b10 });
+        const [sc1, sc2] = toWorld(r * 0.2, 3.5, 5.5);
+        g.circle(sc1, sc2, 2.5).fill({ color: 0xff1744 }).stroke({ color: 0x0a0b10, width: 1.5 });
+      }
       break;
     }
 
     case 'charger': {
-      // Aggressive swept-wing wedge
-      const points = [
+      // 3. Pickup Truck / Muscle Ram Truck (front bull-bar ram, open bed with spare tire/rollbar, 4 chunky tires)
+      drawWheel(r * 0.72, -r * 0.72, r * 0.6, r * 0.35, 0xff9f1c);
+      drawWheel(r * 0.72, r * 0.72, r * 0.6, r * 0.35, 0xff9f1c);
+      drawWheel(-r * 0.72, -r * 0.72, r * 0.6, r * 0.35, 0xff9f1c);
+      drawWheel(-r * 0.72, r * 0.72, r * 0.6, r * 0.35, 0xff9f1c);
+
+      const truckPts = [
+        toWorld(-r * 1.25, -r * 0.62),
+        toWorld(-r * 1.25, r * 0.62),
+        toWorld(r * 0.35, r * 0.62),
+        toWorld(r * 1.15, r * 0.58),
+        toWorld(r * 1.22, 0),
+        toWorld(r * 1.15, -r * 0.58),
+        toWorld(r * 0.35, -r * 0.62)
+      ].flat();
+      g.poly(truckPts).fill({ color: bodyColor }).stroke({ color: borderColor, width: borderWidth });
+
+      // Front Heavy Bull-Bar Ram / Cattle Catcher
+      const bullBar = [
+        toWorld(r * 1.15, -r * 0.65, 2),
+        toWorld(r * 1.48, -r * 0.55, 2),
+        toWorld(r * 1.55, 0, 2),
+        toWorld(r * 1.48, r * 0.55, 2),
+        toWorld(r * 1.15, r * 0.65, 2),
+        toWorld(r * 1.15, r * 0.45, 2),
+        toWorld(r * 1.4, 0, 2),
+        toWorld(r * 1.15, -r * 0.45, 2)
+      ].flat();
+      g.poly(bullBar).fill({ color: 0x8d95a8 }).stroke({ color: 0x0a0b10, width: 2.5 });
+      for (const spY of [-r * 0.35, 0, r * 0.35]) {
+        const [spBaseX, spBaseY] = toWorld(r * 1.45, spY, 2);
+        const [spTipX, spTipY] = toWorld(r * 1.7, spY, 2);
+        g.moveTo(spBaseX, spBaseY).lineTo(spTipX, spTipY).stroke({ color: 0xdde2eb, width: 3.5 });
+      }
+
+      // Elevated Cab & Windshield
+      const cabGlass = [
+        toWorld(r * 0.05, -r * 0.5, 3.8),
+        toWorld(r * 0.45, -r * 0.48, 1.8),
+        toWorld(r * 0.45, r * 0.48, 1.8),
+        toWorld(r * 0.05, r * 0.5, 3.8)
+      ].flat();
+      const cabRoof = [
+        toWorld(-r * 0.35, -r * 0.48, 4),
+        toWorld(r * 0.05, -r * 0.48, 4),
+        toWorld(r * 0.05, r * 0.48, 4),
+        toWorld(-r * 0.35, r * 0.48, 4)
+      ].flat();
+      g.poly(cabGlass).fill({ color: 0x141824 }).stroke({ color: 0x0a0b10, width: 1.8 });
+      g.poly(cabRoof).fill({ color: bodyColor }).stroke({ color: 0x0a0b10, width: 2 });
+
+      // Open rear truck bed with rollbar & spare tire
+      const bedFloor = [
+        toWorld(-r * 1.18, -r * 0.52, 1),
+        toWorld(-r * 0.38, -r * 0.52, 1),
+        toWorld(-r * 0.38, r * 0.52, 1),
+        toWorld(-r * 1.18, r * 0.52, 1)
+      ].flat();
+      g.poly(bedFloor).fill({ color: 0x181a24 }).stroke({ color: 0x0a0b10, width: 2 });
+      const [rb1x, rb1y] = toWorld(-r * 0.42, -r * 0.5, 4.2);
+      const [rb2x, rb2y] = toWorld(-r * 0.42, r * 0.5, 4.2);
+      g.moveTo(rb1x, rb1y).lineTo(rb2x, rb2y).stroke({ color: 0xdde2eb, width: 3 });
+      const [stX, stY] = toWorld(-r * 0.78, 0, 1.8);
+      g.circle(stX, stY, r * 0.28).fill({ color: 0x12141c }).stroke({ color: 0x0a0b10, width: 2 });
+      g.circle(stX, stY, r * 0.12).fill({ color: 0x8d95a8 });
+      break;
+    }
+
+    case 'splitter':
+    case 'turret': {
+      // 4. Minivan / Tactical Armored Van (sliding door seams, panoramic glass, roof rack/turret, 4 tires)
+      drawWheel(r * 0.72, -r * 0.65, r * 0.52, r * 0.25);
+      drawWheel(r * 0.72, r * 0.65, r * 0.52, r * 0.25);
+      drawWheel(-r * 0.72, -r * 0.65, r * 0.52, r * 0.25);
+      drawWheel(-r * 0.72, r * 0.65, r * 0.52, r * 0.25);
+
+      const vanPts = [
+        toWorld(-r * 1.35, -r * 0.6),
+        toWorld(-r * 1.35, r * 0.6),
+        toWorld(r * 0.5, r * 0.6),
+        toWorld(r * 1.25, r * 0.45),
+        toWorld(r * 1.32, 0),
+        toWorld(r * 1.25, -r * 0.45),
+        toWorld(r * 0.5, -r * 0.6)
+      ].flat();
+      g.poly(vanPts).fill({ color: bodyColor }).stroke({ color: borderColor, width: borderWidth });
+
+      // Panoramic windshield and tall roof
+      const panoGlass = [
+        toWorld(r * 0.35, -r * 0.5, 3.2),
+        toWorld(r * 0.95, -r * 0.44, 1.8),
+        toWorld(r * 0.95, r * 0.44, 1.8),
+        toWorld(r * 0.35, r * 0.5, 3.2)
+      ].flat();
+      const vanRoof = [
+        toWorld(-r * 1.2, -r * 0.5, 3.5),
+        toWorld(r * 0.35, -r * 0.5, 3.5),
+        toWorld(r * 0.35, r * 0.5, 3.5),
+        toWorld(-r * 1.2, r * 0.5, 3.5)
+      ].flat();
+      g.poly(panoGlass).fill({ color: 0x141824 }).stroke({ color: 0x0a0b10, width: 1.8 });
+      g.poly(vanRoof).fill({ color: bodyColor }).stroke({ color: 0x0a0b10, width: 1.8 });
+
+      // Sliding door seams
+      const [sd1x, sd1y] = toWorld(-r * 0.25, -r * 0.6);
+      const [sd2x, sd2y] = toWorld(-r * 0.25, -r * 0.5, 3.5);
+      g.moveTo(sd1x, sd1y).lineTo(sd2x, sd2y).stroke({ color: 0x0a0b10, width: 1.8 });
+
+      if (reg.type === 'turret') {
+        // Armored 360-degree rotating roof turret with twin heavy autocannons
+        const [turX, turY] = toWorld(0, 0, 4);
+        g.circle(turX, turY, r * 0.45).fill({ color: 0x222638 }).stroke({ color: 0x0a0b10, width: 2.2 });
+        for (const offY of [-r * 0.18, r * 0.18]) {
+          const [tb1, tb2] = toWorld(0, offY, 4.8);
+          const [te1, te2] = toWorld(r * 1.35, offY, 4.8);
+          g.moveTo(tb1, tb2).lineTo(te1, te2).stroke({ color: 0x0a0b10, width: 4 });
+          g.moveTo(tb1, tb2).lineTo(te1, te2).stroke({ color: 0x6c757d, width: 2 });
+          const [mzX, mzY] = toWorld(r * 1.35, offY, 4.8);
+          g.circle(mzX, mzY, 2).fill({ color: 0xffd166 });
+        }
+      } else {
+        // Tactical split-seam line down center chassis & roof rack
+        const [spl1x, spl1y] = toWorld(-r * 1.35, 0, 3.5);
+        const [spl2x, spl2y] = toWorld(r * 1.32, 0, 1.8);
+        g.moveTo(spl1x, spl1y).lineTo(spl2x, spl2y).stroke({ color: 0x0a0b10, width: 3.5 });
+        g.moveTo(spl1x, spl1y).lineTo(spl2x, spl2y).stroke({ color: 0xffd166, width: 1.8 });
+        // Roof gear rack
+        const [rack1x, rack1y] = toWorld(-r * 0.9, -r * 0.35, 4.2);
+        const [rack2x, rack2y] = toWorld(-r * 0.1, -r * 0.35, 4.2);
+        const [rack3x, rack3y] = toWorld(-r * 0.9, r * 0.35, 4.2);
+        const [rack4x, rack4y] = toWorld(-r * 0.1, r * 0.35, 4.2);
+        g.moveTo(rack1x, rack1y).lineTo(rack2x, rack2y).stroke({ color: 0xdde2eb, width: 1.8 });
+        g.moveTo(rack3x, rack3y).lineTo(rack4x, rack4y).stroke({ color: 0xdde2eb, width: 1.8 });
+      }
+      break;
+    }
+
+    case 'bomber':
+    case 'pyro': {
+      // 5. Cargo Box Truck (cab-over-engine front, corrugated box with hazard stripes, 6 wheels, mortar/flame tank)
+      drawWheel(r * 0.85, -r * 0.7, r * 0.52, r * 0.28);
+      drawWheel(r * 0.85, r * 0.7, r * 0.52, r * 0.28);
+      drawWheel(-r * 0.45, -r * 0.7, r * 0.52, r * 0.28);
+      drawWheel(-r * 0.45, r * 0.7, r * 0.52, r * 0.28);
+      drawWheel(-r * 1.0, -r * 0.7, r * 0.52, r * 0.28);
+      drawWheel(-r * 1.0, r * 0.7, r * 0.52, r * 0.28);
+
+      // Cab-over-engine front cab
+      const cabPts = [
+        toWorld(r * 0.45, -r * 0.65),
+        toWorld(r * 0.45, r * 0.65),
+        toWorld(r * 1.25, r * 0.65),
         toWorld(r * 1.35, 0),
-        toWorld(-r * 0.9, -r * 0.9),
-        toWorld(-r * 0.4, 0),
-        toWorld(-r * 0.9, r * 0.9)
+        toWorld(r * 1.25, -r * 0.65)
       ].flat();
+      g.poly(cabPts).fill({ color: 0x242838 }).stroke({ color: borderColor, width: borderWidth });
 
-      g.poly(points)
-        .fill({ color: bodyColor })
-        .stroke({ color: borderColor, width: borderWidth });
-      break;
-    }
-
-    case 'trishot': {
-      // Angular Tri-wing craft
-      const points = [
-        toWorld(r * 1.2, 0),
-        toWorld(-r * 0.8, -r * 0.9),
-        toWorld(-r * 0.3, 0),
-        toWorld(-r * 0.8, r * 0.9)
+      const cabGlass = [
+        toWorld(r * 0.75, -r * 0.55, 3.5),
+        toWorld(r * 1.2, -r * 0.52, 1.8),
+        toWorld(r * 1.2, r * 0.52, 1.8),
+        toWorld(r * 0.75, r * 0.55, 3.5)
       ].flat();
+      g.poly(cabGlass).fill({ color: 0x141824 }).stroke({ color: 0x0a0b10, width: 1.8 });
 
-      g.poly(points)
-        .fill({ color: bodyColor })
-        .stroke({ color: borderColor, width: borderWidth });
-
-      // 3 gun ports
-      [-r * 0.5, 0, r * 0.5].forEach(offset => {
-        const [gx, gy] = toWorld(r * 0.6, offset);
-        g.circle(gx, gy, 2).fill({ color: 0x0a0b10 });
-      });
-      break;
-    }
-
-    case 'bomber': {
-      // Heavy hexagon mortar platform
-      const hexPoints = [
-        toWorld(r * 0.9, 0),
-        toWorld(r * 0.45, -r * 0.8),
-        toWorld(-r * 0.45, -r * 0.8),
-        toWorld(-r * 0.9, 0),
-        toWorld(-r * 0.45, r * 0.8),
-        toWorld(r * 0.45, r * 0.8)
+      // Large corrugated rear cargo box
+      const boxPts = [
+        toWorld(-r * 1.45, -r * 0.68),
+        toWorld(-r * 1.45, r * 0.68),
+        toWorld(r * 0.4, r * 0.68),
+        toWorld(r * 0.4, -r * 0.68)
       ].flat();
+      g.poly(boxPts).fill({ color: bodyColor }).stroke({ color: borderColor, width: borderWidth });
 
-      g.poly(hexPoints)
-        .fill({ color: bodyColor })
-        .stroke({ color: borderColor, width: borderWidth });
+      // Corrugated vertical rib lines
+      for (const offX of [-r * 1.15, -r * 0.75, -r * 0.35, -r * 0.05]) {
+        const [r1x, r1y] = toWorld(offX, -r * 0.68);
+        const [r2x, r2y] = toWorld(offX, r * 0.68);
+        g.moveTo(r1x, r1y).lineTo(r2x, r2y).stroke({ color: 0x0a0b10, width: 1.5, alpha: 0.6 });
+      }
 
-      // Mortar launch tube
-      g.circle(ex, ey, r * 0.4).fill({ color: 0x0a0b10 });
+      // Yellow/black hazard stripes on cargo rear
+      const [hz1x, hz1y] = toWorld(-r * 1.45, -r * 0.45);
+      const [hz2x, hz2y] = toWorld(-r * 1.45, r * 0.45);
+      g.moveTo(hz1x, hz1y).lineTo(hz2x, hz2y).stroke({ color: 0xffd166, width: 3 });
+
+      if (reg.type === 'bomber') {
+        // Heavy roof-mounted mortar launch tube
+        const [mBaseX, mBaseY] = toWorld(-r * 0.5, 0, 4);
+        g.circle(mBaseX, mBaseY, r * 0.4).fill({ color: 0x1a1d2c }).stroke({ color: 0x0a0b10, width: 2.5 });
+        g.circle(mBaseX, mBaseY, r * 0.28).fill({ color: 0x0a0b10 });
+        g.circle(mBaseX, mBaseY, r * 0.18).fill({ color: 0xff9f1c });
+      } else {
+        // Napalm flame tanks and flame projector nozzles
+        const tankPts = [
+          toWorld(-r * 0.9, -r * 0.35, 4),
+          toWorld(-r * 0.1, -r * 0.35, 4),
+          toWorld(-r * 0.1, r * 0.35, 4),
+          toWorld(-r * 0.9, r * 0.35, 4)
+        ].flat();
+        g.poly(tankPts).fill({ color: 0xff5400 }).stroke({ color: 0x0a0b10, width: 2 });
+        for (const offY of [-r * 0.55, r * 0.55]) {
+          const [n1, n2] = toWorld(r * 1.1, offY, 2);
+          const [n3, n4] = toWorld(r * 1.4, offY, 2);
+          g.moveTo(n1, n2).lineTo(n3, n4).stroke({ color: 0xffd166, width: 2.8 });
+        }
+      }
       break;
     }
 
     case 'brute': {
-      // Armored tank fortress with frontal shield plating
-      const rectPoints = [
-        toWorld(r, -r), toWorld(r, r),
-        toWorld(-r, r), toWorld(-r, -r)
+      // 6. 18-Wheeler Semi-Truck Rig (heavy tractor cab, chrome grille, smokestacks, frontal plow, dual headlights, armored trailer)
+      // Front steer axle
+      drawWheel(r * 1.15, -r * 0.72, r * 0.55, r * 0.28);
+      drawWheel(r * 1.15, r * 0.72, r * 0.55, r * 0.28);
+      // Tractor tandem drive axles
+      drawWheel(r * 0.2, -r * 0.72, r * 0.55, r * 0.28);
+      drawWheel(r * 0.2, r * 0.72, r * 0.55, r * 0.28);
+      drawWheel(-r * 0.25, -r * 0.72, r * 0.55, r * 0.28);
+      drawWheel(-r * 0.25, r * 0.72, r * 0.55, r * 0.28);
+      // Trailer tandem axles
+      drawWheel(-r * 1.25, -r * 0.72, r * 0.55, r * 0.28);
+      drawWheel(-r * 1.25, r * 0.72, r * 0.55, r * 0.28);
+      drawWheel(-r * 1.7, -r * 0.72, r * 0.55, r * 0.28);
+      drawWheel(-r * 1.7, r * 0.72, r * 0.55, r * 0.28);
+
+      // Heavy tractor cab
+      const tractorPts = [
+        toWorld(-r * 0.35, -r * 0.65),
+        toWorld(-r * 0.35, r * 0.65),
+        toWorld(r * 1.35, r * 0.65),
+        toWorld(r * 1.45, 0),
+        toWorld(r * 1.35, -r * 0.65)
       ].flat();
+      g.poly(tractorPts).fill({ color: bodyColor }).stroke({ color: borderColor, width: borderWidth });
 
-      g.poly(rectPoints)
-        .fill({ color: bodyColor })
-        .stroke({ color: borderColor, width: borderWidth });
+      // Chrome vertical radiator grille
+      const [gr1x, gr1y] = toWorld(r * 1.42, -r * 0.35);
+      const [gr2x, gr2y] = toWorld(r * 1.42, r * 0.35);
+      g.moveTo(gr1x, gr1y).lineTo(gr2x, gr2y).stroke({ color: 0xdde2eb, width: 3.5 });
 
-      // Frontal heavy armor plate (ArcSys style hard-edge highlight)
-      const platePoints = [
-        toWorld(r, -r),
-        toWorld(r + 5, -r * 0.7),
-        toWorld(r + 5, r * 0.7),
-        toWorld(r, r)
+      // Dual high chrome smokestacks
+      for (const offY of [-r * 0.65, r * 0.65]) {
+        const [st1, st2] = toWorld(r * 0.3, offY, 4.5);
+        g.circle(st1, st2, 3).fill({ color: 0xdde2eb }).stroke({ color: 0x0a0b10, width: 1.5 });
+      }
+
+      // Frontal heavy armor bulldozer plow
+      const plowPts = [
+        toWorld(r * 1.35, -r * 0.85, 1.5),
+        toWorld(r * 1.78, 0, 1.5),
+        toWorld(r * 1.35, r * 0.85, 1.5),
+        toWorld(r * 1.25, r * 0.7, 1.5),
+        toWorld(r * 1.58, 0, 1.5),
+        toWorld(r * 1.25, -r * 0.7, 1.5)
       ].flat();
+      g.poly(plowPts).fill({ color: 0x8d95a8 }).stroke({ color: 0x0a0b10, width: 3 });
+      const [pl1x, pl1y] = toWorld(r * 1.5, -r * 0.4, 2);
+      const [pl2x, pl2y] = toWorld(r * 1.5, r * 0.4, 2);
+      g.moveTo(pl1x, pl1y).lineTo(pl2x, pl2y).stroke({ color: 0xffd166, width: 2.5 });
 
-      g.poly(platePoints)
-        .fill({ color: 0xadb5bd })
-        .stroke({ color: 0x0a0b10, width: 2 });
-      break;
-    }
+      // Fifth-wheel hitch coupling
+      const [hitchX, hitchY] = toWorld(-r * 0.4, 0);
+      g.circle(hitchX, hitchY, r * 0.2).fill({ color: 0x0a0b10 });
 
-    case 'splitter': {
-      // Faceted dual-core crystal bug
-      g.circle(ex - 4, ey, r * 0.8).fill({ color: bodyColor }).stroke({ color: borderColor, width: borderWidth });
-      g.circle(ex + 4, ey, r * 0.8).fill({ color: bodyColor }).stroke({ color: borderColor, width: borderWidth });
-      break;
-    }
-
-    case 'sniper': {
-      // Long-barrel precision needle
-      const points = [
-        toWorld(r * 1.5, 0),
-        toWorld(-r * 0.8, -r * 0.6),
-        toWorld(-r * 0.5, 0),
-        toWorld(-r * 0.8, r * 0.6)
+      // Armored trailer box
+      const trailerPts = [
+        toWorld(-r * 2.1, -r * 0.7),
+        toWorld(-r * 2.1, r * 0.7),
+        toWorld(-r * 0.45, r * 0.7),
+        toWorld(-r * 0.45, -r * 0.7)
       ].flat();
+      g.poly(trailerPts).fill({ color: 0x222636 }).stroke({ color: borderColor, width: borderWidth });
 
-      g.poly(points)
-        .fill({ color: bodyColor })
-        .stroke({ color: borderColor, width: borderWidth });
-      break;
-    }
-
-    case 'pyro': {
-      // Heat-sink flame striker
-      g.circle(ex, ey, r)
-        .fill({ color: bodyColor })
-        .stroke({ color: borderColor, width: borderWidth });
-
-      // Exhaust heat vent
-      const [vx, vy] = toWorld(-r * 0.5, 0);
-      g.circle(vx, vy, 4).fill({ color: 0xffd166 });
+      // Reinforced trailer armor plates & golden rivets
+      for (const offX of [-r * 1.8, -r * 1.4, -r * 1.0, -r * 0.6]) {
+        const [t1x, t1y] = toWorld(offX, -r * 0.7);
+        const [t2x, t2y] = toWorld(offX, r * 0.7);
+        g.moveTo(t1x, t1y).lineTo(t2x, t2y).stroke({ color: 0x0a0b10, width: 1.8 });
+        g.circle(t1x, t1y + 4, 1.5).fill({ color: 0xffd166 });
+        g.circle(t2x, t2y - 4, 1.5).fill({ color: 0xffd166 });
+      }
       break;
     }
 
     default: {
-      g.circle(ex, ey, r)
-        .fill({ color: bodyColor })
-        .stroke({ color: borderColor, width: borderWidth });
+      // Fallback: Sedan silhouette
+      drawWheel(r * 0.7, -r * 0.62, r * 0.52, r * 0.25);
+      drawWheel(r * 0.7, r * 0.62, r * 0.52, r * 0.25);
+      drawWheel(-r * 0.7, -r * 0.62, r * 0.52, r * 0.25);
+      drawWheel(-r * 0.7, r * 0.62, r * 0.52, r * 0.25);
+
+      const defPts = [
+        toWorld(-r * 1.2, -r * 0.55),
+        toWorld(-r * 1.25, 0),
+        toWorld(-r * 1.2, r * 0.55),
+        toWorld(r * 1.2, r * 0.52),
+        toWorld(r * 1.28, 0),
+        toWorld(r * 1.2, -r * 0.52)
+      ].flat();
+      g.poly(defPts).fill({ color: bodyColor }).stroke({ color: borderColor, width: borderWidth });
       break;
     }
   }
@@ -1390,6 +1857,385 @@ export function drawPickup(g: Graphics, p: Pickup, timestampMs: number = 0): voi
       g.rect(p.x - 4, itemY - 3, 8, 12).fill({ color: 0x3a3d4d }).stroke({ color: 0x0a0b10, width: 2.2 });
       g.circle(p.x, itemY - 7, 7).fill({ color: 0x7bdff2 }).stroke({ color: 0x0a0b10, width: 2.5 });
       g.circle(p.x, itemY - 7, 3).fill({ color: 0xffffff });
+    }
+  } else if ((p as any).type === 'hub_npc') {
+    const npc = p as any;
+    const npcId = npc.npcId as string;
+    const padRadius = p.radius || (npcId === 'launch' ? 38 : 34);
+
+    if (npcId === 'launch') {
+      // ----------------------------------------------------------------------
+      // HIGHWAY GATE — Ride Out Portal
+      // Blazing crimson/gold/cyan swirling deployment portal gate (radius: 36)
+      // with animated chevrons pointing upward and a glowing central vortex ring!
+      // ----------------------------------------------------------------------
+      const rot = timestampMs / 450;
+      const pulse = 1 + Math.sin(timestampMs / 160) * 0.08;
+
+      // 1. Swirling Outer Nebula Accretion Ring (Crimson / Magenta)
+      g.circle(p.x, p.y, padRadius * pulse)
+        .fill({ color: 0xe5203a, alpha: 0.22 });
+      g.circle(p.x, p.y, padRadius * pulse)
+        .stroke({ color: 0x0a0b10, width: 3.5 });
+
+      // 2. Multi-layer Spiral Energy Rings (Gold & Cyan)
+      g.circle(p.x, p.y, (padRadius - 6) * pulse)
+        .stroke({ color: 0xffd166, width: 2.8, alpha: 0.85 });
+      g.circle(p.x, p.y, (padRadius - 13) * pulse)
+        .stroke({ color: 0x2ee6ff, width: 2.2, alpha: 0.95 });
+
+      // 3. Animated Upward Highway Chevrons (Pointing UP toward Floor 1)
+      const chevronCount = 3;
+      const chevronBaseY = p.y + 16;
+      for (let c = 0; c < chevronCount; c++) {
+        const cOffset = ((timestampMs / 220) + c * 1.2) % 3;
+        const cyPos = chevronBaseY - cOffset * 11;
+        const cAlpha = Math.max(0.15, 1 - (cOffset / 3));
+        const cCol = c % 2 === 0 ? 0xffd166 : 0x2ee6ff;
+        // Upward chevron arrow (^)
+        g.moveTo(p.x - 14, cyPos + 6)
+          .lineTo(p.x, cyPos - 4)
+          .lineTo(p.x + 14, cyPos + 6)
+          .stroke({ color: 0x0a0b10, width: 4.5, alpha: cAlpha });
+        g.moveTo(p.x - 14, cyPos + 6)
+          .lineTo(p.x, cyPos - 4)
+          .lineTo(p.x + 14, cyPos + 6)
+          .stroke({ color: cCol, width: 2.8, alpha: cAlpha });
+      }
+
+      // 4. Industrial Highway Gate Portal Pylons
+      for (const sign of [-1, 1]) {
+        const px = p.x + sign * (padRadius + 4);
+        // Heavy Pylon Base
+        g.rect(px - 6, p.y - 18, 12, 36)
+          .fill({ color: 0x1f2233 })
+          .stroke({ color: 0x0a0b10, width: 3 });
+        // Hazard stripe
+        g.rect(px - 4, p.y - 6, 8, 12)
+          .fill({ color: 0xffd166 });
+        // Blinking beacon on top
+        const beaconCol = Math.floor(timestampMs / 200) % 2 === 0 ? 0xff1744 : 0xffbe0b;
+        g.circle(px, p.y - 21, 3.5).fill({ color: beaconCol }).stroke({ color: 0x0a0b10, width: 1.5 });
+      }
+
+      // 5. Singularity Vortex Core
+      g.circle(p.x, p.y, 11)
+        .fill({ color: 0x050508 });
+      g.circle(p.x, p.y, 6)
+        .fill({ color: 0x2ee6ff, alpha: 0.85 + Math.sin(timestampMs / 100) * 0.15 });
+
+      // Rotating energy motes along the rim
+      for (let i = 0; i < 4; i++) {
+        const ang = rot + (i * Math.PI) / 2;
+        const mx = p.x + Math.cos(ang) * (padRadius * 0.65);
+        const my = p.y + Math.sin(ang) * (padRadius * 0.65);
+        g.circle(mx, my, 2.5).fill({ color: 0xffffff });
+      }
+    } else {
+      // ----------------------------------------------------------------------
+      // NPC STATIONS: Garage, Blacksmith, Bounty
+      // Draw a large 2.5D octagonal station pad on the floor (radius: 34)
+      // with bold #0a0b10 comic ink borders and neon trim
+      // ----------------------------------------------------------------------
+      const padY = p.y + 6;
+      const octPts: number[] = [];
+      const zDepth = 8;
+
+      for (let i = 0; i < 8; i++) {
+        const ang = (i * Math.PI) / 4 + Math.PI / 8;
+        const ox = p.x + Math.cos(ang) * padRadius;
+        const oy = padY + Math.sin(ang) * (padRadius * 0.62);
+        octPts.push(ox, oy);
+      }
+
+      // 2.5D Extruded Front Faces of Octagonal Pad
+      const frontIndices = [1, 2, 3, 4];
+      const extrudePts = [
+        octPts[frontIndices[0] * 2], octPts[frontIndices[0] * 2 + 1],
+        octPts[frontIndices[1] * 2], octPts[frontIndices[1] * 2 + 1],
+        octPts[frontIndices[2] * 2], octPts[frontIndices[2] * 2 + 1],
+        octPts[frontIndices[3] * 2], octPts[frontIndices[3] * 2 + 1],
+        octPts[frontIndices[3] * 2], octPts[frontIndices[3] * 2 + 1] + zDepth,
+        octPts[frontIndices[2] * 2], octPts[frontIndices[2] * 2 + 1] + zDepth,
+        octPts[frontIndices[1] * 2], octPts[frontIndices[1] * 2 + 1] + zDepth,
+        octPts[frontIndices[0] * 2], octPts[frontIndices[0] * 2 + 1] + zDepth
+      ];
+      g.poly(extrudePts)
+        .fill({ color: 0x10131e })
+        .stroke({ color: 0x0a0b10, width: 3.5 });
+
+      // Pad Top Face
+      g.poly(octPts)
+        .fill({ color: 0x1b202e })
+        .stroke({ color: 0x0a0b10, width: 3.5 });
+
+      if (npcId === 'garage') {
+        // --------------------------------------------------------------------
+        // WRENCH — Chief Mechanic & Garage Lift
+        // Yellow/black hazard-striped hydraulic lift pad (#ffd60a & #0a0b10),
+        // tool cabinet, anime mechanic NPC in orange coveralls, welding goggles
+        // (#2ee6ff lenses), and a giant chrome wrench waving slightly with bob.
+        // --------------------------------------------------------------------
+        // Hazard-striped lift pad top trim
+        g.poly(octPts).stroke({ color: 0xffd60a, width: 2.5 });
+        // Hazard diagonal stripes across center pad
+        for (let hx = p.x - 24; hx <= p.x + 24; hx += 12) {
+          g.moveTo(hx - 5, padY - 10).lineTo(hx + 5, padY + 10).stroke({ color: 0xffd60a, width: 3, alpha: 0.85 });
+        }
+
+        // Twin Hydraulic Lift Pistons
+        for (const px of [p.x - 26, p.x + 26]) {
+          g.rect(px - 3, padY - 6, 6, 14).fill({ color: 0xdde2eb }).stroke({ color: 0x0a0b10, width: 1.8 });
+          g.circle(px, padY - 6, 3.5).fill({ color: 0xffd60a }).stroke({ color: 0x0a0b10, width: 1.5 });
+        }
+
+        // Industrial Red Tool Cabinet
+        const cabX = p.x - 22;
+        const cabY = p.y - 12;
+        g.rect(cabX - 10, cabY - 14, 20, 24)
+          .fill({ color: 0xc92a37 })
+          .stroke({ color: 0x0a0b10, width: 2.5 });
+        // Cabinet top bevel & drawer divider lines
+        g.rect(cabX - 10, cabY - 14, 20, 5).fill({ color: 0xe63946 });
+        for (const dy of [-4, 2, 8]) {
+          g.moveTo(cabX - 8, cabY + dy).lineTo(cabX + 8, cabY + dy).stroke({ color: 0x0a0b10, width: 1.5 });
+          g.moveTo(cabX - 3, cabY + dy - 2).lineTo(cabX + 3, cabY + dy - 2).stroke({ color: 0xdde2eb, width: 1.5 });
+        }
+
+        // Anime Mechanic Character (WRENCH)
+        const nX = p.x + 6;
+        const nY = p.y - 10 + bob * 0.4;
+
+        // Orange coveralls torso & legs
+        const coveralls = [
+          nX - 8, nY + 16,
+          nX - 8, nY - 4,
+          nX + 8, nY - 4,
+          nX + 8, nY + 16,
+          nX + 2, nY + 16,
+          nX, nY + 6,
+          nX - 2, nY + 16
+        ];
+        g.poly(coveralls).fill({ color: 0xff6b2b }).stroke({ color: 0x0a0b10, width: 2.5 });
+        // Tool belt with brass buckle
+        g.rect(nX - 8, nY + 4, 16, 3.5).fill({ color: 0x242838 }).stroke({ color: 0x0a0b10, width: 1.2 });
+        g.rect(nX - 2, nY + 3.5, 4, 4.5).fill({ color: 0xffd60a });
+
+        // Head & hair
+        g.circle(nX, nY - 12, 7.5).fill({ color: 0xf1c27d }).stroke({ color: 0x0a0b10, width: 2 });
+        // Dark anime spiky hair / cap
+        const hairPts = [
+          nX - 8, nY - 12,
+          nX - 6, nY - 19,
+          nX - 1, nY - 21,
+          nX + 4, nY - 20,
+          nX + 8, nY - 14,
+          nX + 5, nY - 10
+        ];
+        g.poly(hairPts).fill({ color: 0x1f2233 }).stroke({ color: 0x0a0b10, width: 1.5 });
+
+        // Welding Goggles with glowing cyan lenses (#2ee6ff)
+        g.rect(nX - 7, nY - 14, 14, 4.5).fill({ color: 0x0a0b10 });
+        g.ellipse(nX - 3.5, nY - 12, 3.2, 2.8).fill({ color: 0x2ee6ff }).stroke({ color: 0x0a0b10, width: 1.2 });
+        g.ellipse(nX + 3.5, nY - 12, 3.2, 2.8).fill({ color: 0x2ee6ff }).stroke({ color: 0x0a0b10, width: 1.2 });
+        g.circle(nX - 4, nY - 13, 1).fill({ color: 0xffffff });
+        g.circle(nX + 3, nY - 13, 1).fill({ color: 0xffffff });
+
+        // Giant Chrome Wrench waving slightly with bob
+        const wrenchWave = Math.sin(timestampMs / 200) * 0.15;
+        const wBaseX = nX + 7;
+        const wBaseY = nY;
+        const wTipX = wBaseX + 14 + Math.sin(wrenchWave) * 4;
+        const wTipY = wBaseY - 24 + bob * 0.8;
+
+        // Arm holding wrench
+        g.moveTo(nX + 6, nY - 2).lineTo(wBaseX, wBaseY).stroke({ color: 0xff6b2b, width: 4.5 });
+        g.moveTo(nX + 6, nY - 2).lineTo(wBaseX, wBaseY).stroke({ color: 0x0a0b10, width: 1.5 });
+
+        // Chrome Wrench Shaft
+        g.moveTo(wBaseX, wBaseY).lineTo(wTipX, wTipY).stroke({ color: 0x0a0b10, width: 6 });
+        g.moveTo(wBaseX, wBaseY).lineTo(wTipX, wTipY).stroke({ color: 0xdde2eb, width: 3.5 });
+        g.moveTo(wBaseX, wBaseY).lineTo(wTipX, wTipY).stroke({ color: 0xffffff, width: 1.5 });
+
+        // Heavy Chrome Open-End Wrench Jaws
+        g.circle(wTipX, wTipY, 6.5).fill({ color: 0xdde2eb }).stroke({ color: 0x0a0b10, width: 2 });
+        g.poly([
+          wTipX - 2, wTipY - 6.5,
+          wTipX + 7, wTipY - 3,
+          wTipX + 7, wTipY + 3,
+          wTipX - 2, wTipY + 6.5
+        ]).fill({ color: 0x1b202e });
+
+      } else if (npcId === 'blacksmith') {
+        // --------------------------------------------------------------------
+        // SPARKY — Cyber Scrap Forge
+        // Cyan/purple neon anvil & plasma smelter pad (#2ee6ff & #9d4edd),
+        // glowing forge core, cyber-quartermaster NPC with spiked hair,
+        // glowing green visor, and floating scrap gear emblem.
+        // --------------------------------------------------------------------
+        // Neon trim on pad
+        g.poly(octPts).stroke({ color: 0x2ee6ff, width: 2.5 });
+        g.circle(p.x, padY, 22).stroke({ color: 0x9d4edd, width: 2, alpha: 0.75 });
+
+        // Plasma Smelter Crucible & Anvil
+        const anX = p.x - 14;
+        const anY = p.y - 2;
+        const anvilPts = [
+          anX - 10, anY + 12,
+          anX - 6, anY - 2,
+          anX + 8, anY - 2,
+          anX + 14, anY + 2,
+          anX + 6, anY + 5,
+          anX + 10, anY + 12
+        ];
+        g.poly(anvilPts).fill({ color: 0x1f2336 }).stroke({ color: 0x0a0b10, width: 2.5 });
+        g.moveTo(anX - 5, anY - 2).lineTo(anX + 8, anY - 2).stroke({ color: 0x2ee6ff, width: 2 });
+
+        // Glowing Plasma Forge Core
+        const corePulse = 1 + Math.sin(timestampMs / 140) * 0.18;
+        const coreX = anX;
+        const coreY = anY - 14;
+        g.circle(coreX, coreY, 9 * corePulse).fill({ color: 0x9d4edd, alpha: 0.35 });
+        g.circle(coreX, coreY, 6 * corePulse).fill({ color: 0x2ee6ff, alpha: 0.85 });
+        g.circle(coreX, coreY, 2.8).fill({ color: 0xffffff });
+
+        // Anime Cyber-Quartermaster Character (SPARKY)
+        const nX = p.x + 8;
+        const nY = p.y - 10 + bob * 0.4;
+
+        // High-tech quartermaster armored trenchcoat / vest
+        const vest = [
+          nX - 7, nY + 16,
+          nX - 8, nY - 4,
+          nX + 8, nY - 4,
+          nX + 7, nY + 16,
+          nX, nY + 14
+        ];
+        g.poly(vest).fill({ color: 0x252a3d }).stroke({ color: 0x0a0b10, width: 2.5 });
+        // Glowing purple circuitry lines on coat
+        g.moveTo(nX - 4, nY - 2).lineTo(nX - 4, nY + 12).stroke({ color: 0x9d4edd, width: 1.5 });
+        g.moveTo(nX + 4, nY - 2).lineTo(nX + 4, nY + 12).stroke({ color: 0x9d4edd, width: 1.5 });
+
+        // Head
+        g.circle(nX, nY - 12, 7.5).fill({ color: 0xf1c27d }).stroke({ color: 0x0a0b10, width: 2 });
+
+        // Spiky electric cyber hair (#ffd166 / #2ee6ff anime spikes)
+        const spikes = [
+          nX - 8, nY - 11,
+          nX - 12, nY - 18,
+          nX - 6, nY - 17,
+          nX - 4, nY - 23,
+          nX, nY - 17,
+          nX + 5, nY - 24,
+          nX + 7, nY - 17,
+          nX + 12, nY - 19,
+          nX + 8, nY - 11
+        ];
+        g.poly(spikes).fill({ color: 0x2ee6ff }).stroke({ color: 0x0a0b10, width: 1.8 });
+
+        // Glowing Green/Cyan Visor (#06d6a0)
+        g.rect(nX - 7, nY - 14, 14, 4.5)
+          .fill({ color: 0x06d6a0 })
+          .stroke({ color: 0x0a0b10, width: 1.5 });
+        g.rect(nX - 5, nY - 13, 10, 2).fill({ color: 0xffffff, alpha: 0.85 });
+
+        // Floating Rotating Scrap Gear Emblem
+        const gearX = nX + 2;
+        const gearY = nY - 28 + bob * 0.8;
+        const gSpin = timestampMs / 400;
+        const gearR = 8.5;
+        const gearPts: number[] = [];
+        for (let i = 0; i < 6; i++) {
+          const a1 = gSpin + (i * Math.PI * 2) / 6;
+          const a2 = a1 + 0.3;
+          gearPts.push(
+            gearX + Math.cos(a1) * (gearR + 3), gearY + Math.sin(a1) * (gearR + 3),
+            gearX + Math.cos(a2) * gearR, gearY + Math.sin(a2) * gearR
+          );
+        }
+        g.poly(gearPts).fill({ color: 0xffd166 }).stroke({ color: 0x0a0b10, width: 1.8 });
+        g.circle(gearX, gearY, 3.5).fill({ color: 0x2ee6ff }).stroke({ color: 0x0a0b10, width: 1.2 });
+
+      } else if (npcId === 'bounty') {
+        // --------------------------------------------------------------------
+        // VALKYRIE — Outlaw Commander & War Table
+        // Emerald/gold tactical holo-table pad (#06d6a0 & #ffd166),
+        // glowing holographic map projection, and an armored outlaw commander
+        // NPC with a crimson cape and horned helmet.
+        // --------------------------------------------------------------------
+        // Emerald & Gold neon pad border
+        g.poly(octPts).stroke({ color: 0x06d6a0, width: 2.5 });
+        g.circle(p.x, padY, 23).stroke({ color: 0xffd166, width: 1.8, alpha: 0.75 });
+
+        // Tactical Holo-Table in center
+        const htX = p.x;
+        const htY = padY + 2;
+        g.ellipse(htX, htY, 18, 9).fill({ color: 0x161a26 }).stroke({ color: 0x0a0b10, width: 2.5 });
+        g.ellipse(htX, htY, 14, 6.5).fill({ color: 0x222a3d }).stroke({ color: 0x06d6a0, width: 1.5 });
+
+        // Glowing Holographic Map Projection Cone (Emerald/Cyan)
+        const holoCone = [
+          htX - 12, htY,
+          htX - 22, htY - 26,
+          htX + 22, htY - 26,
+          htX + 12, htY
+        ];
+        g.poly(holoCone).fill({ color: 0x06d6a0, alpha: 0.16 });
+        // Floating holographic tactical rings & blips
+        const hPulse = 1 + Math.sin(timestampMs / 180) * 0.1;
+        g.ellipse(htX, htY - 20, 15 * hPulse, 6 * hPulse)
+          .stroke({ color: 0x06d6a0, width: 1.5, alpha: 0.75 });
+        g.circle(htX - 5, htY - 20, 2.2).fill({ color: 0xffd166, alpha: 0.9 });
+        g.circle(htX + 6, htY - 22, 2.2).fill({ color: 0xe5203a, alpha: 0.9 });
+
+        // Anime Outlaw Commander Character (VALKYRIE)
+        const nX = p.x;
+        const nY = p.y - 12 + bob * 0.4;
+
+        // Flowing Crimson Outlaw Cape (#e63946) billowing behind
+        const capeWave = Math.sin(timestampMs / 220) * 4;
+        const capePts = [
+          nX - 9, nY - 4,
+          nX - 16 + capeWave, nY + 18,
+          nX - 6, nY + 16,
+          nX + 6, nY + 16,
+          nX + 16 + capeWave, nY + 18,
+          nX + 9, nY - 4
+        ];
+        g.poly(capePts).fill({ color: 0xe63946 }).stroke({ color: 0x0a0b10, width: 2.5 });
+
+        // Black & Gold Pauldron Heavy Armor
+        const armor = [
+          nX - 9, nY + 14,
+          nX - 10, nY - 5,
+          nX + 10, nY - 5,
+          nX + 9, nY + 14
+        ];
+        g.poly(armor).fill({ color: 0x181a24 }).stroke({ color: 0x0a0b10, width: 2.5 });
+        // Gold trim pauldrons
+        g.rect(nX - 11, nY - 6, 6, 5).fill({ color: 0xffd166 }).stroke({ color: 0x0a0b10, width: 1.5 });
+        g.rect(nX + 5, nY - 6, 6, 5).fill({ color: 0xffd166 }).stroke({ color: 0x0a0b10, width: 1.5 });
+
+        // Horned Biker / Commander Helmet
+        g.circle(nX, nY - 14, 8).fill({ color: 0x1f2436 }).stroke({ color: 0x0a0b10, width: 2.2 });
+        // Aerodynamic Horned Crests on helmet sides
+        const hornL = [
+          nX - 6, nY - 14,
+          nX - 14, nY - 23,
+          nX - 5, nY - 19
+        ];
+        const hornR = [
+          nX + 6, nY - 14,
+          nX + 14, nY - 23,
+          nX + 5, nY - 19
+        ];
+        g.poly(hornL).fill({ color: 0xffd166 }).stroke({ color: 0x0a0b10, width: 1.8 });
+        g.poly(hornR).fill({ color: 0xffd166 }).stroke({ color: 0x0a0b10, width: 1.8 });
+
+        // Glowing Golden Visor Slash (#ffd166)
+        g.moveTo(nX - 5, nY - 14).lineTo(nX + 5, nY - 14).stroke({ color: 0xffd166, width: 2.5 });
+        g.circle(nX, nY - 14, 1.5).fill({ color: 0xffffff });
+      }
     }
   }
 }

@@ -365,20 +365,23 @@ export class HUDController {
     const cy = mh / 2 - 2;
 
     // Isometric tile dimensions & grid step
-    const scale = Math.min(mw / 230, mh / 140);
-    const tileW = Math.max(12, Math.round(17 * scale));
-    const tileH = Math.max(7, Math.round(10 * scale));
-    const stepX = Math.round(tileW * 1.52);
-    const stepY = Math.round(tileH * 1.52);
-    const lipDepth = Math.max(2.5, Math.round(3.5 * scale));
+    const scale = Math.min(mw / 250, mh / 155);
+    const tileW = Math.max(15, Math.round(21 * scale));
+    const tileH = Math.max(9, Math.round(13 * scale));
+    const stepX = Math.round(tileW * 1.48);
+    const stepY = Math.round(tileH * 1.48);
+    const lipDepth = Math.max(3, Math.round(4.5 * scale));
 
-    const CYAN = '#2ee6ff';
-    const MAGENTA = '#ff2e93';
-    const YELLOW = '#ffd60a';
+    const CURRENT_YELLOW = '#ffd60a';
+    const CLEARED_CYAN = '#2ee6ff';
+    const UNVISITED_PLUM = '#6e5694';
+    const BOSS_RED = '#ff1744';
+    const SHOP_GREEN = '#00f59b';
+    const MOD_GOLD = '#ffbe0b';
 
     // 1. Subtle dark isometric background grid lines (matching concept art)
     g.save();
-    g.strokeStyle = 'rgba(255, 46, 147, 0.08)';
+    g.strokeStyle = 'rgba(110, 86, 148, 0.10)';
     g.lineWidth = 1;
     const slope = stepY / stepX;
     for (let i = -8; i <= 8; i++) {
@@ -429,9 +432,18 @@ export class HUDController {
         const target = dungeon[`${nb.nx},${nb.ny}`];
         const p2 = projectIso(nb.nx, nb.ny);
 
-        const bothCleared = (r.cleared || (r.x === curRoomX && r.y === curRoomY)) &&
-          Boolean(target && (target.cleared || target.visited));
-        const corrColor = bothCleared ? CYAN : MAGENTA;
+        let corrColor = '#7b61a8';
+        if (r.type === 'boss' || target?.type === 'boss') {
+          corrColor = BOSS_RED;
+        } else if (r.type === 'shop' || target?.type === 'shop') {
+          corrColor = SHOP_GREEN;
+        } else {
+          const bothCleared = (r.cleared || (r.x === curRoomX && r.y === curRoomY)) &&
+            Boolean(target && (target.cleared || target.visited));
+          if (bothCleared) {
+            corrColor = CLEARED_CYAN;
+          }
+        }
 
         g.save();
         // Dark corridor backing
@@ -468,18 +480,30 @@ export class HUDController {
       let topFill: string;
       let lipFill: string;
 
-      if (isCurrent) {
-        stroke = YELLOW;
-        topFill = 'rgba(255, 214, 10, 0.34)';
+      if (r.type === 'boss') {
+        stroke = isCurrent ? '#ffffff' : BOSS_RED;
+        topFill = 'rgba(255, 23, 68, 0.52)';
+        lipFill = '#80051d';
+      } else if (r.type === 'shop') {
+        stroke = isCurrent ? '#ffffff' : SHOP_GREEN;
+        topFill = 'rgba(0, 245, 155, 0.45)';
+        lipFill = '#046640';
+      } else if (r.type === 'treasure') {
+        stroke = isCurrent ? '#ffffff' : MOD_GOLD;
+        topFill = 'rgba(255, 190, 11, 0.48)';
+        lipFill = '#8a5a00';
+      } else if (isCurrent) {
+        stroke = CURRENT_YELLOW;
+        topFill = 'rgba(255, 214, 10, 0.42)';
         lipFill = '#9e7800';
       } else if (r.visited && r.cleared) {
-        stroke = CYAN;
-        topFill = 'rgba(46, 230, 255, 0.22)';
+        stroke = CLEARED_CYAN;
+        topFill = 'rgba(46, 230, 255, 0.25)';
         lipFill = '#0b5c6b';
       } else {
-        stroke = MAGENTA;
-        topFill = r.visited ? 'rgba(255, 46, 147, 0.28)' : 'rgba(255, 46, 147, 0.14)';
-        lipFill = '#590d34';
+        stroke = UNVISITED_PLUM;
+        topFill = 'rgba(110, 86, 148, 0.20)';
+        lipFill = '#2d2240';
       }
 
       g.save();
@@ -519,6 +543,28 @@ export class HUDController {
       g.stroke();
       g.shadowBlur = 0;
 
+      // Outer pulsing diamond halo if current room
+      if (isCurrent) {
+        const time = typeof performance !== 'undefined' ? performance.now() : Date.now();
+        const pulse = 0.65 + 0.35 * Math.sin(time / 160);
+        const haloW = tileW + 3.5 + 2 * pulse;
+        const haloH = tileH + 2.2 + 1.2 * pulse;
+
+        g.save();
+        g.beginPath();
+        g.moveTo(isoX, isoY - haloH);
+        g.lineTo(isoX + haloW, isoY);
+        g.lineTo(isoX, isoY + haloH);
+        g.lineTo(isoX - haloW, isoY);
+        g.closePath();
+        g.strokeStyle = CURRENT_YELLOW;
+        g.shadowColor = CURRENT_YELLOW;
+        g.shadowBlur = 10 * pulse;
+        g.lineWidth = 2.2;
+        g.stroke();
+        g.restore();
+      }
+
       // 3C. Inner Isometric Frame Line (matches concept art double-lined rooms)
       const iw = tileW * 0.72;
       const ih = tileH * 0.72;
@@ -528,36 +574,81 @@ export class HUDController {
       g.lineTo(isoX, isoY + ih);
       g.lineTo(isoX - iw, isoY);
       g.closePath();
-      g.strokeStyle = isCurrent ? 'rgba(255, 255, 255, 0.55)' : 'rgba(255, 255, 255, 0.18)';
+      g.strokeStyle = isCurrent ? 'rgba(255, 255, 255, 0.65)' : 'rgba(255, 255, 255, 0.18)';
       g.lineWidth = 0.9;
       g.stroke();
 
-      // 3D. Crisp Special Room / Current Room Vector Emblems
+      // 3D. Crisp Special Room Badges + Pill Labels OR Rider Beacon
       if (r.type === 'boss' || r.type === 'treasure' || r.type === 'shop') {
-        const iconColor = r.type === 'boss'
-          ? (isCurrent ? '#ffffff' : MAGENTA)
-          : (r.type === 'treasure' ? YELLOW : CYAN);
-        g.fillStyle = iconColor;
-        g.shadowColor = iconColor;
+        const badgeColor = r.type === 'boss' ? BOSS_RED : (r.type === 'shop' ? SHOP_GREEN : MOD_GOLD);
+        const badgeR = Math.max(7, Math.round(tileH * 0.72));
+
+        // Circular dark badge with 2px colored border
+        g.save();
+        g.beginPath();
+        g.arc(isoX, isoY, badgeR, 0, Math.PI * 2);
+        g.fillStyle = '#0a0b10';
+        g.shadowColor = badgeColor;
         g.shadowBlur = 6;
-        const iconSize = Math.max(9, Math.round(tileH * 1.15));
+        g.fill();
+        g.strokeStyle = badgeColor;
+        g.lineWidth = 2;
+        g.stroke();
+        g.shadowBlur = 0;
+
+        // Bold white/colored icon inside badge
+        const icon = r.type === 'boss' ? '☠' : (r.type === 'shop' ? '$' : '★');
+        const iconColor = r.type === 'boss' ? '#ffffff' : (r.type === 'shop' ? SHOP_GREEN : '#ffffff');
+        const iconSize = Math.max(9, Math.round(badgeR * 1.3));
         g.font = `900 ${iconSize}px sans-serif`;
         g.textAlign = 'center';
         g.textBaseline = 'middle';
-        const icon = r.type === 'boss'
-          ? '☠'
-          : (r.type === 'treasure' ? '★' : '$');
-        g.fillText(icon, isoX, isoY - 0.5);
+        g.fillStyle = iconColor;
+        g.fillText(icon, isoX, isoY + (icon === '★' ? -0.5 : 0.5));
+        g.restore();
+
+        // Crisp mini pill label right above the diamond
+        const pillText = r.type === 'boss' ? 'BOSS' : (r.type === 'shop' ? 'SHOP' : 'MOD');
+        const pillFontSize = Math.max(8, Math.round(8.5 * scale));
+        g.save();
+        g.font = `900 ${pillFontSize}px sans-serif`;
+        g.textAlign = 'center';
+        g.textBaseline = 'middle';
+        const pillY = isoY - tileH - 6;
+        const textMetrics = g.measureText(pillText);
+        const pillPadX = 3.5;
+        const pillW = textMetrics.width + pillPadX * 2;
+        const pillH = pillFontSize + 4;
+
+        g.beginPath();
+        if (typeof (g as any).roundRect === 'function') {
+          (g as any).roundRect(isoX - pillW / 2, pillY - pillH / 2, pillW, pillH, 3);
+        } else {
+          g.rect(isoX - pillW / 2, pillY - pillH / 2, pillW, pillH);
+        }
+        g.fillStyle = '#0a0b10';
+        g.fill();
+        g.strokeStyle = badgeColor;
+        g.lineWidth = 1.2;
+        g.stroke();
+
+        // Label text with dark stroke outline
+        g.strokeStyle = '#0a0b10';
+        g.lineWidth = 2.5;
+        g.strokeText(pillText, isoX, pillY);
+        g.fillStyle = badgeColor;
+        g.fillText(pillText, isoX, pillY);
+        g.restore();
       } else if (isCurrent) {
         // Glowing yellow/white rider beacon marker in current room
         g.fillStyle = '#ffffff';
-        g.shadowColor = YELLOW;
+        g.shadowColor = CURRENT_YELLOW;
         g.shadowBlur = 8;
         g.beginPath();
-        g.arc(isoX, isoY - 1, Math.max(2.8, tileH * 0.34), 0, Math.PI * 2);
+        g.arc(isoX, isoY - 1, Math.max(3.2, tileH * 0.36), 0, Math.PI * 2);
         g.fill();
         g.strokeStyle = '#0a0b10';
-        g.lineWidth = 1.2;
+        g.lineWidth = 1.4;
         g.stroke();
       }
 

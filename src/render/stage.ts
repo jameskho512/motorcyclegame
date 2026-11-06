@@ -233,7 +233,8 @@ export class StageManager {
       combat:   { floor: 0x25232b, plateHi: 0x312e39, plateLo: 0x19181f, accent: 0xe5203a },
       treasure: { floor: 0x292434, plateHi: 0x373046, plateLo: 0x1c1824, accent: 0xffd60a },
       shop:     { floor: 0x1d2a2d, plateHi: 0x27383c, plateLo: 0x141d20, accent: 0x2ee6ff },
-      boss:     { floor: 0x2c1921, plateHi: 0x3b222c, plateLo: 0x1d0f15, accent: 0xff2a55 }
+      boss:     { floor: 0x2c1921, plateHi: 0x3b222c, plateLo: 0x1d0f15, accent: 0xff2a55 },
+      hub:      { floor: 0x161a26, plateHi: 0x20273a, plateLo: 0x10131d, accent: 0x2ee6ff }
     };
     const palette = themeColors[room.type] || themeColors.combat;
     const innerW = W - WALL * 2;
@@ -308,25 +309,31 @@ export class StageManager {
         .stroke({ color: 0x3d3a4b, width: 1.5, alpha: 0.65 });
     }
 
-    // 5. Central Tactical Arena Octagon & Isometric Panel Lines
+    // 5. Central Tactical Arena Octagon & Isometric Panel Lines / Hub Sanctuary Decal
     const cx = W / 2;
     const cy = H / 2;
-    const octR = 118;
-    const octPts: number[] = [];
-    for (let i = 0; i < 8; i++) {
-      const ang = (i * Math.PI) / 4 + Math.PI / 8;
-      octPts.push(cx + Math.cos(ang) * octR, cy + Math.sin(ang) * octR);
+
+    if ((room.type as string) === 'hub') {
+      // Safe Sanctuary Outlaw Skull / Gear Floor Decal
+      this.renderHubSanctuaryDecal(g, cx, cy, timestampMs);
+    } else {
+      const octR = 118;
+      const octPts: number[] = [];
+      for (let i = 0; i < 8; i++) {
+        const ang = (i * Math.PI) / 4 + Math.PI / 8;
+        octPts.push(cx + Math.cos(ang) * octR, cy + Math.sin(ang) * octR);
+      }
+      g.poly(octPts)
+        .fill({ color: 0x16151d, alpha: 0.45 })
+        .stroke({ color: 0x0a0b10, width: 3, alpha: 0.7 });
+      g.circle(cx, cy, 82)
+        .stroke({ color: palette.accent, width: 1.5, alpha: 0.22 });
+      // Diagonal structural floor seams
+      g.moveTo(cx - 65, cy - 65).lineTo(cx - 28, cy - 28).stroke({ color: palette.accent, width: 2, alpha: 0.25 });
+      g.moveTo(cx + 65, cy - 65).lineTo(cx + 28, cy - 28).stroke({ color: palette.accent, width: 2, alpha: 0.25 });
+      g.moveTo(cx - 65, cy + 65).lineTo(cx - 28, cy + 28).stroke({ color: palette.accent, width: 2, alpha: 0.25 });
+      g.moveTo(cx + 65, cy + 65).lineTo(cx + 28, cy + 28).stroke({ color: palette.accent, width: 2, alpha: 0.25 });
     }
-    g.poly(octPts)
-      .fill({ color: 0x16151d, alpha: 0.45 })
-      .stroke({ color: 0x0a0b10, width: 3, alpha: 0.7 });
-    g.circle(cx, cy, 82)
-      .stroke({ color: palette.accent, width: 1.5, alpha: 0.22 });
-    // Diagonal structural floor seams
-    g.moveTo(cx - 65, cy - 65).lineTo(cx - 28, cy - 28).stroke({ color: palette.accent, width: 2, alpha: 0.25 });
-    g.moveTo(cx + 65, cy - 65).lineTo(cx + 28, cy - 28).stroke({ color: palette.accent, width: 2, alpha: 0.25 });
-    g.moveTo(cx - 65, cy + 65).lineTo(cx - 28, cy + 28).stroke({ color: palette.accent, width: 2, alpha: 0.25 });
-    g.moveTo(cx + 65, cy + 65).lineTo(cx + 28, cy + 28).stroke({ color: palette.accent, width: 2, alpha: 0.25 });
 
     // 6. 2.5D Perspective Bunker Walls (North, West, East, South)
     const parapet = 12;
@@ -437,6 +444,144 @@ export class StageManager {
       drawTrapdoor(g, timestampMs);
     }
   }
+
+  /**
+   * Renders the safe sanctuary Outlaw Skull & Gear emblem in the center of the Home Base hub.
+   */
+  private renderHubSanctuaryDecal(g: Graphics, cx: number, cy: number, timestampMs: number): void {
+    // 1. Four glowing diagonal power tracks radiating out to the 4 NPC stations
+    const stations = [
+      [195, 215],
+      [525, 215],
+      [195, 505],
+      [525, 505]
+    ];
+    for (const [stX, stY] of stations) {
+      g.moveTo(cx, cy)
+        .lineTo(stX, stY)
+        .stroke({ color: 0x0a0b10, width: 6 });
+      g.moveTo(cx, cy)
+        .lineTo(stX, stY)
+        .stroke({ color: 0x2ee6ff, width: 2.2, alpha: 0.45 });
+      // Golden dashed chevrons moving outward
+      const pulsePhase = (timestampMs / 600) % 1;
+      const interX = cx + (stX - cx) * (0.35 + pulsePhase * 0.4);
+      const interY = cy + (stY - cy) * (0.35 + pulsePhase * 0.4);
+      g.circle(interX, interY, 3.5).fill({ color: 0xffd60a, alpha: 0.85 });
+    }
+
+    // 2. Large Outer Heavy Industrial Sanctuary Gear (radius ~74 with 12 teeth)
+    const gearInnerR = 64;
+    const gearOuterR = 76;
+    const teeth = 12;
+    const gearPts: number[] = [];
+    const spin = timestampMs * 0.0003;
+    for (let i = 0; i < teeth; i++) {
+      const a1 = spin + (i * Math.PI * 2) / teeth;
+      const a2 = a1 + (Math.PI / teeth) * 0.45;
+      const a3 = a1 + (Math.PI / teeth) * 0.7;
+      const a4 = a1 + (Math.PI * 2) / teeth;
+      gearPts.push(
+        cx + Math.cos(a1) * gearOuterR, cy + Math.sin(a1) * gearOuterR,
+        cx + Math.cos(a2) * gearOuterR, cy + Math.sin(a2) * gearOuterR,
+        cx + Math.cos(a3) * gearInnerR, cy + Math.sin(a3) * gearInnerR,
+        cx + Math.cos(a4) * gearInnerR, cy + Math.sin(a4) * gearInnerR
+      );
+    }
+    // Gear drop shadow
+    g.poly(gearPts.map((v, idx) => (idx % 2 === 1 ? v + 4 : v)))
+      .fill({ color: 0x07080d, alpha: 0.85 });
+    // Gear fill and bold black comic outline
+    g.poly(gearPts)
+      .fill({ color: 0x141824 })
+      .stroke({ color: 0x0a0b10, width: 4 });
+
+    // Concentric glowing gold & cyan sanctuary rings
+    g.circle(cx, cy, 58)
+      .stroke({ color: 0xffd60a, width: 2.5 });
+    g.circle(cx, cy, 53)
+      .stroke({ color: 0x2ee6ff, width: 1.8, alpha: 0.8 });
+    g.circle(cx, cy, 46)
+      .fill({ color: 0x1a2130 })
+      .stroke({ color: 0x0a0b10, width: 2.5 });
+
+    // 3. Crossed Heavy Chrome & Gold Wrenches behind the Skull
+    const wrenchLen = 42;
+    for (const sign of [-1, 1]) {
+      const wAngle = (Math.PI / 4) * sign;
+      const cosW = Math.cos(wAngle);
+      const sinW = Math.sin(wAngle);
+      const x1 = cx - cosW * wrenchLen;
+      const y1 = cy - sinW * wrenchLen;
+      const x2 = cx + cosW * wrenchLen;
+      const y2 = cy + sinW * wrenchLen;
+      // Shadow & shaft
+      g.moveTo(x1, y1 + 3).lineTo(x2, y2 + 3).stroke({ color: 0x0a0b10, width: 8 });
+      g.moveTo(x1, y1).lineTo(x2, y2).stroke({ color: 0xdde2eb, width: 5 });
+      g.moveTo(x1, y1).lineTo(x2, y2).stroke({ color: 0xffd60a, width: 2 });
+      // Wrench jaw heads
+      for (const [jx, jy] of [[x1, y1], [x2, y2]]) {
+        g.circle(jx, jy, 6).fill({ color: 0xdde2eb }).stroke({ color: 0x0a0b10, width: 2 });
+        g.circle(jx, jy, 2.5).fill({ color: 0x0a0b10 });
+      }
+    }
+
+    // 4. Stylized Outlaw Biker Skull
+    const skullY = cy - 4;
+    // Skull Cranium dome
+    g.ellipse(cx, skullY - 4, 18, 16)
+      .fill({ color: 0x263044 })
+      .stroke({ color: 0x0a0b10, width: 3.5 });
+
+    // Skull Specular Glint Crescent
+    g.ellipse(cx - 5, skullY - 8, 7, 4)
+      .fill({ color: 0x2ee6ff, alpha: 0.5 });
+
+    // Angular aggressive anime visor / eye sockets
+    const eyeL = [
+      cx - 13, skullY - 5,
+      cx - 3, skullY - 3,
+      cx - 5, skullY + 3,
+      cx - 12, skullY + 2
+    ];
+    const eyeR = [
+      cx + 3, skullY - 3,
+      cx + 13, skullY - 5,
+      cx + 12, skullY + 2,
+      cx + 5, skullY + 3
+    ];
+    g.poly(eyeL).fill({ color: 0x2ee6ff }).stroke({ color: 0x0a0b10, width: 1.5 });
+    g.poly(eyeR).fill({ color: 0x2ee6ff }).stroke({ color: 0x0a0b10, width: 1.5 });
+    // Glowing white eye cores
+    g.circle(cx - 7, skullY, 1.8).fill({ color: 0xffffff });
+    g.circle(cx + 7, skullY, 1.8).fill({ color: 0xffffff });
+
+    // Nose cavity
+    g.poly([cx - 2.5, skullY + 6, cx + 2.5, skullY + 6, cx, skullY + 3])
+      .fill({ color: 0x0a0b10 });
+
+    // Golden mechanical jaw / teeth plate
+    const jawPts = [
+      cx - 9, skullY + 8,
+      cx + 9, skullY + 8,
+      cx + 6, skullY + 16,
+      cx - 6, skullY + 16
+    ];
+    g.poly(jawPts).fill({ color: 0xffd60a }).stroke({ color: 0x0a0b10, width: 2.2 });
+    // Teeth slits
+    for (const tx of [-4, 0, 4]) {
+      g.moveTo(cx + tx, skullY + 9).lineTo(cx + tx, skullY + 15).stroke({ color: 0x0a0b10, width: 1.5 });
+    }
+
+    // Flanking golden outlaw wing chevrons
+    g.poly([cx - 24, skullY - 8, cx - 34, skullY - 4, cx - 22, skullY + 2])
+      .fill({ color: 0xffd60a }).stroke({ color: 0x0a0b10, width: 1.8 });
+    g.poly([cx + 24, skullY - 8, cx + 34, skullY - 4, cx + 22, skullY + 2])
+      .fill({ color: 0xffd60a }).stroke({ color: 0x0a0b10, width: 1.8 });
+  }
+
+  // Alias for renderFloor matching spec terminology
+  public renderArena = this.renderFloor;
 
   private renderSkids(g: Graphics, room: Room): void {
     for (const sk of room.skids) {
@@ -671,9 +816,66 @@ export class StageManager {
     const pricePool = this.priceTextContainer.children;
     let priceUsed = 0;
 
-    // Render price tags below each shop/priced item
+    // Render price tags below each shop/priced item & wider badges for hub NPCs
     for (const p of room.pickups) {
-      if ('cost' in p && typeof p.cost === 'number') {
+      if ((p as any).type === 'hub_npc') {
+        const npc = p as any;
+        const npcId = npc.npcId;
+        const badgeY = p.y + (p.radius || 34) + 16;
+        let textStr = 'STATION';
+        let col = 0xffd166;
+        if (npcId === 'garage') {
+          textStr = 'GARAGE [G]';
+          col = 0xffd60a;
+        } else if (npcId === 'blacksmith') {
+          textStr = 'FORGE 12⚙️';
+          col = 0x2ee6ff;
+        } else if (npcId === 'bounty') {
+          textStr = 'WAR ROOM';
+          col = 0x06d6a0;
+        } else if (npcId === 'launch') {
+          textStr = 'RIDE OUT ►';
+          col = 0xe5203a;
+        }
+
+        // Wider slanted comic nameplate badge (halfW = 54)
+        const halfW = 54;
+        const halfH = 10;
+        const slant = 6;
+        const badge = [
+          p.x - halfW + slant, badgeY - halfH,
+          p.x + halfW + slant, badgeY - halfH,
+          p.x + halfW - slant, badgeY + halfH,
+          p.x - halfW - slant, badgeY + halfH
+        ];
+        g.poly(badge.map((v) => v + 3))
+          .fill({ color: 0x0a0b10, alpha: 0.85 });
+        g.poly(badge)
+          .fill({ color: col, alpha: 1 })
+          .stroke({ color: 0x0a0b10, width: 2.5, join: 'miter' });
+
+        let priceText = pricePool[priceUsed] as Text | undefined;
+        if (!priceText) {
+          priceText = new Text({
+            text: textStr,
+            style: new TextStyle({
+              fontFamily: "'Impact', 'Haettenschweiler', 'Arial Black', sans-serif",
+              fontSize: 13,
+              fontStyle: 'italic',
+              fontWeight: '900',
+              fill: '#ffffff',
+              stroke: { color: '#0a0b10', width: 3.5, join: 'round' },
+              padding: 4
+            })
+          });
+          priceText.anchor.set(0.5, 0.5);
+          this.priceTextContainer.addChild(priceText);
+        }
+        priceUsed++;
+        if (priceText.text !== textStr) priceText.text = textStr;
+        priceText.visible = true;
+        priceText.position.set(p.x, badgeY);
+      } else if ('cost' in p && typeof p.cost === 'number') {
         const badgeY = p.y + p.radius + 15;
         const isFree = p.cost === 0;
         const textStr = isFree ? 'FREE' : `${p.cost} 🪙`;
@@ -816,5 +1018,14 @@ export class StageManager {
 
     // Comic Floating Combat Text
     this.vfx.renderFloatingText(this.floatingTextContainer, damageNumbers);
+
+    // Anime Player Crash / Death Border Pulse
+    if ((player.deathTimer || 0) > 0) {
+      const pulseAlpha = 0.5 + Math.sin(timestampMs / 70) * 0.22;
+      g.rect(0, 0, ARENA_WIDTH, ARENA_HEIGHT)
+        .stroke({ color: 0xff1744, width: 10, alpha: pulseAlpha });
+      g.rect(5, 5, ARENA_WIDTH - 10, ARENA_HEIGHT - 10)
+        .stroke({ color: 0x0a0b10, width: 4, alpha: 0.85 });
+    }
   }
 }

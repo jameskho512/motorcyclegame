@@ -137,8 +137,8 @@ canvas#canvas {
    3. Top-Left Cluster: Hexagonal Helmet Badge + Ink Splash + HULL / NOS
    -------------------------------------------------------------------------- */
 .hud-tl {
-  top: 14px;
-  left: 18px;
+  top: 18px;
+  left: 22px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -154,10 +154,10 @@ canvas#canvas {
 /* Dramatic White Comic Ink Splash radiating behind helmet portrait & meters */
 .hud-splash {
   position: absolute;
-  top: -28px;
-  left: -26px;
-  width: 285px;
-  height: 182px;
+  top: -34px;
+  left: -34px;
+  width: clamp(360px, 27vw, 490px);
+  height: clamp(200px, 15vw, 265px);
   z-index: 1;
   pointer-events: none;
   filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.9));
@@ -167,9 +167,9 @@ canvas#canvas {
 .hud-portrait {
   position: relative;
   z-index: 3;
-  width: 98px;
-  height: 98px;
-  margin-right: -8px;
+  width: clamp(116px, 8.2vw, 146px);
+  height: clamp(116px, 8.2vw, 146px);
+  margin-right: 14px;
   flex-shrink: 0;
   transform: rotate(-4deg);
   transition: transform 0.2s var(--ease-snap);
@@ -200,7 +200,7 @@ canvas#canvas {
   z-index: 2;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 10px;
   padding: 6px 12px 8px 18px;
   transform: skewX(-15deg) rotate(-3deg);
   transform-origin: left center;
@@ -246,7 +246,15 @@ canvas#canvas {
 
 /* HULL Meter (Thick White & Black Comic Frame + Slanted Crimson Segments) */
 .hud-hull {
-  width: 300px;
+  width: clamp(290px, 21vw, 395px);
+}
+
+.hud-hull .hud-label {
+  font-size: clamp(20px, 1.5vw, 26px);
+}
+
+.hud-hull .hud-readout {
+  font-size: clamp(16px, 1.2vw, 20px);
 }
 
 .hud-hull-frame {
@@ -261,7 +269,7 @@ canvas#canvas {
 .hud-segbar {
   display: flex;
   gap: 4px;
-  height: 26px;
+  height: clamp(28px, 2.2vw, 36px);
   background: #0a0b10;
   border: 2.5px solid #0a0b10;
   padding: 2px;
@@ -297,11 +305,11 @@ canvas#canvas {
 
 /* NOS Meter + LV. X Badge Row (Matches Concept Art Segmented Yellow Blocks) */
 .hud-nos {
-  width: 280px;
+  width: clamp(260px, 19vw, 355px);
 }
 
 .hud-nos .hud-label {
-  font-size: 16px;
+  font-size: clamp(17px, 1.25vw, 22px);
   color: #ffffff;
 }
 
@@ -317,7 +325,7 @@ canvas#canvas {
 
 .hud-nos-track {
   flex: 1;
-  height: 19px;
+  height: clamp(18px, 1.4vw, 24px);
   background: #241e14;
   border: 3px solid #ffffff;
   outline: 2.5px solid #0a0b10;
@@ -370,7 +378,7 @@ canvas#canvas {
 /* Concept-Art Comic "LV. 3" Floor Badge right beside NOS Bar */
 .hud-lv-badge {
   font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
-  font-size: 19px;
+  font-size: clamp(18px, 1.4vw, 25px);
   font-weight: 900;
   font-style: italic;
   letter-spacing: 1px;
@@ -384,38 +392,40 @@ canvas#canvas {
      3px  4px 0 #0a0b10;
 }
 
-/* Live Stats Strip */
+/* Left-Wing Stats Grid (Bold 2-Column Telemetry Rack) */
 .hud-stats {
   transform: skewX(-12deg);
   transform-origin: left top;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin-top: 8px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-top: 18px;
   margin-left: 8px;
-  max-width: 390px;
+  width: clamp(260px, 20vw, 360px);
+  max-width: none;
   z-index: 2;
 }
 
 .hud-stats .stat-item {
-  background: rgba(10, 11, 16, 0.92);
-  border: 1.5px solid #363248;
-  border-radius: 3px;
-  padding: 2px 7px;
-  font-size: 10px;
+  padding: 6px 12px;
+  font-size: 12px;
   font-weight: 700;
   color: #a49fb5;
   letter-spacing: 0.5px;
-  display: inline-flex;
-  gap: 5px;
-  align-items: baseline;
-  box-shadow: 2px 2px 0 #0a0b10;
+  border: 2.5px solid #0a0b10;
+  border-left: 4px solid #2ee6ff;
+  background: linear-gradient(135deg, rgba(22, 20, 32, 0.95) 0%, rgba(10, 11, 16, 0.95) 100%);
+  border-radius: 3px;
+  box-shadow: 3px 3px 0 #0a0b10;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .hud-stats .stat-item strong {
   color: #2ee6ff;
   font-family: var(--font-display, 'Impact', sans-serif);
-  font-size: 11.5px;
+  font-size: 17px;
   font-style: italic;
 }
 
@@ -557,12 +567,12 @@ canvas#fuel-gauge {
    5. Top-Right Cluster: Isometric Minimap + Currency Badges + Utility Buttons
    -------------------------------------------------------------------------- */
 .hud-tr {
-  top: 14px;
-  right: 20px;
+  top: 18px;
+  right: 22px;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 9px;
+  gap: 12px;
 }
 
 /* Trapezoidal / Tilted Comic Minimap Frame (Matches Concept Art) */
@@ -570,7 +580,7 @@ canvas#fuel-gauge {
   transform: rotate(-2deg) skewX(-8deg);
   transform-origin: right top;
   background: #0a0b10;
-  border: 4px solid #ffffff;
+  border: 4.5px solid #ffffff;
   outline: 3px solid #0a0b10;
   box-shadow:
     6px 6px 0 #0a0b10,
@@ -599,17 +609,18 @@ canvas#fuel-gauge {
 
 #minimap-canvas {
   display: block;
-  width: 232px;
-  height: 142px;
+  width: 340px;
+  height: 215px;
   background: #08070f;
 }
 
 .hud-map-floor {
   position: absolute;
-  top: 5px;
-  left: 8px;
+  top: 8px;
+  right: 12px;
+  left: auto;
   font-family: var(--font-display, 'Impact', sans-serif);
-  font-size: 12px;
+  font-size: 16px;
   font-style: italic;
   color: #ffffff;
   text-shadow:
@@ -629,41 +640,42 @@ canvas#fuel-gauge {
 .hud-map-legend {
   display: flex;
   justify-content: space-around;
-  font-size: 9.5px;
+  font-size: 11.5px;
   font-weight: 800;
-  padding: 2px 4px;
+  padding: 5px 8px;
   background: rgba(10, 11, 16, 0.95);
   border-top: 1.5px solid #2a2538;
   letter-spacing: 0.5px;
 }
 
 .hud-map-legend .lg-mod {
-  color: #ffd60a;
+  color: #ffbe0b;
 }
 
 .hud-map-legend .lg-shop {
-  color: #2ee6ff;
+  color: #00f59b;
 }
 
 .hud-map-legend .lg-boss {
-  color: #ff2e93;
+  color: #ff1744;
 }
 
 /* Slanted Currency Counters (Matches Concept Art Crimson COINS & Cyan SCRAP Plates) */
 .hud-counter {
   transform: rotate(-1.5deg) skewX(-12deg);
   transform-origin: right center;
-  height: 36px;
+  height: 44px;
   display: inline-flex;
   align-items: center;
   justify-content: space-between;
-  padding: 2px 12px 2px 16px;
+  padding: 4px 14px 4px 18px;
   background: #0d0c14;
   font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
   font-size: 16px;
   font-style: italic;
-  min-width: 158px;
+  min-width: clamp(210px, 15vw, 270px);
   position: relative;
+  border-width: 3px;
 }
 
 .hud-coins {
@@ -677,7 +689,7 @@ canvas#fuel-gauge {
 .hud-coins .hud-counter-label {
   color: #ffffff;
   margin-right: 6px;
-  font-size: 15px;
+  font-size: 17px;
   letter-spacing: 1px;
   text-shadow: 2px 2px 0 #0a0b10;
 }
@@ -685,7 +697,7 @@ canvas#fuel-gauge {
 .hud-coins strong#coin-count {
   color: #ffffff;
   text-shadow: 2px 2px 0 #0a0b10;
-  font-size: 18px;
+  font-size: 24px;
   margin-right: 8px;
   font-variant-numeric: tabular-nums;
 }
@@ -701,7 +713,7 @@ canvas#fuel-gauge {
 .hud-scrap .hud-counter-label {
   color: #ffffff;
   margin-right: 6px;
-  font-size: 15px;
+  font-size: 17px;
   letter-spacing: 1px;
   text-shadow: 2px 2px 0 #0a0b10;
 }
@@ -709,14 +721,14 @@ canvas#fuel-gauge {
 .hud-scrap strong#scrap-count {
   color: #ffffff;
   text-shadow: 2px 2px 0 #0a0b10;
-  font-size: 18px;
+  font-size: 24px;
   margin-right: 8px;
   font-variant-numeric: tabular-nums;
 }
 
 .hud-counter-icon {
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   flex-shrink: 0;
   filter: drop-shadow(1.5px 1.5px 0 #0a0b10);
 }
@@ -724,20 +736,20 @@ canvas#fuel-gauge {
 /* Utility Buttons */
 .hud-buttons {
   display: flex;
-  gap: 6px;
-  margin-top: 2px;
+  gap: 8px;
+  margin-top: 4px;
 }
 
 .hud-btn {
   transform: skewX(-12deg);
   background: #16141c;
-  border: 2px solid #55516a;
+  border: 2.5px solid #55516a;
   color: #eeeeee;
   font-family: var(--font-display, 'Impact', sans-serif);
-  font-size: 11px;
+  font-size: 13.5px;
   font-style: italic;
   letter-spacing: 0.5px;
-  padding: 4px 10px;
+  padding: 7px 14px;
   cursor: pointer;
   box-shadow: 2px 2px 0 #0a0b10;
   transition: all 0.12s var(--ease-snap);
@@ -792,8 +804,8 @@ canvas#fuel-gauge {
 .weapon-slot {
   transform: skewX(-11deg);
   transform-origin: center bottom;
-  width: 82px;
-  height: 102px;
+  width: clamp(86px, 6.2vw, 104px);
+  height: clamp(102px, 10.5vh, 122px);
   border: 2.5px solid #ffffff;
   outline: 2.5px solid #0a0b10;
   box-shadow:
@@ -803,7 +815,7 @@ canvas#fuel-gauge {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 4px;
+  padding: 6px 5px 5px 5px;
   background:
     radial-gradient(circle at 50% 42%, rgba(255, 255, 255, 0.22) 0%, transparent 68%),
     linear-gradient(180deg, var(--wc, #2a2538) 0%, #14121d 92%);
@@ -826,12 +838,17 @@ canvas#fuel-gauge {
   position: absolute;
   top: 2px;
   left: 4px;
+  width: 22px;
+  height: 22px;
+  line-height: 20px;
   color: #ffffff;
   font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
   font-size: 16px;
   font-weight: 900;
   font-style: italic;
-  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   text-shadow:
     -2px -2px 0 #0a0b10,
      2px -2px 0 #0a0b10,
@@ -864,8 +881,8 @@ canvas#fuel-gauge {
 }
 
 .wcard-icon svg {
-  width: 68px;
-  height: 42px;
+  width: 78px;
+  height: 48px;
   filter: drop-shadow(2px 3px 0 rgba(10, 11, 16, 0.92));
 }
 
@@ -873,10 +890,10 @@ canvas#fuel-gauge {
   background: #0a0b10;
   color: #ffffff;
   font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
-  font-size: 9.5px;
+  font-size: 11px;
   font-style: italic;
   text-align: center;
-  padding: 3px 2px;
+  padding: 3.5px 2px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -978,33 +995,33 @@ canvas#fuel-gauge {
 /* Die-Cut Vinyl Mod & Power-Up Stickers (Bottom-Right — Matches Concept Art) */
 .hud-items {
   position: absolute;
-  right: 18px;
-  bottom: 8px;
+  right: 22px;
+  bottom: 12px;
   display: flex;
   flex-wrap: wrap;
-  gap: 7px;
-  max-width: 280px;
+  gap: 10px;
+  max-width: clamp(260px, 21vw, 370px);
   justify-content: flex-end;
   z-index: 15;
 }
 
 .items-empty {
   color: #726d82;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   font-style: italic;
   background: rgba(10, 11, 16, 0.72);
-  padding: 4px 8px;
+  padding: 6px 12px;
   border-radius: 4px;
 }
 
 .item-badge.sticker {
   position: relative;
-  width: 48px;
-  height: 48px;
+  width: 60px;
+  height: 60px;
   background:
     radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--ic, #ffd60a) 35%, #1d1a2b) 0%, #12101b 100%);
-  border: 3px solid #ffffff;
+  border: 3.5px solid #ffffff;
   outline: 2.5px solid #0a0b10;
   box-shadow:
     3px 4px 0 #0a0b10,
@@ -1030,8 +1047,8 @@ canvas#fuel-gauge {
 }
 
 .sticker-glyph {
-  width: 35px;
-  height: 35px;
+  width: 42px;
+  height: 42px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1041,8 +1058,8 @@ canvas#fuel-gauge {
 }
 
 .sticker-glyph svg {
-  width: 100%;
-  height: 100%;
+  width: 42px;
+  height: 42px;
   display: block;
   filter: drop-shadow(1px 1.5px 0 #0a0b10);
 }
@@ -1056,8 +1073,8 @@ canvas#fuel-gauge {
   border: 2px solid #ffffff;
   outline: 1.5px solid #0a0b10;
   border-radius: 5px;
-  padding: 0 4px;
-  font-size: 10.5px;
+  padding: 1px 5px;
+  font-size: 12.5px;
   font-weight: 900;
   font-style: italic;
   line-height: 1.25;
@@ -1316,48 +1333,179 @@ canvas#fuel-gauge {
 /* --------------------------------------------------------------------------
    9. Responsive Scale Adaptations
    -------------------------------------------------------------------------- */
-@media (max-width: 1200px) {
+@media (max-width: 1360px) {
   .hud-tl {
-    top: 8px;
-    left: 10px;
+    top: 12px;
+    left: 14px;
+  }
+  .hud-splash {
+    width: clamp(280px, 24vw, 360px);
+    height: clamp(160px, 14vw, 205px);
+    top: -24px;
+    left: -24px;
   }
   .hud-portrait {
-    width: 82px;
-    height: 82px;
+    width: 96px;
+    height: 96px;
+    margin-right: 8px;
   }
   .hud-hull {
-    width: 240px;
+    width: 255px;
   }
   .hud-nos {
-    width: 220px;
+    width: 235px;
+  }
+  .hud-stats {
+    width: 240px;
+    gap: 6px;
+    margin-top: 12px;
+  }
+  .hud-stats .stat-item {
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+  .hud-stats .stat-item strong {
+    font-size: 14px;
   }
   .hud-tr {
-    top: 8px;
-    right: 10px;
+    top: 12px;
+    right: 14px;
+    gap: 8px;
   }
   #minimap-canvas {
-    width: 190px;
-    height: 115px;
+    width: 250px;
+    height: 158px;
+  }
+  .hud-counter {
+    height: 38px;
+    min-width: 190px;
+    padding: 2px 10px 2px 14px;
+    font-size: 14px;
+  }
+  .hud-coins strong#coin-count,
+  .hud-scrap strong#scrap-count {
+    font-size: 20px;
+  }
+  .hud-counter-icon {
+    width: 22px;
+    height: 22px;
   }
   .wcard,
   .weapon-slot {
-    width: 70px;
-    height: 86px;
+    width: 74px;
+    height: 92px;
+    padding: 4px;
+  }
+  .wcard-icon svg {
+    width: 60px;
+    height: 38px;
+  }
+  .wcard-name {
+    font-size: 9.5px;
+  }
+  .hud-items {
+    right: 14px;
+    bottom: 8px;
+    max-width: 240px;
+    gap: 6px;
+  }
+  .item-badge.sticker {
+    width: 48px;
+    height: 48px;
+    border-width: 3px;
+  }
+  .sticker-glyph {
+    width: 34px;
+    height: 34px;
+  }
+  .sticker-glyph svg {
+    width: 34px;
+    height: 34px;
+  }
+}
+
+@media (max-width: 1120px) {
+  .hud-tl {
+    top: 8px;
+    left: 8px;
+  }
+  .hud-portrait {
+    width: 80px;
+    height: 80px;
+  }
+  .hud-hull {
+    width: 215px;
+  }
+  .hud-nos {
+    width: 195px;
+  }
+  .hud-stats {
+    display: none;
+  }
+  .hud-tr {
+    top: 8px;
+    right: 8px;
+  }
+  #minimap-canvas {
+    width: 190px;
+    height: 120px;
+  }
+  .hud-counter {
+    min-width: 160px;
+    height: 34px;
+  }
+  .wcard,
+  .weapon-slot {
+    width: 62px;
+    height: 80px;
+  }
+  .wcard-icon svg {
+    width: 48px;
+    height: 30px;
   }
 }
 
 @media (max-height: 820px) {
+  .hud-bottom {
+    bottom: 2px;
+  }
   .wcard,
   .weapon-slot {
-    width: 68px;
-    height: 82px;
+    width: 72px;
+    height: 88px;
+    padding: 4px;
   }
   .wcard.active,
   .wcard.is-active {
     transform: skewX(-11deg) scale(1.1) translateY(-5px);
   }
   .wcard-icon svg {
-    width: 56px;
+    width: 58px;
+    height: 36px;
+  }
+  .wcard-name {
+    font-size: 9.5px;
+    padding: 2px;
+  }
+  .hud-items {
+    bottom: 6px;
+    max-width: 240px;
+    gap: 6px;
+  }
+  .item-badge.sticker {
+    width: 48px;
+    height: 48px;
+  }
+  .sticker-glyph {
+    width: 34px;
     height: 34px;
+  }
+  .sticker-glyph svg {
+    width: 34px;
+    height: 34px;
+  }
+  .hud-stats {
+    margin-top: 10px;
+    gap: 5px;
   }
 }

@@ -28,7 +28,8 @@ import {
 import { StateManager } from './core/state';
 import { InputManager } from './core/input';
 import { SoundSynthesizer } from './audio/sfx';
-import { generateDungeon } from './world/dungeon';
+import { generateDungeon, createHomeBaseRoom } from './world/dungeon';
+import { genLoot } from './data/equipment';
 import {
   updateBikeKinematics,
   updateNos,
@@ -38,7 +39,9 @@ import {
 import {
   createCombatState,
   fireWeapon,
-  updateCombatPipeline
+  updateCombatPipeline,
+  triggerExplosion,
+  updateCombatVfx
 } from './systems/combat';
 import { updateEnemyAI, calcEnemyProjSpeedScale } from './systems/enemyAI';
 import { StageManager } from './render/stage';
@@ -63,6 +66,10 @@ export class MotoRogueApp {
   public settings: SettingsController;
   public tooltip: TooltipManager;
   public dismissedPickup: Pickup | null = null;
+  public deathTimer: number = 0;
+  public deathExplosionTriggered: boolean = false;
+  public inHomeBase: boolean = false;
+  public bountyClaimedInHub: boolean = false;
 
   public curRoomX: number = 0;
   public curRoomY: number = 0;
@@ -169,7 +176,7 @@ export class MotoRogueApp {
         }
       },
       onResumeRun: () => {
-        if (this.stateManager.gameOver) {
+        if (this.stateManager.gameOver || this.inHomeBase) {
           this.startNewRun(false);
         }
       },
@@ -289,6 +296,10 @@ export class MotoRogueApp {
    * Starts a run, either restoring checkpoint state or creating fresh floor 1 dungeon.
    */
   public startNewRun(restored: boolean): void {
+    this.inHomeBase = false;
+    this.deathTimer = 0;
+    this.deathExplosionTriggered = false;
+    this.stateManager.player.deathTimer = 0;
     this.dismissedPickup = null;
     this.portalDismissed = false;
     this.portalModal.close();
@@ -375,9 +386,9 @@ export class MotoRogueApp {
     if (!wrapper || !canvas) return;
 
     const topReserve = 12;
-    const bottomReserve = window.innerHeight < 820 ? 112 : 136;
+    const bottomReserve = window.innerHeight < 820 ? 124 : 148;
     const availH = Math.max(320, window.innerHeight - topReserve - bottomReserve);
-    const availW = Math.max(320, window.innerWidth - 540);
+    const availW = Math.max(360, window.innerWidth - 280);
     const size = Math.floor(Math.min(availH, availW));
 
     wrapper.style.width = `${size}px`;
@@ -401,7 +412,7 @@ export class MotoRogueApp {
     canvas.style.width = `${size}px`;
     canvas.style.height = `${size}px`;
 
-    if (miniCanvas) fitCanvas(miniCanvas, 220, 135);
+    if (miniCanvas) fitCanvas(miniCanvas, 340, 215);
     if (fuelCanvas) fitCanvas(fuelCanvas, 220, 110);
     if (bikeCanvas) fitCanvas(bikeCanvas, 260, 165);
 
@@ -469,6 +480,50 @@ export class MotoRogueApp {
     this.audio.updateEngine(speedRatio, isShiftHeld && isMoving, isPaused);
 
     if (isPaused || !room) return;
+
+    if (this.deathTimer > 0) {
+      this.deathTimer = Math.max(0, this.deathTimer - dt);
+      player.deathTimer = this.deathTimer;
+      // Bike spins out of control and sheds sparks/flames
+      player.bikeAngle += dt * 16;
+      player.vx *= Math.pow(0.08, dt);
+      player.vy *= Math.pow(0.08, dt);
+      player.x = Math.max(75, Math.min(ARENA_WIDTH - 75, player.x + player.vx * dt));
+      player.y = Math.max(75, Math.min(ARENA_HEIGHT - 75, player.y + player.vy * dt));
+
+      // Continuous crash fire particles
+      this.combatState.particles.push({
+        x: player.x + (Math.random() - 0.5) * 24,
+        y: player.y + (Math.random() - 0.5) * 24,
+        vx: (Math.random() - 0.5) * 140,
+        vy: (Math.random() - 0.5) * 140 - 30,
+        radius: 4 + Math.random() * 4,
+        color: Math.random() < 0.5 ? '#ff5400' : '#ffd166',
+        life: 0.35,
+        maxLife: 0.35
+      });
+
+      if (this.deathTimer <= 1.2 && !this.deathExplosionTriggered) {
+        this.deathExplosionTriggered = true;
+        triggerExplosion(player.x, player.y, 110, 0, room, this.combatState, this.audio);
+        this.combatState.damageNumbers.push({
+          x: player.x,
+          y: player.y - 28,
+          text: 'EVACUATING TO HOME BASE...',
+          color: '#2ee6ff',
+          life: 1.1,
+          maxLife: 1.1
+        });
+      }
+
+      updateCombatVfx(dt, this.combatState);
+      this.stage.update(dt);
+
+      if (this.deathTimer <= 0) {
+        this.handlePlayerDeath();
+      }
+      return;
+    }
 
     // 2. Player Invulnerability timer
     if (player.invuln > 0) {
@@ -608,7 +663,7 @@ export class MotoRogueApp {
           this.updateHUD();
 
           if (player.hp <= 0) {
-            this.handlePlayerDeath();
+            this.startDeathSequence();
           }
         }
       }
@@ -701,6 +756,82 @@ export class MotoRogueApp {
               }
             );
           }
+        } else if ((p as any).type === 'hub_npc') {
+          if (this.dismissedPickup === p) continue;
+          this.dismissedPickup = p;
+          const npc = p as any;
+          if (npc.npcId === 'garage') {
+            this.inputManager.reset();
+            this.garage.open(false, this.stateManager.floorNum, this.stateManager.metaSave, player);
+          } else if (npc.npcId === 'blacksmith') {
+            const meta = this.stateManager.metaSave;
+            if (meta.scrap >= 12) {
+              meta.scrap -= 12;
+              const forged = genLoot(2);
+              this.stateManager.receiveLoot(forged);
+              this.stateManager.saveMeta();
+              this.audio.pickupLoot(forged.rarity);
+              this.combatState.damageNumbers.push({
+                x: p.x,
+                y: p.y - 34,
+                text: `FORGED: ${forged.name.toUpperCase()}!`,
+                color: '#2ee6ff',
+                life: 1.4,
+                maxLife: 1.4
+              });
+              this.updateHUD();
+            } else {
+              this.audio.shopError();
+              this.combatState.damageNumbers.push({
+                x: p.x,
+                y: p.y - 34,
+                text: 'NEED 12 SCRAP ⚙️!',
+                color: '#ef233c',
+                life: 1.1,
+                maxLife: 1.1
+              });
+            }
+          } else if (npc.npcId === 'bounty') {
+            if (!this.bountyClaimedInHub) {
+              this.bountyClaimedInHub = true;
+              player.coins += 15;
+              player.maxHp += 1;
+              player.hp = player.maxHp;
+              this.audio.pickupItem();
+              this.combatState.damageNumbers.push({
+                x: p.x,
+                y: p.y - 34,
+                text: 'WAR ROOM CACHE: +15 COINS & +1 HULL!',
+                color: '#06d6a0',
+                life: 1.5,
+                maxLife: 1.5
+              });
+              this.updateHUD();
+            } else {
+              this.combatState.damageNumbers.push({
+                x: p.x,
+                y: p.y - 34,
+                text: 'CACHE CLAIMED — HEAD TO HIGHWAY GATE!',
+                color: '#ffd166',
+                life: 1.1,
+                maxLife: 1.1
+              });
+            }
+          } else if (npc.npcId === 'launch') {
+            const savedCoins = player.coins;
+            const savedExtraHp = Math.max(0, player.maxHp - (6 + (this.stateManager.metaSave.ranks.maxHp || 0)));
+            this.audio.nextFloor();
+            this.startNewRun(false);
+            if (savedCoins > 0) {
+              this.stateManager.player.coins += savedCoins;
+            }
+            if (savedExtraHp > 0) {
+              this.stateManager.player.maxHp += savedExtraHp;
+              this.stateManager.player.hp = this.stateManager.player.maxHp;
+            }
+            this.updateHUD();
+            return;
+          }
         }
       }
     }
@@ -737,13 +868,73 @@ export class MotoRogueApp {
     );
   }
 
-  public handlePlayerDeath(): void {
-    this.stateManager.gameOver = true;
-    this.stateManager.clearRun();
-    this.audio.gameOverSound();
+  public startDeathSequence(): void {
+    if (this.deathTimer > 0) return;
     const player = this.stateManager.player;
-    const meta = this.stateManager.metaSave;
-    this.garage.open(true, this.stateManager.floorNum, meta, player);
+    this.deathTimer = 2.2;
+    player.deathTimer = 2.2;
+    this.deathExplosionTriggered = false;
+    this.inputManager.reset();
+    this.audio.gameOverSound();
+    triggerExplosion(player.x, player.y, 95, 0, this.getCurrentRoom()!, this.combatState, this.audio);
+    this.combatState.screenShake = 18;
+    this.combatState.damageNumbers.push({
+      x: player.x,
+      y: player.y - 32,
+      text: 'CRITICAL HULL BREACH!!',
+      color: '#ff1744',
+      life: 1.8,
+      maxLife: 1.8
+    });
+    this.combatState.damageNumbers.push({
+      x: player.x,
+      y: player.y - 12,
+      text: 'ALL POWERUPS LOST!',
+      color: '#ffd60a',
+      life: 1.8,
+      maxLife: 1.8
+    });
+  }
+
+  public handlePlayerDeath(): void {
+    this.stateManager.clearRun();
+    this.stateManager.resetRun();
+    this.enterHomeBase();
+  }
+
+  public enterHomeBase(): void {
+    this.deathTimer = 0;
+    this.deathExplosionTriggered = false;
+    this.inHomeBase = true;
+    this.bountyClaimedInHub = false;
+    this.stateManager.gameOver = false;
+    this.stateManager.floorNum = 1;
+    this.dismissedPickup = null;
+    this.portalDismissed = false;
+    this.portalModal.close();
+    this.hud.updateBossBar(null, 1);
+
+    const player = this.stateManager.player;
+    player.deathTimer = 0;
+    player.stunTimer = 0;
+    player.x = ARENA_WIDTH / 2;
+    player.y = ARENA_HEIGHT / 2;
+    player.vx = 0;
+    player.vy = 0;
+
+    this.dungeon = { '0,0': createHomeBaseRoom() };
+    this.curRoomX = 0;
+    this.curRoomY = 0;
+    this.combatState = createCombatState();
+    this.combatState.damageNumbers.push({
+      x: player.x,
+      y: player.y - 36,
+      text: 'HOME BASE // POWERUPS RESET',
+      color: '#ffd60a',
+      life: 2.2,
+      maxLife: 2.2
+    });
+    this.updateHUD();
   }
 
   public nextFloor(): void {

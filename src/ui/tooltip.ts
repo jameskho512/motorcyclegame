@@ -93,6 +93,12 @@ export class TooltipManager {
    * Generates tooltip HTML for any in-room pickup.
    */
   public formatPickupTooltip(p: Pickup): string | null {
+    if ((p as any).type === 'hub_npc') {
+      const npc = p as any;
+      const costLine = npc.cost > 0 ? `<br/><span class="tip-cost">Cost: ${npc.cost} Scrap ⚙️</span>` : '<br/><span class="tip-free">Ride onto station to interact</span>';
+      return `${tipTitle(npc.name, '#ffd60a', 'Home Base')}<br/>${npc.subtitle}${costLine}`;
+    }
+
     if (p.type === 'mod_pedestal') {
       const costHtml = p.cost > 0
         ? tipCost(`Cost: ${p.cost} coins`)
