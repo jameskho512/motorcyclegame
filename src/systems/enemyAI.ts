@@ -38,7 +38,8 @@ import {
   type EnemyBullet,
   type EnemyBomb,
   type Room,
-  type Pickup
+  type Pickup,
+  type FloorHazard
 } from '../types/game';
 import { RUN_MOD_POOL } from '../data/upgrades';
 import { genLoot, rollRarity, type RarityTier } from '../data/equipment';
@@ -301,20 +302,380 @@ export interface AIContext {
 }
 
 /**
+ * Updates a boss enemy's AI behavior, phase transitions, overdrive pulse escalation,
+ * variant attacks, and arena boundary clamping.
+ */
+export function updateBossAI(ctx: AIContext): void {
+  const {
+    room,
+    enemy: en,
+    dt,
+    player,
+    projScale,
+    enemyBullets,
+    enemyBombs,
+    rng = Math.random,
+    floorNum = 1
+  } = ctx;
+  const boss = en as Boss;
+  const dx = player.x - en.x;
+  const dy = player.y - en.y;
+  const dist = Math.hypot(dx, dy) || 1;
+  en.angle = Math.atan2(dy, dx);
+
+  const phaseTimer = ((boss as any).phaseTimer || 0) + dt;
+  (boss as any).phaseTimer = phaseTimer;
+  const isEnraged = boss.hp <= boss.maxHp * 0.5;
+  boss.phase = isEnraged ? 2 : 1;
+  (boss as any).enraged = isEnraged;
+
+  // Handle dash / windup state machine for ramming / jet-strafing bosses
+  if (boss.state === 'windup') {
+    boss.specialTimer = (boss.specialTimer || 0) - dt;
+    if (boss.specialTimer <= 0) {
+      boss.state = 'dashing';
+      boss.specialTimer = boss.bossVariant === 3 ? 0.45 : 0.55;
+      const mult = boss.bossVariant === 3 ? 2.8 : 3.0;
+      if (boss.bossVariant === 3) {
+        // Tangential jet strafe
+        const perpX = -dy / dist;
+        const perpY = dx / dist;
+        const dir = (Math.floor(phaseTimer * 2) % 2 === 0) ? 1 : -1;
+        boss.dashVx = (perpX * dir * 0.8 + (dx / dist) * 0.4) * en.speed * mult;
+        boss.dashVy = (perpY * dir * 0.8 + (dy / dist) * 0.4) * en.speed * mult;
+      } else {
+        boss.dashVx = (dx / dist) * en.speed * mult;
+        boss.dashVy = (dy / dist) * en.speed * mult;
+      }
+      if (boss.phase === 2 && boss.bossVariant !== 3 && boss.bossVariant !== 4) {
+        boss.dashVx *= 1.25;
+        boss.dashVy *= 1.25;
+      }
+    }
+  } else if (boss.state === 'dashing') {
+    boss.specialTimer = (boss.specialTimer || 0) - dt;
+    en.x += (boss.dashVx || 0) * dt;
+    en.y += (boss.dashVy || 0) * dt;
+    // Side shrapnel sparks while dashing for Scrap Goliath & Omega Valhalla
+    if ((boss.bossVariant === 0 || boss.bossVariant === 5) && Math.floor((boss.specialTimer || 0) * 20) % 4 === 0) {
+      const dashAng = Math.atan2(boss.dashVy || 0, boss.dashVx || 1);
+      for (const side of [-1, 1]) {
+        const sa = dashAng + side * (Math.PI * 0.55);
+        enemyBullets.push({
+          x: en.x,
+          y: en.y,
+          vx: Math.cos(sa) * 195 * projScale,
+          vy: Math.sin(sa) * 195 * projScale,
+          radius: 5.5,
+          color: '#ff9f1c'
+        });
+      }
+    }
+    if (boss.specialTimer <= 0) {
+      boss.state = 'idle';
+    }
+  } else {
+    // Persistent advance in idle state (boosted by 1.18x when in Phase 2 Overdrive)
+    const moveMult = isEnraged ? 1.18 : 1.0;
+    en.x += (dx / dist) * en.speed * dt * moveMult;
+    en.y += (dy / dist) * en.speed * dt * moveMult;
+  }
+
+  en.aiTimer -= dt;
+  boss.subTimer -= dt;
+
+  // Phase 2 Overdrive pulse timer & hazard escalation
+  if (boss.phase === 2) {
+    if ((boss as any).overdrivePulseTimer === undefined) {
+      (boss as any).overdrivePulseTimer = 2.4;
+    }
+    (boss as any).overdrivePulseTimer -= dt;
+    if ((boss as any).overdrivePulseTimer <= 0) {
+      (boss as any).overdrivePulseTimer = 2.4;
+      if (boss.bossVariant === 3 || boss.bossVariant === 4) {
+        if (!room.hazards) room.hazards = [];
+        room.hazards.push({
+          x: en.x,
+          y: en.y,
+          radius: 46,
+          life: 3.5,
+          maxLife: 3.5
+        });
+      }
+    }
+  }
+
+  // Primary Attack (aiTimer): Variant-specific signature + radial pressure
+  if (en.aiTimer <= 0) {
+    const baseAiCooldown = Math.max(0.75, 1.35 - floorNum * 0.08);
+    en.aiTimer = isEnraged ? baseAiCooldown * 0.85 : baseAiCooldown;
+    const count = 8 + Math.min(6, floorNum * 2);
+
+    // Baseline radial nova (keeps classic bullet-hell density & test compatibility)
+    for (let k = 0; k < count; k++) {
+      const a = en.angle + (k * Math.PI * 2) / count + (boss.bossVariant === 1 ? phaseTimer * 0.9 : 0);
+      enemyBullets.push({
+        x: en.x,
+        y: en.y,
+        vx: Math.cos(a) * 230 * projScale,
+        vy: Math.sin(a) * 230 * projScale,
+        radius: 7,
+        color: boss.bossVariant === 5 && k % 2 === 1 ? '#e63946' : en.color
+      });
+    }
+
+    // Phase 2 extra projectiles: 4-bullet aimed fan if enabled
+    if (isEnraged && (boss as any).enablePhase2ExtraProjectiles) {
+      for (let s = -1.5; s <= 1.5; s += 1) {
+        const sa = en.angle + s * 0.12;
+        enemyBullets.push({
+          x: en.x,
+          y: en.y,
+          vx: Math.cos(sa) * 260 * projScale,
+          vy: Math.sin(sa) * 260 * projScale,
+          radius: 6.5,
+          color: '#ffd166'
+        });
+      }
+    }
+
+    // Variant-specific Primary Bonus
+    if (boss.bossVariant === 0) {
+      // Scrap Goliath: aimed heavy scatter shot
+      for (let s = -1; s <= 1; s++) {
+        const sa = en.angle + s * 0.18;
+        enemyBullets.push({
+          x: en.x,
+          y: en.y,
+          vx: Math.cos(sa) * 290 * projScale,
+          vy: Math.sin(sa) * 290 * projScale,
+          radius: 8,
+          color: '#ff9f1c'
+        });
+      }
+    } else if (boss.bossVariant === 1) {
+      // Siege Behemoth: rotating gatling spiral burst
+      for (let s = 0; s < 4; s++) {
+        const sa = en.angle + phaseTimer * 2.2 + (s * Math.PI) / 2;
+        enemyBullets.push({
+          x: en.x,
+          y: en.y,
+          vx: Math.cos(sa) * 275 * projScale,
+          vy: Math.sin(sa) * 275 * projScale,
+          radius: 6.5,
+          color: '#ffd166'
+        });
+      }
+    } else if (boss.bossVariant === 2) {
+      // Overlord Helion: 7-way cyber plasma fan
+      for (let k = -3; k <= 3; k++) {
+        const a = en.angle + k * 0.14;
+        enemyBullets.push({
+          x: en.x,
+          y: en.y,
+          vx: Math.cos(a) * 320 * projScale,
+          vy: Math.sin(a) * 320 * projScale,
+          radius: 6,
+          color: '#00f5d4'
+        });
+      }
+    } else if (boss.bossVariant === 3) {
+      // Cryo Valkyrie: High-velocity 3-round piercing ice lance snipe
+      for (let k = -1; k <= 1; k++) {
+        const a = en.angle + k * 0.08;
+        enemyBullets.push({
+          x: en.x,
+          y: en.y,
+          vx: Math.cos(a) * 420 * projScale,
+          vy: Math.sin(a) * 420 * projScale,
+          radius: 6,
+          color: '#90e0ef'
+        });
+      }
+    } else if (boss.bossVariant === 4) {
+      // Inferno Colossus: Twin flamethrower sweep + molten magma wake pool underneath itself
+      for (let k = -2; k <= 2; k++) {
+        const a = en.angle + k * 0.2;
+        enemyBullets.push({
+          x: en.x,
+          y: en.y,
+          vx: Math.cos(a) * 260 * projScale,
+          vy: Math.sin(a) * 260 * projScale,
+          radius: 8.5,
+          color: '#ff9f1c'
+        });
+      }
+      if (room.hazards.length < 10) {
+        room.hazards.push({
+          x: en.x,
+          y: en.y,
+          radius: 36,
+          life: 4.0,
+          maxLife: 4.0
+        });
+      }
+    } else if (boss.bossVariant === 5) {
+      // Omega Valhalla: 7-way cyan rail-fan volley
+      for (let k = -3; k <= 3; k++) {
+        const a = en.angle + k * 0.15;
+        enemyBullets.push({
+          x: en.x,
+          y: en.y,
+          vx: Math.cos(a) * 350 * projScale,
+          vy: Math.sin(a) * 350 * projScale,
+          radius: 6.5,
+          color: '#00f5d4'
+        });
+      }
+    }
+  }
+
+  // Secondary Attack (subTimer): every 2.8s (reduced by 15% in Phase 2 Overdrive)
+  if (boss.subTimer <= 0) {
+    boss.subTimer = isEnraged ? 2.8 * 0.85 : 2.8;
+    if (boss.bossVariant === 0) {
+      // Scrap Goliath: Bulldozer Ram Charge
+      boss.state = 'windup';
+      boss.specialTimer = 0.55;
+    } else if (boss.bossVariant === 1) {
+      // Siege Behemoth: Carpet Mortar Barrage (3 targeted mortar bombs around player)
+      const offsets: [number, number][] = [[0, 0], [-55, 40], [55, -40]];
+      for (const [ox, oy] of offsets) {
+        const tx = Math.max(WALL_THICKNESS + 36, Math.min(ARENA_WIDTH - WALL_THICKNESS - 36, player.x + ox));
+        const ty = Math.max(WALL_THICKNESS + 36, Math.min(ARENA_HEIGHT - WALL_THICKNESS - 36, player.y + oy));
+        enemyBombs.push({
+          x: en.x,
+          y: en.y,
+          startX: en.x,
+          startY: en.y,
+          targetX: tx,
+          targetY: ty,
+          t: 0,
+          duration: 0.85
+        });
+      }
+    } else if (boss.bossVariant === 2) {
+      // Overlord Helion: Aimed 5-way spread burst + Phase Blink & Cyber-Drone Surge
+      for (let k = -2; k <= 2; k++) {
+        const a = en.angle + k * 0.16;
+        enemyBullets.push({
+          x: en.x,
+          y: en.y,
+          vx: Math.cos(a) * 320 * projScale,
+          vy: Math.sin(a) * 320 * projScale,
+          radius: 6,
+          color: '#00f5d4'
+        });
+      }
+      // Tangential phase blink
+      const blinkAngle = en.angle + (rng() < 0.5 ? 1 : -1) * (Math.PI * 0.45);
+      en.x = Math.max(
+        WALL_THICKNESS + en.radius + 10,
+        Math.min(ARENA_WIDTH - WALL_THICKNESS - en.radius - 10, en.x + Math.cos(blinkAngle) * 110)
+      );
+      en.y = Math.max(
+        WALL_THICKNESS + en.radius + 10,
+        Math.min(ARENA_HEIGHT - WALL_THICKNESS - en.radius - 10, en.y + Math.sin(blinkAngle) * 110)
+      );
+      if (room.enemies.length < 5) {
+        room.enemies.push(createEnemy('mini_swarmer', en.x + 28, en.y - 28, floorNum, false, getNextEntityId(), rng));
+      }
+    } else if (boss.bossVariant === 3) {
+      // Cryo Valkyrie: Diamond Jet Strafe & 12-shard Frost Nova
+      boss.state = 'windup';
+      boss.specialTimer = 0.35;
+      for (let k = 0; k < 12; k++) {
+        const a = (k * Math.PI * 2) / 12 + phaseTimer;
+        enemyBullets.push({
+          x: en.x,
+          y: en.y,
+          vx: Math.cos(a) * 255 * projScale,
+          vy: Math.sin(a) * 255 * projScale,
+          radius: 6,
+          color: '#48cae4'
+        });
+      }
+    } else if (boss.bossVariant === 4) {
+      // Inferno Colossus: Pyroclastic Star Eruption (4 mortar bombs + 14-bullet magma ring)
+      const crossOffsets: [number, number][] = [[65, 0], [-65, 0], [0, 65], [0, -65]];
+      for (const [ox, oy] of crossOffsets) {
+        const tx = Math.max(WALL_THICKNESS + 36, Math.min(ARENA_WIDTH - WALL_THICKNESS - 36, player.x + ox));
+        const ty = Math.max(WALL_THICKNESS + 36, Math.min(ARENA_HEIGHT - WALL_THICKNESS - 36, player.y + oy));
+        enemyBombs.push({
+          x: en.x,
+          y: en.y,
+          startX: en.x,
+          startY: en.y,
+          targetX: tx,
+          targetY: ty,
+          t: 0,
+          duration: 0.9
+        });
+      }
+      for (let k = 0; k < 14; k++) {
+        const a = (k * Math.PI * 2) / 14;
+        enemyBullets.push({
+          x: en.x,
+          y: en.y,
+          vx: Math.cos(a) * 215 * projScale,
+          vy: Math.sin(a) * 215 * projScale,
+          radius: 7.5,
+          color: '#ffd166'
+        });
+      }
+    } else if (boss.bossVariant === 5) {
+      // Omega Valhalla: Charger Ram + Twin Mortar Bombs + 16-bullet Apocalypse Nova
+      boss.state = 'windup';
+      boss.specialTimer = 0.5;
+      for (const [ox, oy] of [[-40, -40], [40, 40]] as [number, number][]) {
+        const tx = Math.max(WALL_THICKNESS + 36, Math.min(ARENA_WIDTH - WALL_THICKNESS - 36, player.x + ox));
+        const ty = Math.max(WALL_THICKNESS + 36, Math.min(ARENA_HEIGHT - WALL_THICKNESS - 36, player.y + oy));
+        enemyBombs.push({
+          x: en.x,
+          y: en.y,
+          startX: en.x,
+          startY: en.y,
+          targetX: tx,
+          targetY: ty,
+          t: 0,
+          duration: 0.85
+        });
+      }
+      for (let k = 0; k < 16; k++) {
+        const a = (k * Math.PI * 2) / 16;
+        enemyBullets.push({
+          x: en.x,
+          y: en.y,
+          vx: Math.cos(a) * 265 * projScale,
+          vy: Math.sin(a) * 265 * projScale,
+          radius: 7,
+          color: k % 2 === 0 ? '#ffd166' : '#00f5d4'
+        });
+      }
+    }
+  }
+
+  // Clamping for direct updateBossAI invocations
+  en.x = Math.max(WALL_THICKNESS + en.radius, Math.min(ARENA_WIDTH - WALL_THICKNESS - en.radius, en.x));
+  en.y = Math.max(WALL_THICKNESS + en.radius, Math.min(ARENA_HEIGHT - WALL_THICKNESS - en.radius, en.y));
+}
+
+/**
  * Updates an individual enemy's state machine, movement vector, aiming angle,
  * projectile firing cooldowns, and hazard creation.
  */
-export function updateEnemyAI({
-  room,
-  enemy: en,
-  dt,
-  player,
-  projScale,
-  enemyBullets,
-  enemyBombs,
-  rng = Math.random,
-  floorNum = 1
-}: AIContext): void {
+export function updateEnemyAI(ctx: AIContext): void {
+  const {
+    room,
+    enemy: en,
+    dt,
+    player,
+    projScale,
+    enemyBullets,
+    enemyBombs,
+    rng = Math.random,
+    floorNum = 1
+  } = ctx;
   const dx = player.x - en.x;
   const dy = player.y - en.y;
   const dist = Math.hypot(dx, dy) || 1;
@@ -528,298 +889,7 @@ export function updateEnemyAI({
     }
 
     case 'boss': {
-      const boss = en as Boss;
-      const phaseTimer = ((boss as any).phaseTimer || 0) + dt;
-      (boss as any).phaseTimer = phaseTimer;
-      const isEnraged = boss.hp <= boss.maxHp * 0.5;
-      boss.phase = isEnraged ? 2 : 1;
-      (boss as any).enraged = isEnraged;
-
-      // Handle dash / windup state machine for ramming / jet-strafing bosses
-      if (boss.state === 'windup') {
-        boss.specialTimer = (boss.specialTimer || 0) - dt;
-        if (boss.specialTimer <= 0) {
-          boss.state = 'dashing';
-          boss.specialTimer = boss.bossVariant === 3 ? 0.45 : 0.55;
-          const mult = boss.bossVariant === 3 ? 2.8 : 3.0;
-          if (boss.bossVariant === 3) {
-            // Tangential jet strafe
-            const perpX = -dy / dist;
-            const perpY = dx / dist;
-            const dir = (Math.floor(phaseTimer * 2) % 2 === 0) ? 1 : -1;
-            boss.dashVx = (perpX * dir * 0.8 + (dx / dist) * 0.4) * en.speed * mult;
-            boss.dashVy = (perpY * dir * 0.8 + (dy / dist) * 0.4) * en.speed * mult;
-          } else {
-            boss.dashVx = (dx / dist) * en.speed * mult;
-            boss.dashVy = (dy / dist) * en.speed * mult;
-          }
-        }
-      } else if (boss.state === 'dashing') {
-        boss.specialTimer = (boss.specialTimer || 0) - dt;
-        en.x += (boss.dashVx || 0) * dt;
-        en.y += (boss.dashVy || 0) * dt;
-        // Side shrapnel sparks while dashing for Scrap Goliath & Omega Valhalla
-        if ((boss.bossVariant === 0 || boss.bossVariant === 5) && Math.floor((boss.specialTimer || 0) * 20) % 4 === 0) {
-          const dashAng = Math.atan2(boss.dashVy || 0, boss.dashVx || 1);
-          for (const side of [-1, 1]) {
-            const sa = dashAng + side * (Math.PI * 0.55);
-            enemyBullets.push({
-              x: en.x,
-              y: en.y,
-              vx: Math.cos(sa) * 195 * projScale,
-              vy: Math.sin(sa) * 195 * projScale,
-              radius: 5.5,
-              color: '#ff9f1c'
-            });
-          }
-        }
-        if (boss.specialTimer <= 0) {
-          boss.state = 'idle';
-        }
-      } else {
-        // Persistent advance in idle state (boosted by 1.18x when in Phase 2 Overdrive)
-        const moveMult = isEnraged ? 1.18 : 1.0;
-        en.x += (dx / dist) * en.speed * dt * moveMult;
-        en.y += (dy / dist) * en.speed * dt * moveMult;
-      }
-
-      en.aiTimer -= dt;
-      boss.subTimer -= dt;
-
-      // Primary Attack (aiTimer): Variant-specific signature + radial pressure
-      if (en.aiTimer <= 0) {
-        const baseAiCooldown = Math.max(0.75, 1.35 - floorNum * 0.08);
-        en.aiTimer = isEnraged ? baseAiCooldown * 0.85 : baseAiCooldown;
-        const count = 8 + Math.min(6, floorNum * 2) + (isEnraged ? 4 : 0);
-
-        // Baseline radial nova (keeps classic bullet-hell density & test compatibility)
-        for (let k = 0; k < count; k++) {
-          const a = en.angle + (k * Math.PI * 2) / count + (boss.bossVariant === 1 ? phaseTimer * 0.9 : 0);
-          enemyBullets.push({
-            x: en.x,
-            y: en.y,
-            vx: Math.cos(a) * 230 * projScale,
-            vy: Math.sin(a) * 230 * projScale,
-            radius: 7,
-            color: boss.bossVariant === 5 && k % 2 === 1 ? '#e63946' : en.color
-          });
-        }
-
-        // Variant-specific Primary Bonus
-        if (boss.bossVariant === 0) {
-          // Scrap Goliath: aimed heavy scatter shot
-          for (let s = -1; s <= 1; s++) {
-            const sa = en.angle + s * 0.18;
-            enemyBullets.push({
-              x: en.x,
-              y: en.y,
-              vx: Math.cos(sa) * 290 * projScale,
-              vy: Math.sin(sa) * 290 * projScale,
-              radius: 8,
-              color: '#ff9f1c'
-            });
-          }
-        } else if (boss.bossVariant === 1) {
-          // Siege Behemoth: rotating gatling spiral burst
-          for (let s = 0; s < 4; s++) {
-            const sa = en.angle + phaseTimer * 2.2 + (s * Math.PI) / 2;
-            enemyBullets.push({
-              x: en.x,
-              y: en.y,
-              vx: Math.cos(sa) * 275 * projScale,
-              vy: Math.sin(sa) * 275 * projScale,
-              radius: 6.5,
-              color: '#ffd166'
-            });
-          }
-        } else if (boss.bossVariant === 2) {
-          // Overlord Helion: 7-way cyber plasma fan
-          for (let k = -3; k <= 3; k++) {
-            const a = en.angle + k * 0.14;
-            enemyBullets.push({
-              x: en.x,
-              y: en.y,
-              vx: Math.cos(a) * 320 * projScale,
-              vy: Math.sin(a) * 320 * projScale,
-              radius: 6,
-              color: '#00f5d4'
-            });
-          }
-        } else if (boss.bossVariant === 3) {
-          // Cryo Valkyrie: High-velocity 3-round piercing ice lance snipe
-          for (let k = -1; k <= 1; k++) {
-            const a = en.angle + k * 0.08;
-            enemyBullets.push({
-              x: en.x,
-              y: en.y,
-              vx: Math.cos(a) * 420 * projScale,
-              vy: Math.sin(a) * 420 * projScale,
-              radius: 6,
-              color: '#90e0ef'
-            });
-          }
-        } else if (boss.bossVariant === 4) {
-          // Inferno Colossus: Twin flamethrower sweep + molten magma wake pool underneath itself
-          for (let k = -2; k <= 2; k++) {
-            const a = en.angle + k * 0.2;
-            enemyBullets.push({
-              x: en.x,
-              y: en.y,
-              vx: Math.cos(a) * 260 * projScale,
-              vy: Math.sin(a) * 260 * projScale,
-              radius: 8.5,
-              color: '#ff9f1c'
-            });
-          }
-          if (room.hazards.length < 10) {
-            room.hazards.push({
-              x: en.x,
-              y: en.y,
-              radius: 36,
-              life: 4.0,
-              maxLife: 4.0
-            });
-          }
-        } else if (boss.bossVariant === 5) {
-          // Omega Valhalla: 7-way cyan rail-fan volley
-          for (let k = -3; k <= 3; k++) {
-            const a = en.angle + k * 0.15;
-            enemyBullets.push({
-              x: en.x,
-              y: en.y,
-              vx: Math.cos(a) * 350 * projScale,
-              vy: Math.sin(a) * 350 * projScale,
-              radius: 6.5,
-              color: '#00f5d4'
-            });
-          }
-        }
-      }
-
-      // Secondary Attack (subTimer): every 2.8s (reduced by 15% in Phase 2 Overdrive)
-      if (boss.subTimer <= 0) {
-        boss.subTimer = isEnraged ? 2.8 * 0.85 : 2.8;
-        if (boss.bossVariant === 0) {
-          // Scrap Goliath: Bulldozer Ram Charge
-          boss.state = 'windup';
-          boss.specialTimer = 0.55;
-        } else if (boss.bossVariant === 1) {
-          // Siege Behemoth: Carpet Mortar Barrage (3 targeted mortar bombs around player)
-          const offsets: [number, number][] = [[0, 0], [-55, 40], [55, -40]];
-          for (const [ox, oy] of offsets) {
-            const tx = Math.max(WALL_THICKNESS + 36, Math.min(ARENA_WIDTH - WALL_THICKNESS - 36, player.x + ox));
-            const ty = Math.max(WALL_THICKNESS + 36, Math.min(ARENA_HEIGHT - WALL_THICKNESS - 36, player.y + oy));
-            enemyBombs.push({
-              x: en.x,
-              y: en.y,
-              startX: en.x,
-              startY: en.y,
-              targetX: tx,
-              targetY: ty,
-              t: 0,
-              duration: 0.85
-            });
-          }
-        } else if (boss.bossVariant === 2) {
-          // Overlord Helion: Aimed 5-way spread burst + Phase Blink & Cyber-Drone Surge
-          for (let k = -2; k <= 2; k++) {
-            const a = en.angle + k * 0.16;
-            enemyBullets.push({
-              x: en.x,
-              y: en.y,
-              vx: Math.cos(a) * 320 * projScale,
-              vy: Math.sin(a) * 320 * projScale,
-              radius: 6,
-              color: '#00f5d4'
-            });
-          }
-          // Tangential phase blink
-          const blinkAngle = en.angle + (rng() < 0.5 ? 1 : -1) * (Math.PI * 0.45);
-          en.x = Math.max(
-            WALL_THICKNESS + en.radius + 10,
-            Math.min(ARENA_WIDTH - WALL_THICKNESS - en.radius - 10, en.x + Math.cos(blinkAngle) * 110)
-          );
-          en.y = Math.max(
-            WALL_THICKNESS + en.radius + 10,
-            Math.min(ARENA_HEIGHT - WALL_THICKNESS - en.radius - 10, en.y + Math.sin(blinkAngle) * 110)
-          );
-          if (room.enemies.length < 5) {
-            room.enemies.push(createEnemy('mini_swarmer', en.x + 28, en.y - 28, floorNum, false, getNextEntityId(), rng));
-          }
-        } else if (boss.bossVariant === 3) {
-          // Cryo Valkyrie: Diamond Jet Strafe & 12-shard Frost Nova
-          boss.state = 'windup';
-          boss.specialTimer = 0.35;
-          for (let k = 0; k < 12; k++) {
-            const a = (k * Math.PI * 2) / 12 + phaseTimer;
-            enemyBullets.push({
-              x: en.x,
-              y: en.y,
-              vx: Math.cos(a) * 255 * projScale,
-              vy: Math.sin(a) * 255 * projScale,
-              radius: 6,
-              color: '#48cae4'
-            });
-          }
-        } else if (boss.bossVariant === 4) {
-          // Inferno Colossus: Pyroclastic Star Eruption (4 mortar bombs + 14-bullet magma ring)
-          const crossOffsets: [number, number][] = [[65, 0], [-65, 0], [0, 65], [0, -65]];
-          for (const [ox, oy] of crossOffsets) {
-            const tx = Math.max(WALL_THICKNESS + 36, Math.min(ARENA_WIDTH - WALL_THICKNESS - 36, player.x + ox));
-            const ty = Math.max(WALL_THICKNESS + 36, Math.min(ARENA_HEIGHT - WALL_THICKNESS - 36, player.y + oy));
-            enemyBombs.push({
-              x: en.x,
-              y: en.y,
-              startX: en.x,
-              startY: en.y,
-              targetX: tx,
-              targetY: ty,
-              t: 0,
-              duration: 0.9
-            });
-          }
-          for (let k = 0; k < 14; k++) {
-            const a = (k * Math.PI * 2) / 14;
-            enemyBullets.push({
-              x: en.x,
-              y: en.y,
-              vx: Math.cos(a) * 215 * projScale,
-              vy: Math.sin(a) * 215 * projScale,
-              radius: 7.5,
-              color: '#ffd166'
-            });
-          }
-        } else if (boss.bossVariant === 5) {
-          // Omega Valhalla: Charger Ram + Twin Mortar Bombs + 16-bullet Apocalypse Nova
-          boss.state = 'windup';
-          boss.specialTimer = 0.5;
-          for (const [ox, oy] of [[-40, -40], [40, 40]] as [number, number][]) {
-            const tx = Math.max(WALL_THICKNESS + 36, Math.min(ARENA_WIDTH - WALL_THICKNESS - 36, player.x + ox));
-            const ty = Math.max(WALL_THICKNESS + 36, Math.min(ARENA_HEIGHT - WALL_THICKNESS - 36, player.y + oy));
-            enemyBombs.push({
-              x: en.x,
-              y: en.y,
-              startX: en.x,
-              startY: en.y,
-              targetX: tx,
-              targetY: ty,
-              t: 0,
-              duration: 0.85
-            });
-          }
-          for (let k = 0; k < 16; k++) {
-            const a = (k * Math.PI * 2) / 16;
-            enemyBullets.push({
-              x: en.x,
-              y: en.y,
-              vx: Math.cos(a) * 265 * projScale,
-              vy: Math.sin(a) * 265 * projScale,
-              radius: 7,
-              color: k % 2 === 0 ? '#ffd166' : '#00f5d4'
-            });
-          }
-        }
-      }
+      updateBossAI(ctx);
       break;
     }
   }

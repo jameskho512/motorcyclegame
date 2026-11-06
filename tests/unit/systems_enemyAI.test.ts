@@ -23,6 +23,7 @@ import {
   createBoss,
   spawnBossMinions,
   updateEnemyAI,
+  updateBossAI,
   generateBossDefeatRewards,
   BOSS_COLORS
 } from '../../src/systems/enemyAI';
@@ -710,5 +711,148 @@ describe('Systems: EnemyAI — The 3 Boss Variants', () => {
     if (rewards.lootPickup.type === 'loot') {
       expect(rewards.lootPickup.item.rarity).toBeGreaterThanOrEqual(1);
     }
+  });
+
+  it('decrements overdrivePulseTimer in Phase 2 and spawns 46px FloorHazard every 2.4s for Cryo Valkyrie and Inferno Colossus', () => {
+    const room = createMockRoom();
+    const player = createMockPlayer({ x: 500, y: 360 });
+
+    // Cryo Valkyrie (Variant 3)
+    const cryoBoss = createBoss(4, 360, 360); // Floor 4 -> variant 3
+    cryoBoss.hp = Math.floor(cryoBoss.maxHp * 0.4); // Phase 2
+    (cryoBoss as any).overdrivePulseTimer = 0.05;
+
+    updateEnemyAI({
+      room,
+      enemy: cryoBoss,
+      dt: 0.1, // triggers overdrive pulse
+      player,
+      projScale: 1,
+      enemyBullets: [],
+      enemyBombs: [],
+      floorNum: 4
+    });
+
+    expect(cryoBoss.phase).toBe(2);
+    expect((cryoBoss as any).overdrivePulseTimer).toBeCloseTo(2.4, 2);
+    expect(room.hazards).toHaveLength(1);
+    expect(room.hazards[0].radius).toBe(46);
+    expect(room.hazards[0].life).toBe(3.5);
+    expect(room.hazards[0].maxLife).toBe(3.5);
+    expect(room.hazards[0].x).toBe(cryoBoss.x);
+    expect(room.hazards[0].y).toBe(cryoBoss.y);
+
+    // Inferno Colossus (Variant 4)
+    const infernoBoss = createBoss(5, 360, 360); // Floor 5 -> variant 4
+    infernoBoss.hp = Math.floor(infernoBoss.maxHp * 0.3); // Phase 2
+    (infernoBoss as any).overdrivePulseTimer = 0.05;
+
+    updateEnemyAI({
+      room,
+      enemy: infernoBoss,
+      dt: 0.1,
+      player,
+      projScale: 1,
+      enemyBullets: [],
+      enemyBombs: [],
+      floorNum: 5
+    });
+
+    expect(infernoBoss.phase).toBe(2);
+    expect((infernoBoss as any).overdrivePulseTimer).toBeCloseTo(2.4, 2);
+    expect(room.hazards).toHaveLength(2);
+    expect(room.hazards[1].radius).toBe(46);
+    expect(room.hazards[1].life).toBe(3.5);
+  });
+
+  it('boosts dash velocity by 1.25x in Phase 2 for non-hazard boss variants upon windup completion', () => {
+    const room = createMockRoom();
+    const player = createMockPlayer({ x: 500, y: 360 }); // strictly East
+
+    // Scrap Goliath (Variant 0) in Phase 1
+    const bossP1 = createBoss(1, 360, 360);
+    bossP1.state = 'windup';
+    bossP1.specialTimer = 0.05;
+
+    updateEnemyAI({
+      room,
+      enemy: bossP1,
+      dt: 0.1,
+      player,
+      projScale: 1,
+      enemyBullets: [],
+      enemyBombs: [],
+      floorNum: 1
+    });
+
+    expect(bossP1.state).toBe('dashing');
+    const phase1DashVx = bossP1.dashVx;
+
+    // Scrap Goliath in Phase 2
+    const bossP2 = createBoss(1, 360, 360);
+    bossP2.hp = Math.floor(bossP2.maxHp * 0.4); // Phase 2
+    bossP2.state = 'windup';
+    bossP2.specialTimer = 0.05;
+
+    updateEnemyAI({
+      room,
+      enemy: bossP2,
+      dt: 0.1,
+      player,
+      projScale: 1,
+      enemyBullets: [],
+      enemyBombs: [],
+      floorNum: 1
+    });
+
+    expect(bossP2.state).toBe('dashing');
+    expect(bossP2.phase).toBe(2);
+    expect(bossP2.dashVx).toBeCloseTo(phase1DashVx * 1.25, 1);
+  });
+
+  it('fires extra 4-bullet aimed fan in Phase 2 only when enablePhase2ExtraProjectiles is enabled', () => {
+    const room = createMockRoom();
+    const player = createMockPlayer({ x: 500, y: 360 });
+
+    // Boss Phase 2 WITHOUT enablePhase2ExtraProjectiles flag
+    const bossWithoutFlag = createBoss(1, 360, 360);
+    bossWithoutFlag.hp = Math.floor(bossWithoutFlag.maxHp * 0.4);
+    bossWithoutFlag.aiTimer = 0.05;
+    const bullets1: EnemyBullet[] = [];
+
+    updateEnemyAI({
+      room,
+      enemy: bossWithoutFlag,
+      dt: 0.1,
+      player,
+      projScale: 1,
+      enemyBullets: bullets1,
+      enemyBombs: [],
+      floorNum: 1
+    });
+
+    // 10 radial nova + 3 aimed scatter = 13 bullets
+    expect(bullets1).toHaveLength(13);
+
+    // Boss Phase 2 WITH enablePhase2ExtraProjectiles flag
+    const bossWithFlag = createBoss(1, 360, 360);
+    bossWithFlag.hp = Math.floor(bossWithFlag.maxHp * 0.4);
+    bossWithFlag.aiTimer = 0.05;
+    (bossWithFlag as any).enablePhase2ExtraProjectiles = true;
+    const bullets2: EnemyBullet[] = [];
+
+    updateEnemyAI({
+      room,
+      enemy: bossWithFlag,
+      dt: 0.1,
+      player,
+      projScale: 1,
+      enemyBullets: bullets2,
+      enemyBombs: [],
+      floorNum: 1
+    });
+
+    // 10 radial nova + 3 aimed scatter + 4 extra Phase-2 fan = 17 bullets
+    expect(bullets2).toHaveLength(17);
   });
 });

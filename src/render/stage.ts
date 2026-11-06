@@ -48,6 +48,24 @@ import { VFXManager } from './vfx';
 import { FilterManager } from './shaders';
 import { WEAPONS } from '../data/weapons';
 
+/**
+ * Maps dungeon floor number (1..6+) to atmospheric ambient mote theme color:
+ * Floor 1: Warm rust/amber dust motes (0xff9f1c)
+ * Floor 2: Rising smelter orange embers (0xff5400)
+ * Floor 3: Neon cyan cyber-streaks (0x00f5d4)
+ * Floor 4: Crisp icy cryo crystals (0x72efdd)
+ * Floor 5: Crimson magma sparks (0xff2a4b)
+ * Floor 6+: Golden Valhalla stars/motes (0xffd60a)
+ */
+export function getFloorMoteColor(floorNum: number): number {
+  if (floorNum <= 1) return 0xff9f1c;
+  if (floorNum === 2) return 0xff5400;
+  if (floorNum === 3) return 0x00f5d4;
+  if (floorNum === 4) return 0x72efdd;
+  if (floorNum === 5) return 0xff2a4b;
+  return 0xffd60a; // Floor 6+
+}
+
 export class StageManager {
   public app: Application;
   public vfx: VFXManager;
@@ -219,7 +237,7 @@ export class StageManager {
     this.renderHUD(this.hudGraphics, player, room, damageNumbers, timestampMs);
   }
 
-  private renderFloor(g: Graphics, room: Room, floorNum: number, timestampMs: number): void {
+  public renderFloor(g: Graphics, room: Room, floorNum: number, timestampMs: number): void {
     const W = ARENA_WIDTH;
     const H = ARENA_HEIGHT;
     const WALL = WALL_THICKNESS;
@@ -541,6 +559,9 @@ export class StageManager {
     if (room.trapdoor) {
       drawTrapdoor(g, timestampMs);
     }
+
+    // 7. Per-Floor Atmospheric Ambient Motes (10 deterministic drifting motes)
+    this.renderAmbientMotes(g, floorNum, timestampMs);
   }
 
   /**
@@ -704,8 +725,57 @@ export class StageManager {
       .fill({ color: 0xffd60a }).stroke({ color: 0x0a0b10, width: 1.8 });
   }
 
+  /**
+   * Draws 10 deterministic, gently drifting comic ambient motes across the arena
+   * with thematic colors based on floor number:
+   * Floor 1: Warm rust/amber dust motes (0xff9f1c)
+   * Floor 2: Rising smelter orange embers (0xff5400)
+   * Floor 3: Neon cyan cyber-streaks (0x00f5d4)
+   * Floor 4: Crisp icy cryo crystals (0x72efdd)
+   * Floor 5: Crimson magma sparks (0xff2a4b)
+   * Floor 6+: Golden Valhalla stars/motes (0xffd60a)
+   */
+  public renderAmbientMotes(g: Graphics, floorNum: number, timestampMs: number): void {
+    const moteColor = getFloorMoteColor(floorNum);
+    const W = ARENA_WIDTH;
+    const H = ARENA_HEIGHT;
+    const WALL = WALL_THICKNESS;
+    const innerW = W - WALL * 2 - 80;
+    const innerH = H - WALL * 2 - 80;
+
+    for (let i = 0; i < 10; i++) {
+      // Deterministic base positions distributed across arena
+      const baseX = WALL + 40 + ((i * 197 + 53) % innerW);
+      const baseY = WALL + 40 + ((i * 269 + 89) % innerH);
+
+      // Gentle drifting offsets based on timestampMs
+      const t = timestampMs * 0.001;
+      const driftX = Math.sin(t * 0.75 + i * 1.35) * 16;
+      let driftY = Math.cos(t * 0.6 + i * 1.85) * 16;
+
+      // Floor 2 rising smelter embers behavior
+      if (floorNum === 2) {
+        driftY -= ((t * 22 + i * 24) % 64) - 32;
+      }
+
+      const x = baseX + driftX;
+      const y = baseY + driftY;
+      const r = 2.0 + (i % 3) * 0.6;
+      const alpha = 0.45 + 0.25 * Math.sin(t * 1.5 + i * 1.2);
+
+      // Safe comic ambient mote outer glow / body
+      g.circle(x, y, r).fill({ color: moteColor, alpha });
+      // Specular core for comic aesthetic
+      g.circle(x, y, Math.max(0.8, r * 0.45)).fill({ color: 0xffffff, alpha: alpha * 0.8 });
+    }
+  }
+
+  public renderRoomDecor = this.renderAmbientMotes;
+
   // Alias for renderFloor matching spec terminology
-  public renderArena = this.renderFloor;
+  public renderArena(g: Graphics, room: Room, floorNum: number, timestampMs: number): void {
+    this.renderFloor(g, room, floorNum, timestampMs);
+  }
 
   private renderSkids(g: Graphics, room: Room): void {
     for (const sk of room.skids) {
@@ -807,9 +877,7 @@ export class StageManager {
     });
 
     // 3. Obstacles
-    for (const ob of room.obstacles) {
-      drawObstacle(g, ob);
-    }
+    this.renderObstacles(g, room.obstacles);
 
     // 4. Pickups & Pedestals
     this.renderPickups(g, room.pickups, timestampMs);
@@ -819,6 +887,12 @@ export class StageManager {
 
     // 6. Player Motorcycle & Contextual 30px Drift/NOS Arc
     this.renderPlayer(g, player, timestampMs);
+  }
+
+  public renderObstacles(g: Graphics, obstacles: Room['obstacles']): void {
+    for (const ob of obstacles) {
+      drawObstacle(g, ob);
+    }
   }
 
   private renderPickups(g: Graphics, pickups: Room['pickups'], timestampMs: number): void {

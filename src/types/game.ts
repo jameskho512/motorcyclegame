@@ -633,6 +633,11 @@ export interface AudioService {
   doorTransition(): void;
   nextFloor(): void;
   uiClick(): void;
+  graze?(): void;
+  driftBoost?(): void;
+  phaseEnrage?(): void;
+  killStreak?(streakCount?: number): void;
+  choiceLock?(): void;
 }
 
 // ============================================================================

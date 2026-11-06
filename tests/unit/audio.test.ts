@@ -138,6 +138,245 @@ describe('Web Audio Procedural Synthesizer', () => {
       expect(typeof SFX.shoot).toBe('function');
       expect(typeof SFX.updateEngine).toBe('function');
       expect(typeof SFX.toggleMute).toBe('function');
+      expect(typeof (SFX as unknown as { graze: unknown }).graze).toBe('function');
+      expect(typeof (SFX as unknown as { driftBoost: unknown }).driftBoost).toBe('function');
+      expect(typeof (SFX as unknown as { phaseEnrage: unknown }).phaseEnrage).toBe('function');
+      expect(typeof (SFX as unknown as { killStreak: unknown }).killStreak).toBe('function');
+      expect(typeof (SFX as unknown as { choiceLock: unknown }).choiceLock).toBe('function');
+    });
+
+    it('executes 5 new procedural sound routines safely without error when uninitialized', () => {
+      const sfx = new SoundSynthesizer(mockStorage);
+      const extSfx = sfx as unknown as {
+        graze: () => void;
+        driftBoost: () => void;
+        phaseEnrage: () => void;
+        killStreak: (count?: number) => void;
+        choiceLock: () => void;
+      };
+
+      expect(() => extSfx.graze()).not.toThrow();
+      expect(() => extSfx.driftBoost()).not.toThrow();
+      expect(() => extSfx.phaseEnrage()).not.toThrow();
+      expect(() => extSfx.killStreak()).not.toThrow();
+      expect(() => extSfx.killStreak(5)).not.toThrow();
+      expect(() => extSfx.choiceLock()).not.toThrow();
+    });
+  });
+
+  describe('New Audio Synthesizer Routines (TDD Verification)', () => {
+    it('executes all 5 new methods when AudioContext is mocked and active', () => {
+      interface FakeParam {
+        value: number;
+        setTargetAtTime: ReturnType<typeof vi.fn>;
+        setValueAtTime: ReturnType<typeof vi.fn>;
+        exponentialRampToValueAtTime: ReturnType<typeof vi.fn>;
+      }
+      interface FakeNode {
+        type?: string;
+        frequency?: FakeParam;
+        gain?: FakeParam;
+        connect: ReturnType<typeof vi.fn>;
+        start?: ReturnType<typeof vi.fn>;
+        stop?: ReturnType<typeof vi.fn>;
+      }
+
+      const param = (): FakeParam => ({
+        value: 0,
+        setTargetAtTime: vi.fn(),
+        setValueAtTime: vi.fn(),
+        exponentialRampToValueAtTime: vi.fn()
+      });
+
+      const oscillators: FakeNode[] = [];
+      const gains: FakeNode[] = [];
+
+      class MockAC {
+        state = 'running';
+        currentTime = 10.0;
+        sampleRate = 44100;
+        destination = { name: 'dest' };
+        createGain = vi.fn(() => {
+          const n: FakeNode = { gain: param(), connect: vi.fn() };
+          gains.push(n);
+          return n;
+        });
+        createOscillator = vi.fn(() => {
+          const n: FakeNode = {
+            type: 'sine',
+            frequency: param(),
+            connect: vi.fn(),
+            start: vi.fn(),
+            stop: vi.fn()
+          };
+          oscillators.push(n);
+          return n;
+        });
+        createBiquadFilter = vi.fn(() => ({
+          type: 'lowpass',
+          frequency: param(),
+          Q: { value: 1 },
+          connect: vi.fn()
+        }));
+        createBuffer = vi.fn(() => ({ getChannelData: () => new Float32Array(150) }));
+        createBufferSource = vi.fn(() => ({ buffer: null, connect: vi.fn(), start: vi.fn() }));
+        resume = vi.fn().mockResolvedValue(undefined);
+      }
+
+      const g = globalThis as unknown as { AudioContext?: unknown };
+      const originalAC = g.AudioContext;
+      g.AudioContext = MockAC;
+
+      try {
+        const sfx = new SoundSynthesizer(mockStorage);
+        expect(sfx.init()).toBe(true);
+
+        const extSfx = sfx as unknown as {
+          graze: () => void;
+          driftBoost: () => void;
+          phaseEnrage: () => void;
+          killStreak: (count?: number) => void;
+          choiceLock: () => void;
+        };
+
+        const oscCountBefore = oscillators.length;
+
+        // 1. graze
+        extSfx.graze();
+        expect(oscillators.length).toBeGreaterThan(oscCountBefore);
+        const grazeOscs = oscillators.slice(oscCountBefore);
+        expect(grazeOscs.some(o => o.type === 'triangle' || o.type === 'sine')).toBe(true);
+
+        // 2. driftBoost
+        const oscBeforeDrift = oscillators.length;
+        extSfx.driftBoost();
+        expect(oscillators.length).toBeGreaterThan(oscBeforeDrift);
+        const driftOscs = oscillators.slice(oscBeforeDrift);
+        expect(driftOscs.some(o => o.type === 'sawtooth')).toBe(true);
+
+        // 3. phaseEnrage
+        const oscBeforeEnrage = oscillators.length;
+        extSfx.phaseEnrage();
+        expect(oscillators.length).toBeGreaterThan(oscBeforeEnrage);
+        const enrageOscs = oscillators.slice(oscBeforeEnrage);
+        expect(enrageOscs.some(o => o.type === 'sawtooth')).toBe(true);
+
+        // 4. killStreak (custom count)
+        const oscBeforeStreak = oscillators.length;
+        extSfx.killStreak(4);
+        expect(oscillators.length).toBeGreaterThan(oscBeforeStreak);
+
+        // 5. choiceLock
+        const oscBeforeChoice = oscillators.length;
+        extSfx.choiceLock();
+        expect(oscillators.length).toBeGreaterThan(oscBeforeChoice);
+
+        // Mute verification: when muted, no new oscillators or sounds should be scheduled
+        sfx.setMuted(true);
+        const oscCountMuted = oscillators.length;
+        extSfx.graze();
+        extSfx.driftBoost();
+        extSfx.phaseEnrage();
+        extSfx.killStreak(10);
+        extSfx.choiceLock();
+        expect(oscillators.length).toBe(oscCountMuted);
+      } finally {
+        g.AudioContext = originalAC;
+      }
+    });
+
+    it('killStreak scales starting frequency according to 440Hz * min(2.0, 1 + streak * 0.08)', () => {
+      interface FakeParam {
+        value: number;
+        setTargetAtTime: ReturnType<typeof vi.fn>;
+        setValueAtTime: ReturnType<typeof vi.fn>;
+        exponentialRampToValueAtTime: ReturnType<typeof vi.fn>;
+      }
+      interface FakeNode {
+        type?: string;
+        frequency?: FakeParam;
+        gain?: FakeParam;
+        connect: ReturnType<typeof vi.fn>;
+        start?: ReturnType<typeof vi.fn>;
+        stop?: ReturnType<typeof vi.fn>;
+      }
+
+      const param = (): FakeParam => ({
+        value: 0,
+        setTargetAtTime: vi.fn(),
+        setValueAtTime: vi.fn(),
+        exponentialRampToValueAtTime: vi.fn()
+      });
+
+      const oscillators: FakeNode[] = [];
+
+      class MockAC {
+        state = 'running';
+        currentTime = 0;
+        sampleRate = 44100;
+        destination = {};
+        createGain = vi.fn(() => ({ gain: param(), connect: vi.fn() }));
+        createOscillator = vi.fn(() => {
+          const n: FakeNode = {
+            type: 'sine',
+            frequency: param(),
+            connect: vi.fn(),
+            start: vi.fn(),
+            stop: vi.fn()
+          };
+          oscillators.push(n);
+          return n;
+        });
+        createBiquadFilter = vi.fn(() => ({
+          type: 'lowpass',
+          frequency: param(),
+          Q: { value: 1 },
+          connect: vi.fn()
+        }));
+        createBuffer = vi.fn(() => ({ getChannelData: () => new Float32Array(150) }));
+        createBufferSource = vi.fn(() => ({ buffer: null, connect: vi.fn(), start: vi.fn() }));
+        resume = vi.fn().mockResolvedValue(undefined);
+      }
+
+      const g = globalThis as unknown as { AudioContext?: unknown };
+      const originalAC = g.AudioContext;
+      g.AudioContext = MockAC;
+
+      try {
+        const sfx = new SoundSynthesizer(mockStorage);
+        sfx.init();
+
+        const extSfx = sfx as unknown as { killStreak: (count?: number) => void };
+
+        // Test default streak count = 3: 440 * (1 + 3 * 0.08) = 440 * 1.24 = 545.6
+        const oscBefore3 = oscillators.length;
+        extSfx.killStreak();
+        const streak3Osc = oscillators[oscBefore3];
+        expect(streak3Osc.frequency?.setValueAtTime).toHaveBeenCalledWith(
+          expect.closeTo(545.6, 1),
+          expect.any(Number)
+        );
+
+        // Test streak count = 0: 440 * (1 + 0) = 440
+        const oscBefore0 = oscillators.length;
+        extSfx.killStreak(0);
+        const streak0Osc = oscillators[oscBefore0];
+        expect(streak0Osc.frequency?.setValueAtTime).toHaveBeenCalledWith(
+          expect.closeTo(440, 1),
+          expect.any(Number)
+        );
+
+        // Test streak count = 25 (clamped to 2.0x): 440 * 2.0 = 880
+        const oscBefore25 = oscillators.length;
+        extSfx.killStreak(25);
+        const streak25Osc = oscillators[oscBefore25];
+        expect(streak25Osc.frequency?.setValueAtTime).toHaveBeenCalledWith(
+          expect.closeTo(880, 1),
+          expect.any(Number)
+        );
+      } finally {
+        g.AudioContext = originalAC;
+      }
     });
   });
 
@@ -239,7 +478,8 @@ describe('Web Audio Procedural Synthesizer', () => {
       const methods = [
         'updateEngine', 'updateEngineHum', 'shoot', 'arcChain', 'explosion', 'hit', 'enemyKill',
         'playerHurt', 'gameOverSound', 'pickupFuel', 'pickupItem', 'pickupLoot', 'shopBuy',
-        'shopError', 'roomClear', 'doorTransition', 'nextFloor', 'uiClick'
+        'shopError', 'roomClear', 'doorTransition', 'nextFloor', 'uiClick',
+        'graze', 'driftBoost', 'phaseEnrage', 'killStreak', 'choiceLock'
       ];
       for (const m of methods) {
         expect(VOLUME_CHANNELS).toContain(SOUND_CHANNEL_MAP[m]);
@@ -247,6 +487,11 @@ describe('Web Audio Procedural Synthesizer', () => {
       expect(Object.keys(SOUND_CHANNEL_MAP).sort()).toEqual([...methods].sort());
       expect(SOUND_CHANNEL_MAP.shoot).toBe('weapons');
       expect(SOUND_CHANNEL_MAP.hit).toBe('impacts');
+      expect(SOUND_CHANNEL_MAP.graze).toBe('impacts');
+      expect(SOUND_CHANNEL_MAP.driftBoost).toBe('engine');
+      expect(SOUND_CHANNEL_MAP.phaseEnrage).toBe('ui');
+      expect(SOUND_CHANNEL_MAP.killStreak).toBe('ui');
+      expect(SOUND_CHANNEL_MAP.choiceLock).toBe('ui');
       expect(SOUND_CHANNEL_MAP.shopBuy).toBe('pickups');
       expect(SOUND_CHANNEL_MAP.doorTransition).toBe('ui');
       expect(SOUND_CHANNEL_MAP.updateEngine).toBe('engine');

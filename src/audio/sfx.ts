@@ -79,7 +79,12 @@ export const SOUND_CHANNEL_MAP: Readonly<Record<string, VolumeChannel>> = Object
   doorTransition: 'ui',
   nextFloor: 'ui',
   gameOverSound: 'ui',
-  uiClick: 'ui'
+  uiClick: 'ui',
+  graze: 'impacts',
+  driftBoost: 'engine',
+  phaseEnrage: 'ui',
+  killStreak: 'ui',
+  choiceLock: 'ui'
 });
 
 function clampUnit(v: number): number {
@@ -204,9 +209,13 @@ export class SoundSynthesizer implements AudioService {
 
     // Inspect window / global environment for AudioContext
     const AudioContextClass =
-      typeof window !== 'undefined'
-        ? (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)
-        : null;
+      (typeof window !== 'undefined'
+        ? (window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext)
+        : null) ||
+      (typeof globalThis !== 'undefined'
+        ? ((globalThis as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext }).AudioContext ||
+           (globalThis as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext }).webkitAudioContext)
+        : null);
 
     if (!AudioContextClass) {
       return false;
@@ -723,6 +732,76 @@ export class SoundSynthesizer implements AudioService {
 
   public uiClick(): void {
     this.playTone('ui', 720, 480, 0.035, 'triangle', 0.14);
+  }
+
+  /**
+   * Crisp electric near-miss zap (high-frequency triangle/sine sweep 920Hz -> 1680Hz over 0.07s).
+   */
+  public graze(): void {
+    if (this.muted || !this.init() || !this.actx) return;
+    this.playTone('impacts', 920, 1680, 0.07, 'triangle', 0.22);
+    this.playTone('impacts', 920, 1680, 0.07, 'sine', 0.16);
+  }
+
+  /**
+   * Turbo blow-off valve + power chord burst (240Hz -> 640Hz sawtooth + noise burst over 0.18s).
+   */
+  public driftBoost(): void {
+    if (this.muted || !this.init() || !this.actx) return;
+    this.playTone('engine', 240, 640, 0.18, 'sawtooth', 0.28);
+    this.playTone('engine', 360, 960, 0.18, 'sawtooth', 0.16);
+    this.playNoise('engine', 0.18, 2800, 'bandpass', 0.20, 1.4);
+  }
+
+  /**
+   * Deep menacing boss alarm siren (140Hz -> 95Hz -> 220Hz sawtooth over 0.35s).
+   */
+  public phaseEnrage(): void {
+    if (this.muted || !this.init() || !this.actx || !this.masterGain) return;
+    try {
+      const t0 = this.actx.currentTime;
+      const dur = 0.35;
+      const osc = this.actx.createOscillator();
+      const g = this.actx.createGain();
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(140, t0);
+      osc.frequency.exponentialRampToValueAtTime(95, t0 + 0.14);
+      osc.frequency.exponentialRampToValueAtTime(220, t0 + dur);
+
+      g.gain.setValueAtTime(0.35, t0);
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+
+      osc.connect(g);
+      g.connect(this.buses.ui ?? this.masterGain);
+
+      osc.start(t0);
+      osc.stop(t0 + dur + 0.01);
+    } catch {
+      // Audio node failure fallback
+    }
+  }
+
+  /**
+   * Ascending arcade combo chime whose pitch scales with streakCount (440Hz * Math.min(2.0, 1 + streakCount * 0.08)).
+   */
+  public killStreak(streakCount: number = 3): void {
+    if (this.muted || !this.init() || !this.actx) return;
+    const count = Number.isFinite(streakCount) ? Math.max(0, streakCount) : 3;
+    const f0 = 440 * Math.min(2.0, 1 + count * 0.08);
+    this.playTone('ui', f0, f0 * 1.25, 0.09, 'triangle', 0.24, 0.0);
+    this.playTone('ui', f0 * 1.25, f0 * 1.5, 0.10, 'triangle', 0.24, 0.07);
+    this.playTone('ui', f0 * 1.5, f0 * 2.0, 0.16, 'triangle', 0.26, 0.14);
+  }
+
+  /**
+   * Metallic pedestal lock-in clank (520Hz -> 780Hz square/triangle chime over 0.12s).
+   */
+  public choiceLock(): void {
+    if (this.muted || !this.init() || !this.actx) return;
+    this.playTone('ui', 520, 780, 0.12, 'square', 0.18, 0.0);
+    this.playTone('ui', 520, 780, 0.12, 'triangle', 0.24, 0.0);
+    this.playNoise('ui', 0.04, 3200, 'bandpass', 0.12, 2.0);
   }
 }
 

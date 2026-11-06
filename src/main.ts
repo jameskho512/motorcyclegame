@@ -654,6 +654,7 @@ export class MotoRogueApp {
       player.driftBoostTimer = 2.4;
       player.styleScore = Math.min(100, (player.styleScore || 12) + 14);
       this.styleGraceTimer = 2.5;
+      this.audio.driftBoost?.();
 
       for (let i = 0; i < 8; i++) {
         const a = (i * Math.PI) / 4;
@@ -822,7 +823,9 @@ export class MotoRogueApp {
     if (activeBoss && activeBoss.hp > 0 && activeBoss.hp <= activeBoss.maxHp * 0.5 && !activeBoss.enrageAnnounced) {
       activeBoss.enrageAnnounced = true;
       activeBoss.enraged = true;
+      (activeBoss as any).enablePhase2ExtraProjectiles = true;
       this.combatState.screenShake = Math.max(this.combatState.screenShake, 14);
+      this.audio.phaseEnrage?.();
       if (this.hitStopCooldown <= 0) {
         this.hitStopTimer = 0.06;
         this.hitStopCooldown = 0.45;
@@ -849,6 +852,7 @@ export class MotoRogueApp {
         player.nos = Math.min(player.nosMax, player.nos + 8);
         player.styleScore = Math.min(100, (player.styleScore || 12) + 12);
         this.styleGraceTimer = 2.4;
+        this.audio.graze?.();
         this.combatState.beamEffects.push({
           x1: player.x,
           y1: player.y,
@@ -914,6 +918,7 @@ export class MotoRogueApp {
       }
 
       if (this.killStreakCount === 3) {
+        this.audio.killStreak?.(3);
         this.combatState.damageNumbers.push({
           x: player.x,
           y: player.y - 34,
@@ -923,6 +928,7 @@ export class MotoRogueApp {
           maxLife: 1.0
         });
       } else if (this.killStreakCount === 5) {
+        this.audio.killStreak?.(5);
         player.nos = Math.min(player.nosMax, player.nos + 10);
         this.combatState.damageNumbers.push({
           x: player.x,
@@ -933,6 +939,7 @@ export class MotoRogueApp {
           maxLife: 1.15
         });
       } else if (this.killStreakCount === 8) {
+        this.audio.killStreak?.(8);
         player.nos = Math.min(player.nosMax, player.nos + 15);
         this.combatState.damageNumbers.push({
           x: player.x,
@@ -943,6 +950,7 @@ export class MotoRogueApp {
           maxLife: 1.25
         });
       } else if (this.killStreakCount >= 12 && this.killStreakCount % 4 === 0) {
+        this.audio.killStreak?.(this.killStreakCount);
         player.nos = Math.min(player.nosMax, player.nos + 25);
         this.combatState.damageNumbers.push({
           x: player.x,
@@ -1019,6 +1027,7 @@ export class MotoRogueApp {
             room.pickups.splice(idxNow, 1);
           }
           if (choiceGroup) {
+            this.audio.choiceLock?.();
             for (let k = room.pickups.length - 1; k >= 0; k--) {
               if ((room.pickups[k] as any).choiceGroup === choiceGroup) {
                 room.pickups.splice(k, 1);

@@ -849,14 +849,60 @@
   flex-shrink: 0;
 }
 
-.gx-totals {
+.gx-totals,
+#equip-bonus-summary,
+.equip-bonus-summary {
   text-align: center;
   font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
   font-size: 11.5px;
-  letter-spacing: 1px;
+  letter-spacing: 0.8px;
   color: var(--yellow, #ffd60a);
   text-shadow: 1px 1px 0 var(--ink, #0a0b10);
   margin-top: 3px;
+  line-height: 1.35;
+}
+
+#equip-bonus-summary[data-tip],
+.gx-totals[data-tip] {
+  cursor: help;
+}
+
+.gx-totals-base {
+  color: #ffffff;
+  font-weight: 700;
+  text-shadow: 1px 1px 0 var(--ink, #0a0b10);
+}
+
+.gx-set-bonus {
+  color: #00f5d4;
+  font-size: 11.5px;
+  letter-spacing: 0.6px;
+  text-shadow: 0 0 8px rgba(0, 245, 212, 0.45);
+}
+
+.gx-legendary-passive {
+  color: #ffd60a;
+  font-size: 11.5px;
+  letter-spacing: 0.6px;
+  text-shadow: 0 0 8px rgba(255, 214, 10, 0.45);
+}
+
+.gx-legendary-passive small {
+  color: #d8dde8;
+  font-family: var(--font-body, 'Segoe UI', sans-serif);
+  font-weight: normal;
+  font-size: 10.5px;
+}
+
+.gx-tooltip-codex {
+  max-width: 380px;
+  line-height: 1.35;
+  font-family: var(--font-body, 'Segoe UI', -apple-system, sans-serif);
+}
+
+.gx-tooltip-codex b {
+  font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
+  letter-spacing: 0.5px;
 }
 
 /* --------------------------------------------------------------------------

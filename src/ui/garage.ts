@@ -28,8 +28,16 @@ import {
 } from '../types/game';
 
 import { WEAPONS, UNLOCKABLE_IDS } from '../data/weapons';
-import { META_UPGRADES, calcUpgradeCost } from '../data/upgrades';
-import { EQUIP_SLOTS, RARITY, MAX_STASH, fmtStat, itemScore } from '../data/equipment';
+import { META_UPGRADES, calcUpgradeCost, DUO_SYNERGIES, getActiveDuoSynergies } from '../data/upgrades';
+import {
+  EQUIP_SLOTS,
+  RARITY,
+  MAX_STASH,
+  fmtStat,
+  itemScore,
+  LEGENDARY_SLOT_PASSIVES,
+  getEquippedSetBonus
+} from '../data/equipment';
 import { EQUIP_SLOT_HI_FI_SVG, WEAPON_HI_FI_SVG } from './icons';
 import { SET08_ASSETS } from './set08Assets';
 
@@ -135,6 +143,7 @@ export class GarageController {
   private bikeCtx: CanvasRenderingContext2D | null = null;
   private liveryBar: HTMLElement | null = null;
   private eqTotals: HTMLElement | null = null;
+  private equipBonusSummary: HTMLElement | null = null;
   private stashList: HTMLElement | null = null;
   private unlockList: HTMLElement | null = null;
   private metaUpgradeList: HTMLElement | null = null;
@@ -149,6 +158,7 @@ export class GarageController {
   private set08BikeImg: HTMLImageElement | null = null;
   private set08BikeLoaded: boolean = false;
   private lastMetaSave: MetaSaveState | null = null;
+  private lastPlayer: PlayerState | null = null;
   private confirmResetPending: boolean = false;
   private confirmResetTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -181,6 +191,7 @@ export class GarageController {
       }
       this.liveryBar = document.getElementById('livery-bar');
       this.eqTotals = document.getElementById('eq-totals');
+      this.equipBonusSummary = document.getElementById('equip-bonus-summary');
       this.stashList = document.getElementById('stash-list');
       this.unlockList = document.getElementById('unlock-list');
       this.metaUpgradeList = document.getElementById('meta-upgrade-list');
@@ -279,6 +290,7 @@ export class GarageController {
   ): void {
     this.isDead = isDead;
     this.isVisible = true;
+    this.lastPlayer = player;
 
     if (this.overlay) {
       this.overlay.classList.add('visible');
@@ -336,19 +348,93 @@ export class GarageController {
   }
 
   /**
-   * Renders the entire garage workshop UI.
+   * Builds the rich Outlaw Duo Synergies & Career Telemetry HTML tooltip.
    */
-  public render(metaSave: MetaSaveState, player: PlayerState): void {
+  public buildSynergyCodexTooltip(metaSave: MetaSaveState, player?: PlayerState | null): string {
+    const telemetry = `Runs: ${metaSave.totalRuns || 0} · Best Floor: ${metaSave.bestFloor || 1} · Bosses Slain: ${metaSave.bossesSlain || 0}`;
+    const activeDuoIds = new Set(player ? getActiveDuoSynergies(player).map(d => d.id) : []);
+
+    const DUO_TITLES: Record<string, string> = {
+      thermal_shock: 'Thermal Shock',
+      superconductor: 'Superconductor',
+      void_vortex: 'Void Vortex',
+      juggernaut_overdrive: 'Juggernaut Overdrive',
+      voltaic_wake: 'Voltaic Wake'
+    };
+
+    const duoHtml = DUO_SYNERGIES.map(d => {
+      const isActive = activeDuoIds.has(d.id);
+      const title = DUO_TITLES[d.id] || d.name;
+      const statusBadge = isActive
+        ? ' <span style="color:#00f5d4;font-weight:900;">[ACTIVE]</span>'
+        : '';
+      return `<div style="margin-top:6px;line-height:1.3;"><b style="color:${d.color}">${esc(title)} (${esc(d.name)})</b>${statusBadge}<br/><span style="color:#d0d4dc;font-size:11px;">${esc(d.desc)}</span></div>`;
+    }).join('');
+
+    return `<div class="gx-tooltip-codex" style="text-align:left;max-width:360px;"><div style="font-family:'Impact',sans-serif;font-size:14px;letter-spacing:1px;color:#ffd60a;">CAREER TELEMETRY</div><div style="color:#a8b2d1;font-size:11px;margin-bottom:4px;">${esc(telemetry)}</div><hr style="border:0;border-top:1px solid rgba(255,255,255,0.18);margin:6px 0;"/><div style="font-family:'Impact',sans-serif;font-size:13px;letter-spacing:1px;color:#00f5d4;">OUTLAW DUO SYNERGIES</div>${duoHtml}</div>`.trim();
+  }
+
+  /**
+   * Renders the Garage Bay header, scrap count, and exposes the Career & Duo tooltip.
+   */
+  public renderHeader(metaSave: MetaSaveState, player?: PlayerState | null): void {
     if (this.modalScrap) {
       this.modalScrap.textContent = `${metaSave.scrap}`;
     }
+    const tipContent = this.buildSynergyCodexTooltip(metaSave, player);
+    if (this.modalTitle) {
+      this.modalTitle.textContent = 'GARAGE BAY';
+      this.modalTitle.setAttribute('data-tip', tipContent);
+      this.modalTitle.setAttribute(
+        'title',
+        `Career Telemetry: Runs: ${metaSave.totalRuns || 0} · Best Floor: ${metaSave.bestFloor || 1} · Bosses Slain: ${metaSave.bossesSlain || 0}`
+      );
+    }
+    const subTitle = document.getElementById('modal-subtitle');
+    if (subTitle) {
+      subTitle.setAttribute('data-tip', tipContent);
+    }
+  }
 
-    this.renderEquipmentBay(metaSave);
-    this.renderLiveryBar(metaSave, player);
+  /**
+   * Renders the Garage Bay footer with hint, action buttons, and exposes the Career & Duo tooltip.
+   */
+  public renderFooter(metaSave: MetaSaveState, player?: PlayerState | null): void {
+    const tipContent = this.buildSynergyCodexTooltip(metaSave, player);
+    const footerHint = document.querySelector('.gx-hint') as HTMLElement | null;
+    if (footerHint) {
+      footerHint.setAttribute('data-tip', tipContent);
+      footerHint.setAttribute(
+        'title',
+        `Career Telemetry: Runs: ${metaSave.totalRuns || 0} · Best Floor: ${metaSave.bestFloor || 1} · Bosses Slain: ${metaSave.bossesSlain || 0}`
+      );
+    }
+  }
+
+  /**
+   * Renders the entire garage workshop UI.
+   */
+  public render(metaSave: MetaSaveState, player?: PlayerState | null): void {
+    if (player) {
+      this.lastPlayer = player;
+    }
+    const curPlayer = player || this.lastPlayer;
+
+    this.renderHeader(metaSave, curPlayer);
+    this.renderEquipmentBay(metaSave, curPlayer);
+    this.renderLiveryBar(metaSave, curPlayer || ({} as any));
     this.renderStash(metaSave);
-    this.renderWeaponUnlocks(metaSave, player);
+    this.renderWeaponUnlocks(metaSave, curPlayer || ({} as any));
     this.renderMetaUpgrades(metaSave);
+    this.renderFooter(metaSave, curPlayer);
     this.drawBikeLift(metaSave);
+  }
+
+  /**
+   * Alias / helper for renderEquipmentBay to satisfy contract.
+   */
+  public renderEquipmentSlots(metaSave: MetaSaveState, player?: PlayerState | null): void {
+    this.renderEquipmentBay(metaSave, player);
   }
 
   /**
@@ -383,7 +469,7 @@ export class GarageController {
   /**
    * Renders the 6 equipment slot bay around the bike lift canvas.
    */
-  private renderEquipmentBay(metaSave: MetaSaveState): void {
+  public renderEquipmentBay(metaSave: MetaSaveState, player?: PlayerState | null): void {
     if (!this.slotsLeft || !this.slotsRight) return;
 
     this.slotsLeft.innerHTML = '';
@@ -431,19 +517,75 @@ export class GarageController {
     RIGHT_SLOTS.forEach(id => renderSlot(id, this.slotsRight!));
 
     // Compute total installed equipment stats
-    if (this.eqTotals) {
-      const totals: Partial<Record<StatKey, number>> = {};
+    const totals: Partial<Record<StatKey, number>> = {};
+    if (metaSave.equipped) {
       Object.values(metaSave.equipped).forEach(it => {
         if (!it) return;
         (Object.entries(it.stats) as [StatKey, number | undefined][]).forEach(([k, v]) => {
           totals[k] = (totals[k] || 0) + (v || 0);
         });
       });
+    }
 
-      const totalStrings = (Object.entries(totals) as [StatKey, number][]).map(([k, v]) => fmtStat(k, v));
-      this.eqTotals.textContent = totalStrings.length > 0
-        ? `Installed Bonuses: ${totalStrings.join(' | ')}`
-        : 'Installed Bonuses: None';
+    const totalStrings = (Object.entries(totals) as [StatKey, number][]).map(([k, v]) => fmtStat(k, v));
+    const baseSummary = totalStrings.length > 0
+      ? `Installed Bonuses: ${totalStrings.join(' | ')}`
+      : 'Installed Bonuses: None';
+
+    // Active legendary slot passives (rarity === 3)
+    const activeLegendaries: { slot: EquipSlot; title: string; desc: string }[] = [];
+    if (metaSave.equipped) {
+      (Object.entries(metaSave.equipped) as [EquipSlot, EquipmentItem | undefined][]).forEach(([slotKey, item]) => {
+        if (item && item.rarity === 3) {
+          const passive = LEGENDARY_SLOT_PASSIVES[slotKey];
+          if (passive) {
+            activeLegendaries.push({ slot: slotKey, title: passive.title, desc: passive.desc });
+          }
+        }
+      });
+    }
+
+    // Equipped set bonuses
+    const setBonus = getEquippedSetBonus(metaSave.equipped);
+
+    // Build rich summary markup & tooltip
+    const curPlayer = player || this.lastPlayer;
+    const tipContent = this.buildSynergyCodexTooltip(metaSave, curPlayer);
+    const telemetryText = `Runs: ${metaSave.totalRuns || 0} · Best Floor: ${metaSave.bestFloor || 1} · Bosses Slain: ${metaSave.bossesSlain || 0}`;
+
+    let summaryHtml = `<span class="gx-totals-base">${esc(baseSummary)}</span>`;
+    if (setBonus && setBonus.label) {
+      summaryHtml += ` <span class="gx-set-bonus" style="color:#00f5d4;">★ <b>SET:</b> ${esc(setBonus.label)}</span>`;
+    }
+    if (activeLegendaries.length > 0) {
+      const legHtml = activeLegendaries.map(
+        l => `<span class="gx-legendary-passive" style="color:#ffd60a;">⚡ <b>LEGENDARY (${esc(l.slot.toUpperCase())}):</b> ${esc(l.title)} <small>(${esc(l.desc)})</small></span>`
+      ).join(' ');
+      summaryHtml += ` ${legHtml}`;
+    }
+
+    let summaryEl = document.getElementById('equip-bonus-summary');
+    if (!summaryEl && this.eqTotals) {
+      summaryEl = this.eqTotals.querySelector('#equip-bonus-summary');
+      if (!summaryEl) {
+        summaryEl = document.createElement('div');
+        summaryEl.id = 'equip-bonus-summary';
+        summaryEl.className = 'equip-bonus-summary';
+        this.eqTotals.innerHTML = '';
+        this.eqTotals.appendChild(summaryEl);
+      }
+    }
+
+    if (summaryEl) {
+      summaryEl.innerHTML = summaryHtml;
+      summaryEl.setAttribute('data-tip', tipContent);
+      summaryEl.setAttribute('title', `Career Telemetry: ${telemetryText}`);
+    }
+
+    if (this.eqTotals && this.eqTotals !== summaryEl && !this.eqTotals.contains(summaryEl)) {
+      this.eqTotals.innerHTML = summaryHtml;
+      this.eqTotals.setAttribute('data-tip', tipContent);
+      this.eqTotals.setAttribute('title', `Career Telemetry: ${telemetryText}`);
     }
   }
 

@@ -397,14 +397,24 @@ export function populateRoom(
   const patIndex = room.type === 'boss' ? 0 : Math.floor(random() * OBSTACLE_PATTERNS.length);
   const pat = OBSTACLE_PATTERNS[patIndex];
 
+  let barrelIndex = 0;
   for (const pos of pat) {
     const isBarrel = random() < 0.3;
+    let variant: 'cryo_barrel' | 'explosive' | undefined = undefined;
+    if (isBarrel) {
+      if (biomeIdx === 4) {
+        variant = barrelIndex % 2 === 0 ? 'cryo_barrel' : 'explosive';
+      } else {
+        variant = 'explosive';
+      }
+      barrelIndex++;
+    }
     const obstacle: Obstacle = {
       x: pos.x,
       y: pos.y,
       size: 42,
       type: isBarrel ? 'barrel' : 'rock',
-      variant: isBarrel ? (biomeIdx === 4 ? 'cryo_barrel' : 'explosive') : undefined,
+      variant,
       hp: isBarrel ? 18 + floor * 6 : 99999
     };
     room.obstacles.push(obstacle);
@@ -587,6 +597,34 @@ export function enableChoicePedestalsInTreasureRooms(
   }
 }
 
+/**
+ * Assigns biome-specific barrel variants:
+ * - On floor 4 (SUB-ZERO CRYO LAB), tags every even-indexed barrel in each room as 'cryo_barrel'
+ *   and every odd-indexed barrel as 'explosive'.
+ * - On all other floors, tags all barrels as 'explosive'.
+ * Rock obstacles remain unmodified.
+ */
+export function assignBiomeBarrelVariants(dungeon: Dungeon | DungeonGraph, floor: number): void {
+  const roomsMap: Dungeon = (dungeon as unknown as DungeonGraph).rooms
+    ? (dungeon as unknown as DungeonGraph).rooms
+    : (dungeon as Dungeon);
+
+  for (const room of Object.values(roomsMap)) {
+    if (!room || !room.obstacles) continue;
+    let barrelIndex = 0;
+    for (const ob of room.obstacles) {
+      if (ob.type === 'barrel') {
+        if (floor === 4) {
+          ob.variant = barrelIndex % 2 === 0 ? 'cryo_barrel' : 'explosive';
+        } else {
+          ob.variant = 'explosive';
+        }
+        barrelIndex++;
+      }
+    }
+  }
+}
+
 export interface DungeonGenerationOptions {
   randomFn?: () => number;
   isWeaponAvailable?: (id: WeaponId) => boolean;
@@ -730,6 +768,8 @@ export function generateDungeon(
   for (const c of coords) {
     populateRoom(dungeon[`${c.x},${c.y}`], floor, random);
   }
+
+  assignBiomeBarrelVariants(dungeon, floor);
 
   return {
     rooms: dungeon,

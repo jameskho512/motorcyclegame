@@ -13,15 +13,16 @@ import {
   getFloorScale,
   OBSTACLE_PATTERNS,
   resetEntityId,
-  enableChoicePedestalsInTreasureRooms
-} from '@/world/dungeon';
+  enableChoicePedestalsInTreasureRooms,
+  assignBiomeBarrelVariants
+} from '../../src/world/dungeon';
 import {
   ARENA_WIDTH,
   ARENA_HEIGHT,
   WALL_THICKNESS,
   type Direction,
   type Room
-} from '@/types/game';
+} from '../../src/types/game';
 
 describe('World Module: Procedural Dungeon Generation (src/world/dungeon.ts)', () => {
   describe('Room count scaling across floors', () => {
@@ -426,6 +427,51 @@ describe('World Module: Procedural Dungeon Generation (src/world/dungeon.ts)', (
         pedestal1.mod.apply(dummyPlayer);
         expect(treasureRoom.pickups).not.toContain(pedestal2);
       }
+    });
+  });
+
+  describe('Biome Barrel Variants: assignBiomeBarrelVariants (floor 4 Cryo vs other floors)', () => {
+    it('tags every even-indexed barrel as cryo_barrel and odd-indexed barrel as explosive on floor 4', () => {
+      const dungeonGraph = generateDungeon(4);
+      const testRoom = Object.values(dungeonGraph.rooms).find(r => r.type === 'combat')!;
+      testRoom.obstacles = [
+        { x: 100, y: 100, size: 42, type: 'barrel', hp: 30 },
+        { x: 200, y: 200, size: 42, type: 'rock', hp: 99999 },
+        { x: 300, y: 300, size: 42, type: 'barrel', hp: 30 },
+        { x: 400, y: 400, size: 42, type: 'barrel', hp: 30 }
+      ];
+
+      assignBiomeBarrelVariants(dungeonGraph, 4);
+
+      expect(testRoom.obstacles[0].variant).toBe('cryo_barrel'); // barrel index 0 (even)
+      expect(testRoom.obstacles[1].variant).toBeUndefined();     // rock remains undefined
+      expect(testRoom.obstacles[2].variant).toBe('explosive');   // barrel index 1 (odd)
+      expect(testRoom.obstacles[3].variant).toBe('cryo_barrel'); // barrel index 2 (even)
+    });
+
+    it('tags all barrels as explosive on floors other than 4', () => {
+      const dungeonGraph = generateDungeon(2);
+      const testRoom = Object.values(dungeonGraph.rooms).find(r => r.type === 'combat')!;
+      testRoom.obstacles = [
+        { x: 100, y: 100, size: 42, type: 'barrel', hp: 30 },
+        { x: 300, y: 300, size: 42, type: 'barrel', hp: 30 }
+      ];
+
+      assignBiomeBarrelVariants(dungeonGraph, 2);
+
+      expect(testRoom.obstacles[0].variant).toBe('explosive');
+      expect(testRoom.obstacles[1].variant).toBe('explosive');
+    });
+
+    it('handles raw Dungeon record map as well as DungeonGraph', () => {
+      const dungeonGraph = generateDungeon(4);
+      const testRoom = dungeonGraph.rooms['0,0'];
+      testRoom.obstacles = [
+        { x: 100, y: 100, size: 42, type: 'barrel', hp: 30 }
+      ];
+
+      assignBiomeBarrelVariants(dungeonGraph.rooms, 4);
+      expect(testRoom.obstacles[0].variant).toBe('cryo_barrel');
     });
   });
 });

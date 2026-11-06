@@ -1853,9 +1853,9 @@ export function drawObstacle(g: Graphics, ob: Obstacle): void {
 
     const bodyColor = isCryo ? 0x00bbf9 : 0xc92a37;
     const baseColor = isCryo ? 0x0077b6 : 0x9e1b26;
-    const shadowColor = isCryo ? 0x0077b6 : 0x80131d;
-    const highlightColor = isCryo ? 0x90e0ef : 0xff6b77;
-    const lidColor = isCryo ? 0x00bbf9 : 0xe63946;
+    const shadowColor = isCryo ? 0x005f73 : 0x80131d;
+    const highlightColor = isCryo ? 0x72efdd : 0xff6b77;
+    const lidColor = isCryo ? 0x72efdd : 0xe63946;
     const hazardColor = isCryo ? 0x72efdd : 0xffd166;
 
     // Cylinder vertical body
@@ -1874,30 +1874,67 @@ export function drawObstacle(g: Graphics, ob: Obstacle): void {
 
     // Left-side 3D specular highlight band
     g.rect(ob.x - r * 0.75, topY, r * 0.3, botY - topY)
-      .fill({ color: highlightColor, alpha: 0.65 });
+      .fill({ color: highlightColor, alpha: 0.75 });
 
-    // Curved Hazard Stripe around drum waist
-    g.ellipse(ob.x, (topY + botY) / 2 + 2, r, r * 0.42)
-      .stroke({ color: hazardColor, width: 3 });
-
-    // Center Hazard Diamond
     const midY = (topY + botY) / 2 + 2;
-    g.poly([
-      ob.x, midY - 3.5,
-      ob.x + 3.5, midY,
-      ob.x, midY + 3.5,
-      ob.x - 3.5, midY
-    ]).fill({ color: hazardColor });
+
+    if (isCryo) {
+      // High-contrast icy cyan waist bands with white frost accent
+      g.ellipse(ob.x, midY, r, r * 0.42)
+        .stroke({ color: 0x72efdd, width: 3.5 });
+      g.ellipse(ob.x, midY, r, r * 0.42)
+        .stroke({ color: 0xffffff, width: 1.5, alpha: 0.85 });
+
+      // White Frost Diamond center badge
+      g.poly([
+        ob.x, midY - 4.5,
+        ob.x + 4.5, midY,
+        ob.x, midY + 4.5,
+        ob.x - 4.5, midY
+      ])
+        .fill({ color: 0xffffff })
+        .stroke({ color: 0x0a0b10, width: 1.2 });
+
+      // Icy cyan snowflake cross inside diamond
+      g.moveTo(ob.x - 3.2, midY).lineTo(ob.x + 3.2, midY).stroke({ color: 0x00bbf9, width: 1.5 });
+      g.moveTo(ob.x, midY - 3.2).lineTo(ob.x, midY + 3.2).stroke({ color: 0x00bbf9, width: 1.5 });
+
+      // Flanking white frost snowflake chevron stripes
+      const chevOff = r * 0.52;
+      const chevSize = 3.2;
+      // Left frost chevron (<)
+      g.moveTo(ob.x - chevOff + chevSize, midY - chevSize)
+        .lineTo(ob.x - chevOff, midY)
+        .lineTo(ob.x - chevOff + chevSize, midY + chevSize)
+        .stroke({ color: 0xffffff, width: 1.8 });
+      // Right frost chevron (>)
+      g.moveTo(ob.x + chevOff - chevSize, midY - chevSize)
+        .lineTo(ob.x + chevOff, midY)
+        .lineTo(ob.x + chevOff - chevSize, midY + chevSize)
+        .stroke({ color: 0xffffff, width: 1.8 });
+    } else {
+      // Curved Hazard Stripe around drum waist
+      g.ellipse(ob.x, midY, r, r * 0.42)
+        .stroke({ color: hazardColor, width: 3 });
+
+      // Center Hazard Diamond
+      g.poly([
+        ob.x, midY - 3.5,
+        ob.x + 3.5, midY,
+        ob.x, midY + 3.5,
+        ob.x - 3.5, midY
+      ]).fill({ color: hazardColor });
+    }
 
     // 3D Elliptical Top Lid of Drum
     g.ellipse(ob.x, topY, r, r * 0.55)
       .fill({ color: lidColor })
       .stroke({ color: 0x0a0b10, width: 3 });
     g.ellipse(ob.x, topY, r * 0.72, r * 0.38)
-      .fill({ color: 0x242633 })
+      .fill({ color: isCryo ? 0x0077b6 : 0x242633 })
       .stroke({ color: hazardColor, width: 1.5 });
     // Bung cap glint
-    g.circle(ob.x - 4, topY, 2.2).fill({ color: hazardColor });
+    g.circle(ob.x - 4, topY, 2.2).fill({ color: isCryo ? 0xffffff : hazardColor });
   }
 }
 

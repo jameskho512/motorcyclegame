@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 /**
  * Unit Tests: Renderer, Vector Art & UI Components
  *
@@ -8,20 +9,22 @@
  * 4. Tooltip content generation for all pickup types.
  * 5. Shop modal purchase confirmation callbacks and state.
  * 6. Stage hierarchy layer ordering and filter manager behavior.
+ * 7. Cryo Barrel vs Explosive TNT Barrel vector art and 10 per-floor atmospheric ambient motes.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { Graphics } from 'pixi.js';
 import {
   isLowFuel,
   calcNeedleAngle,
   calcMinimapRoomCoords
 } from '../../src/ui/hud';
-import { parseColor } from '../../src/render/vectorArt';
+import { parseColor, drawObstacle } from '../../src/render/vectorArt';
 import { TooltipManager } from '../../src/ui/tooltip';
 import { ShopModalController } from '../../src/ui/shopModal';
 import { FilterManager } from '../../src/render/shaders';
-import { StageManager } from '../../src/render/stage';
-import { Pickup, MetaSaveState, PlayerState } from '../../src/types/game';
+import { StageManager, getFloorMoteColor } from '../../src/render/stage';
+import { Pickup, MetaSaveState, PlayerState, Obstacle } from '../../src/types/game';
 import { GarageController } from '../../src/ui/garage';
 
 describe('Render & UI Subsystems', () => {
@@ -589,6 +592,147 @@ describe('Render & UI Subsystems', () => {
 
       resetBtn.click();
       expect(callbacks.onResetSave).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('Cryo Barrel vs Explosive Barrel & Per-Floor Ambient Motes Polish', () => {
+    it('draws explosive TNT barrel with red body and gold hazard markings', () => {
+      const g = new Graphics();
+      const fillSpy = vi.spyOn(g, 'fill');
+      const strokeSpy = vi.spyOn(g, 'stroke');
+
+      const tntBarrel: Obstacle = {
+        x: 100,
+        y: 100,
+        size: 24,
+        type: 'barrel',
+        variant: 'explosive',
+        hp: 1
+      };
+
+      drawObstacle(g, tntBarrel);
+
+      const fillColors = fillSpy.mock.calls.map(c => (c[0] as any)?.color);
+      const strokeColors = strokeSpy.mock.calls.map(c => (c[0] as any)?.color);
+
+      // Red barrel body & yellow hazard
+      expect(fillColors).toContain(0xc92a37);
+      expect(strokeColors).toContain(0xffd166);
+      expect(strokeColors).toContain(0x0a0b10);
+      // Explosive barrel should not have icy cyan body
+      expect(fillColors).not.toContain(0x00bbf9);
+    });
+
+    it('draws cryo_barrel with high-contrast icy cyan body, dark comic outline, and white frost diamond & snowflake chevrons', () => {
+      const g = new Graphics();
+      const fillSpy = vi.spyOn(g, 'fill');
+      const strokeSpy = vi.spyOn(g, 'stroke');
+      const polySpy = vi.spyOn(g, 'poly');
+
+      const cryoBarrel: Obstacle = {
+        x: 150,
+        y: 150,
+        size: 24,
+        type: 'barrel',
+        variant: 'cryo_barrel',
+        hp: 1
+      };
+
+      drawObstacle(g, cryoBarrel);
+
+      const fillColors = fillSpy.mock.calls.map(c => (c[0] as any)?.color);
+      const strokeColors = strokeSpy.mock.calls.map(c => (c[0] as any)?.color);
+
+      // High-contrast icy cyan body (0x00bbf9 / 0x72efdd)
+      expect(fillColors).toContain(0x00bbf9);
+      expect(fillColors).toContain(0x72efdd);
+      // Dark comic ink outline
+      expect(strokeColors).toContain(0x0a0b10);
+      // White frost diamond fill (0xffffff)
+      expect(fillColors).toContain(0xffffff);
+      // White snowflake chevrons stroke
+      expect(strokeColors).toContain(0xffffff);
+      expect(polySpy).toHaveBeenCalled();
+    });
+
+    it('maps floor numbers 1 to 6+ to specified atmospheric ambient mote color palettes', () => {
+      expect(getFloorMoteColor(1)).toBe(0xff9f1c); // Floor 1: Warm rust/amber dust
+      expect(getFloorMoteColor(2)).toBe(0xff5400); // Floor 2: Smelter orange embers
+      expect(getFloorMoteColor(3)).toBe(0x00f5d4); // Floor 3: Neon cyan cyber-streaks
+      expect(getFloorMoteColor(4)).toBe(0x72efdd); // Floor 4: Crisp icy cryo crystals
+      expect(getFloorMoteColor(5)).toBe(0xff2a4b); // Floor 5: Crimson magma sparks
+      expect(getFloorMoteColor(6)).toBe(0xffd60a); // Floor 6+: Golden Valhalla stars/motes
+      expect(getFloorMoteColor(7)).toBe(0xffd60a); // Floor 6+ extended
+    });
+
+    it('draws exactly 10 deterministic gently drifting ambient motes across the arena for floors 1–6', () => {
+      const stage = new StageManager();
+      const g = new Graphics();
+      const circleSpy = vi.spyOn(g, 'circle');
+      const fillSpy = vi.spyOn(g, 'fill');
+
+      // Test floor 1 ambient motes
+      stage.renderAmbientMotes(g, 1, 1000);
+
+      // Verify outer mote circles filled with floor 1 color
+      const floor1MoteCalls = fillSpy.mock.calls.filter(c => (c[0] as any)?.color === 0xff9f1c);
+      expect(floor1MoteCalls.length).toBe(10);
+
+      // Test floor 4 (cryo floor) ambient motes
+      fillSpy.mockClear();
+      stage.renderAmbientMotes(g, 4, 1000);
+      const floor4MoteCalls = fillSpy.mock.calls.filter(c => (c[0] as any)?.color === 0x72efdd);
+      expect(floor4MoteCalls.length).toBe(10);
+
+      // Test floor 6+ golden motes
+      fillSpy.mockClear();
+      stage.renderAmbientMotes(g, 6, 1000);
+      const floor6MoteCalls = fillSpy.mock.calls.filter(c => (c[0] as any)?.color === 0xffd60a);
+      expect(floor6MoteCalls.length).toBe(10);
+
+      // Verify gentle drift: positions at t=1000 vs t=5000 differ
+      circleSpy.mockClear();
+      stage.renderAmbientMotes(g, 1, 1000);
+      const callsTime1 = circleSpy.mock.calls.map(c => `${c[0]},${c[1]}`);
+
+      circleSpy.mockClear();
+      stage.renderAmbientMotes(g, 1, 5000);
+      const callsTime2 = circleSpy.mock.calls.map(c => `${c[0]},${c[1]}`);
+
+      expect(callsTime1).not.toEqual(callsTime2);
+    });
+
+    it('renderArena delegates to renderFloor and includes ambient motes and obstacles', () => {
+      const stage = new StageManager();
+      const g = new Graphics();
+      const fillSpy = vi.spyOn(g, 'fill');
+
+      const dummyRoom: any = {
+        x: 0,
+        y: 0,
+        type: 'combat',
+        cleared: false,
+        doors: {},
+        obstacles: [
+          { x: 200, y: 200, size: 24, type: 'barrel', variant: 'cryo_barrel', hp: 1 }
+        ],
+        hazards: [],
+        skids: [],
+        pickups: [],
+        enemies: []
+      };
+
+      stage.renderArena(g, dummyRoom, 3, 2000);
+
+      // Floor 3 motes color 0x00f5d4 present in fills
+      const cyanMoteFills = fillSpy.mock.calls.filter(c => (c[0] as any)?.color === 0x00f5d4);
+      expect(cyanMoteFills.length).toBeGreaterThanOrEqual(10);
+
+      // Test renderObstacles method on stage
+      fillSpy.mockClear();
+      stage.renderObstacles(g, dummyRoom.obstacles);
+      const cryoFills = fillSpy.mock.calls.filter(c => (c[0] as any)?.color === 0x00bbf9);
+      expect(cryoFills.length).toBeGreaterThanOrEqual(1);
     });
   });
 });
