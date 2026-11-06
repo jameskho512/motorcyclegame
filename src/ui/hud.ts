@@ -17,7 +17,8 @@ import {
   Dungeon,
   WeaponId,
   DropItemId,
-  Boss
+  Boss,
+  Enemy
 } from '../types/game';
 
 import { WEAPONS, WEAPON_EVOLUTIONS, isWeaponEvolved } from '../data/weapons';
@@ -30,7 +31,7 @@ import {
 import { formatWeaponMasteryHint, formatStyleRankTooltip, formatWeaponEvolutionTooltipHint } from '@/ui/tooltip';
 import { getFloorBountyContract, getRoomHazardSummary, getFloorExplorationStatus, type RoomHazardSummary } from '@/world/dungeon';
 import { getCombatOffenseSummary } from '@/systems/combat';
-import { getRoomThreatAssessment } from '@/systems/enemyAI';
+import { getRoomThreatAssessment, getBossEncounterBriefing } from '@/systems/enemyAI';
 import { getRiderMobilitySummary } from '@/systems/physics';
 
 export type DungeonGrid = Dungeon;
@@ -231,7 +232,7 @@ const BOSS_META_PROFILES: Record<number, BossMetaProfile> = {
   }
 };
 
-function getBossProfile(boss: Boss): BossMetaProfile {
+function getBossProfile(boss: Partial<Boss>): BossMetaProfile {
   const variant = typeof boss.bossVariant === 'number' ? boss.bossVariant : 0;
   if (BOSS_META_PROFILES[variant]) return BOSS_META_PROFILES[variant];
   const upper = (boss.name || '').toUpperCase();
@@ -270,6 +271,7 @@ export class HUDController {
   private toastTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private lastMetaSave: any = null;
 
+  public bossBar: HTMLElement | null = null;
   public bossHudEl: HTMLElement | null = null;
   public bossSubEl: HTMLElement | null = null;
 
@@ -277,6 +279,7 @@ export class HUDController {
     this.onSelectWeapon = callbacks?.onSelectWeapon;
     if (typeof document !== 'undefined') {
       this.bossHudEl = document.getElementById('boss-hud');
+      this.bossBar = (document.getElementById('boss-bar') || document.getElementById('boss-hud')) as HTMLElement | null;
       this.bossSubEl = document.getElementById('boss-hud-sub');
       this.fuelGaugeCanvas = document.getElementById('fuel-gauge') as HTMLCanvasElement | null;
       if (this.fuelGaugeCanvas) {
@@ -960,12 +963,34 @@ export class HUDController {
    * Updates the top-spanning Boss Health Bar (#boss-hud).
    * Shows the bar when a living boss is present in the room, or hides it when null/dead.
    */
-  public updateBossBar(boss: Boss | null, floorNum: number = 1): void {
+  public updateBossBar(boss: Enemy | null, floorNum: number = 1): void {
     if (typeof document === 'undefined') return;
     if (!this.bossHudEl) {
       this.bossHudEl = document.getElementById('boss-hud');
     }
-    const bossHud = this.bossHudEl;
+    if (!this.bossBar) {
+      this.bossBar = (document.getElementById('boss-bar') || this.bossHudEl || document.getElementById('boss-hud')) as HTMLElement | null;
+    }
+
+    const briefing = getBossEncounterBriefing(boss, floorNum);
+    if (this.bossBar) {
+      this.bossBar.setAttribute('data-boss-active', `${briefing.active ? 'true' : 'false'}`);
+      this.bossBar.setAttribute('data-boss-phase', `${briefing.phase}`);
+      this.bossBar.setAttribute('data-boss-enraged', `${briefing.isEnraged ? 'true' : 'false'}`);
+      this.bossBar.setAttribute('data-boss-hp-pct', `${briefing.hpPct}`);
+      this.bossBar.setAttribute('data-boss-counterplay', `${briefing.counterplayTip}`);
+      this.bossBar.setAttribute('data-boss-briefing', `${briefing.summaryLine}`);
+    }
+    if (this.bossHudEl && this.bossHudEl !== this.bossBar) {
+      this.bossHudEl.setAttribute('data-boss-active', `${briefing.active ? 'true' : 'false'}`);
+      this.bossHudEl.setAttribute('data-boss-phase', `${briefing.phase}`);
+      this.bossHudEl.setAttribute('data-boss-enraged', `${briefing.isEnraged ? 'true' : 'false'}`);
+      this.bossHudEl.setAttribute('data-boss-hp-pct', `${briefing.hpPct}`);
+      this.bossHudEl.setAttribute('data-boss-counterplay', `${briefing.counterplayTip}`);
+      this.bossHudEl.setAttribute('data-boss-briefing', `${briefing.summaryLine}`);
+    }
+
+    const bossHud = this.bossHudEl || this.bossBar;
     if (!bossHud) return;
 
     if (!boss || boss.hp <= 0) {
@@ -975,16 +1000,16 @@ export class HUDController {
       return;
     }
 
-    const profile = getBossProfile(boss);
+    const profile = getBossProfile(boss as Partial<Boss>);
     bossHud.hidden = false;
     bossHud.classList.add('is-visible');
     bossHud.style.setProperty('--boss-accent', profile.accent);
 
-    const isEnraged = boss.hp <= boss.maxHp * 0.5;
+    const isEnraged = briefing.isEnraged;
     bossHud.classList.toggle('is-enraged', isEnraged);
 
     const nameEl = document.getElementById('boss-hud-name');
-    if (nameEl) nameEl.textContent = boss.name || 'SCRAP GOLIATH';
+    if (nameEl) nameEl.textContent = (boss as any).name || profile.subtitle.split('—')[0].trim() || 'SCRAP GOLIATH';
 
     if (!this.bossSubEl) {
       this.bossSubEl = document.getElementById('boss-hud-sub');
@@ -999,7 +1024,7 @@ export class HUDController {
 
     const hpEl = document.getElementById('boss-hud-hp');
     const curHp = Math.max(0, Math.ceil(boss.hp));
-    const maxHp = Math.max(1, Math.ceil(boss.maxHp));
+    const maxHp = Math.max(1, Math.ceil(boss.maxHp || 1));
     if (hpEl) {
       hpEl.textContent = `${curHp.toLocaleString('en-US')} / ${maxHp.toLocaleString('en-US')}`;
     }

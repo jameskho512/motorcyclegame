@@ -77,6 +77,11 @@ import {
   HubStationModalController,
   HubStationOpenOptions
 } from '@/ui/hubStationModal';
+import { getEquipmentVisualSpec, getEquipmentItemModelSvg } from '../../src/ui/icons';
+import { getEquippedBikeVisualState, GarageController, GarageCallbacks } from '../../src/ui/garage';
+import { getEquipmentLoadoutSummary } from '../../src/data/equipment';
+import { EquipSlot, EquipmentItem, MetaSaveState } from '@/types/game';
+import { createDefaultMetaSave } from '@/core/state';
 
 describe('Tier 5: Adversarial Coverage Hardening', () => {
   let player: PlayerState;
@@ -1717,6 +1722,258 @@ describe('Tier 5: Adversarial Coverage Hardening', () => {
       expect(onLaunchRun).toHaveBeenCalledTimes(10);
 
       modal.close();
+    });
+  });
+
+  // ==========================================================================
+  // SECTION 7: ADVERSARIAL FUZZ: EQUIPMENT MODELS & LOADOUT (M102)
+  // ==========================================================================
+  describe('Adversarial Fuzz: 24 High-Res Equipment Models & Loadout Telemetry (M102)', () => {
+    it('survives malformed, null, undefined, negative rarity (-99), NaN rarity, and out-of-bounds rarity (999) or unknown slot (\'flux_capacitor\') inputs to getEquipmentVisualSpec and getEquipmentItemModelSvg without throwing, always returning a valid 128x128 SVG model and bounded rarity 0..3', () => {
+      const malformedInputs = [
+        null,
+        undefined,
+        {},
+        { slot: 'flux_capacitor' as any },
+        { slot: 'flux_capacitor' as any, rarity: 0 },
+        { slot: 'engine', rarity: -99 },
+        { slot: 'engine', rarity: NaN },
+        { slot: 'engine', rarity: 999 },
+        { slot: 'engine', rarity: -Infinity },
+        { slot: 'engine', rarity: Infinity },
+        { slot: 'engine', rarity: 2.7 },
+        { slot: 'tires', rarity: -1 },
+        { slot: 'handlebars', rarity: 4 },
+        { slot: 'exhaust', rarity: undefined },
+        { slot: 'frame', rarity: null as any },
+        { slot: 'tank', rarity: 'rare' as any },
+        { slot: 123 as any, rarity: {} as any },
+        { name: 'Broken Corrupt Item', slot: undefined, rarity: -999 }
+      ];
+
+      for (const input of malformedInputs) {
+        expect(() => getEquipmentVisualSpec(input as any)).not.toThrow();
+        const spec = getEquipmentVisualSpec(input as any);
+        expect(spec.rarity).toBeGreaterThanOrEqual(0);
+        expect(spec.rarity).toBeLessThanOrEqual(3);
+        expect(['MK-I', 'MK-II', 'MK-III', 'OMEGA']).toContain(spec.tierBadge);
+        expect(spec.modelCode).toBeDefined();
+        expect(typeof spec.modelCode).toBe('string');
+        expect(spec.modelCode.length).toBeGreaterThan(0);
+
+        expect(() => getEquipmentItemModelSvg(input as any)).not.toThrow();
+        const svg = getEquipmentItemModelSvg(input as any);
+        expect(typeof svg).toBe('string');
+        expect(svg).toContain('viewBox="0 0 128 128"');
+        expect(svg).toContain('<svg');
+        expect(svg).toContain('</svg>');
+        expect(svg).toContain('class="gx-equip-model');
+        expect(svg).toMatch(/data-rarity="[0-3]"/);
+        expect(svg).toContain(`data-model-code="${spec.modelCode}"`);
+      }
+    });
+
+    it('executes a 100-cycle deterministic PRNG fuzz loop randomly equipping, upgrading, downgrading, and unequipping items across all 6 slots and 4 rarities, asserting that getEquippedBikeVisualState and getEquipmentLoadoutSummary stay 100% synchronized', () => {
+      const slots: EquipSlot[] = ['tires', 'engine', 'handlebars', 'exhaust', 'frame', 'tank'];
+      const meta: MetaSaveState = createDefaultMetaSave();
+
+      let seed = 0x9e3779b9;
+      const lcg = (): number => {
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        return seed / 4294967296;
+      };
+
+      for (let cycle = 0; cycle < 100; cycle++) {
+        const slot = slots[Math.floor(lcg() * slots.length)];
+        const actionRoll = lcg();
+
+        if (actionRoll < 0.45) {
+          // Equip or upgrade
+          const rarity = Math.floor(lcg() * 4) as 0 | 1 | 2 | 3;
+          meta.equipped[slot] = {
+            slot,
+            rarity,
+            name: `Fuzz ${slot.toUpperCase()} MK-${rarity + 1}`,
+            stats: {
+              speed: Number((10 + lcg() * 20).toFixed(2)),
+              dmg: Number((0.05 + lcg() * 0.25).toFixed(3))
+            }
+          };
+        } else if (actionRoll < 0.75) {
+          // Downgrade existing or assign common
+          const currentRarity = meta.equipped[slot]?.rarity ?? 0;
+          const downgradedRarity = Math.max(0, currentRarity - 1) as 0 | 1 | 2 | 3;
+          meta.equipped[slot] = {
+            slot,
+            rarity: downgradedRarity,
+            name: `Downgraded ${slot} T${downgradedRarity}`,
+            stats: {
+              speed: Number((5 + downgradedRarity * 4).toFixed(1))
+            }
+          };
+        } else {
+          // Unequip (alternating between delete and undefined / null)
+          if (cycle % 2 === 0) {
+            delete meta.equipped[slot];
+          } else {
+            meta.equipped[slot] = null as any;
+          }
+        }
+
+        const bikeVisuals = getEquippedBikeVisualState(meta);
+        const loadout = getEquipmentLoadoutSummary(meta.equipped);
+
+        // Assert 100% synchronization
+        expect(bikeVisuals.equippedCount).toBe(loadout.installedCount);
+        expect(bikeVisuals.equippedSlots.length).toBe(loadout.installedCount);
+        expect(bikeVisuals.modelCodes.length).toBe(loadout.installedCount);
+
+        expect(Number.isFinite(loadout.totalPowerScore)).toBe(true);
+        expect(loadout.totalPowerScore).toBeGreaterThanOrEqual(0);
+
+        expect(typeof bikeVisuals.summaryLine).toBe('string');
+        expect(bikeVisuals.summaryLine.length).toBeGreaterThan(0);
+        expect(typeof loadout.summaryLine).toBe('string');
+        expect(loadout.summaryLine.length).toBeGreaterThan(0);
+
+        // Slot membership invariants
+        for (const s of bikeVisuals.equippedSlots) {
+          expect(loadout.emptySlots).not.toContain(s);
+          const item = meta.equipped[s];
+          expect(item).toBeDefined();
+          const partVisual = bikeVisuals.parts[s];
+          expect(partVisual).toBeDefined();
+          expect(partVisual?.slot).toBe(s);
+        }
+      }
+    });
+
+    it('renders GarageController across 30 rapid equip/unequip/livery cycles with extreme stash sizes and verifies #bike-canvas and #garage-overlay attributes never become NaN or undefined', () => {
+      document.body.innerHTML = `
+        <div id="garage-overlay">
+          <h1 id="modal-title">MOTO-GARAGE BAY 01</h1>
+          <p id="modal-subtitle">TACTICAL WORKSHOP</p>
+          <span id="modal-scrap">1250</span>
+          <canvas id="bike-canvas" width="400" height="300"></canvas>
+          <div id="slots-left"></div>
+          <div id="slots-right"></div>
+          <div id="eq-totals"></div>
+          <div id="stash-list"></div>
+          <div id="unlock-list"></div>
+          <div id="meta-upgrade-list"></div>
+          <div id="livery-bar"></div>
+          <button id="btn-resume">Resume</button>
+          <button id="btn-new-run">New Run</button>
+          <button id="btn-reset-save">Reset</button>
+        </div>
+      `;
+
+      const callbacks: GarageCallbacks = {
+        onEquipItem: vi.fn(),
+        onUnequipSlot: vi.fn(),
+        onSellItem: vi.fn(),
+        onUnlockWeapon: vi.fn(),
+        onEquipWeapon: vi.fn(),
+        onBuyUpgrade: vi.fn(),
+        onSelectLivery: vi.fn(),
+        onResumeRun: vi.fn(),
+        onNewRun: vi.fn(),
+        onResetSave: vi.fn()
+      };
+
+      const garage = new GarageController(callbacks);
+      const meta: MetaSaveState = createDefaultMetaSave();
+      const player = createDefaultPlayerState();
+      const slots: EquipSlot[] = ['tires', 'engine', 'handlebars', 'exhaust', 'frame', 'tank'];
+      const liveries = ['crimson_kaneda', 'cyber_neon', 'golden_valhalla', 'midnight_stealth', 'toxic_hazard'] as const;
+
+      const canvas = document.getElementById('bike-canvas') as HTMLCanvasElement;
+      const overlay = document.getElementById('garage-overlay') as HTMLElement;
+
+      for (let cycle = 0; cycle < 30; cycle++) {
+        // 1. Extreme stash sizes: 0, 1, 18 (MAX_STASH), 75, 150 overflow items
+        const stashSizes = [0, 1, 18, 75, 150];
+        const targetStashSize = stashSizes[cycle % stashSizes.length];
+        const stash: EquipmentItem[] = [];
+        for (let i = 0; i < targetStashSize; i++) {
+          const slot = slots[i % slots.length];
+          const rarity = (i % 4) as 0 | 1 | 2 | 3;
+          stash.push({
+            slot,
+            rarity,
+            name: `Stash Item #${i + 1} (${slot})`,
+            stats: { speed: 5 + rarity * 3, dmg: 0.05 * (i % 5) }
+          });
+        }
+        meta.stash = stash;
+
+        // 2. Equip / unequip cycling across slots
+        slots.forEach((s, idx) => {
+          if ((cycle + idx) % 3 === 0) {
+            delete meta.equipped[s];
+          } else {
+            const rarity = ((cycle + idx) % 4) as 0 | 1 | 2 | 3;
+            meta.equipped[s] = {
+              slot: s,
+              rarity,
+              name: `Mount ${s} R${rarity}`,
+              stats: { speed: 8 + rarity * 4 }
+            };
+          }
+        });
+
+        // 3. Livery cycling
+        const livId = liveries[cycle % liveries.length];
+        meta.livery = livId;
+        player.livery = livId;
+
+        // 4. Render modal and canvas lift
+        garage.open(false, (cycle % 6) + 1, meta, player);
+        garage.drawBikeLift(meta);
+
+        // 5. Simulate livery button interaction if rendered
+        const liveryBtns = Array.from(document.querySelectorAll<HTMLButtonElement>('.gx-livery-btn'));
+        if (liveryBtns.length > 0) {
+          liveryBtns[cycle % liveryBtns.length].click();
+        }
+
+        // 6. Assert #bike-canvas attributes never become NaN or undefined
+        const canvasEquippedCount = canvas.getAttribute('data-equipped-visual-count');
+        expect(canvasEquippedCount).not.toBeNull();
+        expect(canvasEquippedCount).not.toBe('NaN');
+        expect(canvasEquippedCount).not.toBe('undefined');
+        expect(canvasEquippedCount).not.toContain('NaN');
+        expect(canvasEquippedCount).not.toContain('undefined');
+        expect(Number.isFinite(Number(canvasEquippedCount))).toBe(true);
+
+        // 7. Assert #garage-overlay attributes never become NaN or undefined
+        const overlayEquippedCount = overlay.getAttribute('data-equipped-visual-count');
+        expect(overlayEquippedCount).not.toBeNull();
+        expect(overlayEquippedCount).not.toBe('NaN');
+        expect(overlayEquippedCount).not.toBe('undefined');
+        expect(overlayEquippedCount).not.toContain('NaN');
+        expect(overlayEquippedCount).not.toContain('undefined');
+        expect(Number.isFinite(Number(overlayEquippedCount))).toBe(true);
+
+        const overlayPowerScore = overlay.getAttribute('data-loadout-power-score');
+        expect(overlayPowerScore).not.toBeNull();
+        expect(overlayPowerScore).not.toBe('NaN');
+        expect(overlayPowerScore).not.toBe('undefined');
+        expect(overlayPowerScore).not.toContain('NaN');
+        expect(overlayPowerScore).not.toContain('undefined');
+        expect(Number.isFinite(Number(overlayPowerScore))).toBe(true);
+
+        const overlayNextGoal = overlay.getAttribute('data-next-set-goal');
+        expect(overlayNextGoal).not.toBeNull();
+        expect(overlayNextGoal).not.toBe('NaN');
+        expect(overlayNextGoal).not.toBe('undefined');
+        expect(overlayNextGoal).not.toContain('NaN');
+        expect(overlayNextGoal).not.toContain('undefined');
+        expect(typeof overlayNextGoal).toBe('string');
+        expect(overlayNextGoal!.length).toBeGreaterThan(0);
+      }
+
+      garage.close();
     });
   });
 });

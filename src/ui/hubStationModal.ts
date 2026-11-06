@@ -15,8 +15,52 @@
 import { RARITY } from '../data/equipment';
 import { getCareerOutlawRank } from '@/core/state';
 import { WEAPONS, WeaponId, getWeaponTacticalProfile } from '@/data/weapons';
+import type { MetaSaveState, PlayerState } from '@/types/game';
 
-export type HubStationId = 'garage' | 'blacksmith' | 'codex' | 'bounty' | 'launch' | 'armory';
+export type HubStationId = 'garage' | 'blacksmith' | 'codex' | 'bounty' | 'launch' | 'armory' | 'forge';
+
+export interface ForgeStationAdvisor {
+  canReforge: boolean;
+  scrapAvailable: number;
+  reforgeCost: number;
+  modCount: number;
+  recommendedAction: string;
+  summaryLine: string;
+}
+
+/**
+ * Computes sanctuary forge salvage and reforge advisor intelligence.
+ */
+export function getForgeStationAdvisor(
+  metaSave?: Partial<MetaSaveState> | null,
+  player?: Partial<PlayerState> | null
+): ForgeStationAdvisor {
+  const rawScrap = Number(metaSave?.scrap || 0);
+  const scrapAvailable = Math.max(0, isNaN(rawScrap) ? 0 : rawScrap);
+  const reforgeCost = 15;
+  const modCount = Array.isArray(player?.items) ? player!.items!.length : 0;
+  const canReforge = scrapAvailable >= reforgeCost;
+
+  let recommendedAction: string;
+  if (!canReforge) {
+    recommendedAction = 'Need ' + (reforgeCost - scrapAvailable) + ' more Scrap to Reforge at the Anvil';
+  } else if (modCount === 0) {
+    recommendedAction = 'Reforge Ready (15 Scrap) — Roll your first Outlaw Mod';
+  } else {
+    recommendedAction = 'Reforge Ready (15 Scrap) — Reroll & upgrade active mod loadout';
+  }
+
+  const summaryLine = `FORGE ANVIL: ${scrapAvailable} SCRAP (COST: ${reforgeCost}) · ${recommendedAction}`;
+
+  return {
+    canReforge,
+    scrapAvailable,
+    reforgeCost,
+    modCount,
+    recommendedAction,
+    summaryLine
+  };
+}
 
 export interface HubStationPromptInfo {
   title: string;
@@ -64,6 +108,7 @@ export function getHubStationPromptInfo(
       };
 
     case 'blacksmith':
+    case 'forge':
       return {
         title: '⚒️ THE SCRAP FORGE',
         summary: "Spend 12 Scrap ⚙️ to upgrade an equipped item's Rarity (+25% stats) or craft new Gear",
@@ -142,6 +187,9 @@ export class HubStationModalController {
   private currentOptions: HubStationOpenOptions | null = null;
   private bannerClickCallback: (() => void) | null = null;
   private restoreFocusEl: HTMLElement | null = null;
+
+  public static getForgeStationAdvisor = getForgeStationAdvisor;
+  public getForgeStationAdvisor = getForgeStationAdvisor;
 
   constructor() {
     if (typeof document !== 'undefined') {
@@ -241,7 +289,43 @@ export class HubStationModalController {
   /**
    * Opens the Sanctuary Station modal for the active station NPC.
    */
-  public open(options: HubStationOpenOptions): void {
+  public open(options: HubStationOpenOptions): void;
+  public open(
+    npcId: string,
+    metaSave?: any,
+    player?: any,
+    scannerClaimed?: boolean,
+    bountyClaimed?: boolean,
+    extraOptions?: Partial<HubStationOpenOptions>
+  ): void;
+  public open(
+    optionsOrNpcId: HubStationOpenOptions | string,
+    metaSave?: any,
+    player?: any,
+    scannerClaimed: boolean = false,
+    bountyClaimed: boolean = false,
+    extraOptions?: Partial<HubStationOpenOptions>
+  ): void {
+    let options: HubStationOpenOptions;
+    if (typeof optionsOrNpcId === 'string') {
+      options = {
+        npcId: optionsOrNpcId,
+        metaSave: metaSave ?? {},
+        player: player ?? {},
+        scannerClaimed,
+        bountyClaimed,
+        onReforge: extraOptions?.onReforge ?? (() => ({ ok: false, message: '' })),
+        onClaimScanner: extraOptions?.onClaimScanner ?? (() => ({ ok: false, message: '' })),
+        onClaimBountyCache: extraOptions?.onClaimBountyCache ?? (() => ({ ok: false, message: '' })),
+        onSelectHeat: extraOptions?.onSelectHeat ?? (() => {}),
+        onLaunchRun: extraOptions?.onLaunchRun ?? (() => {}),
+        onClose: extraOptions?.onClose,
+        ...extraOptions
+      };
+    } else {
+      options = optionsOrNpcId;
+    }
+
     this.currentOptions = options;
     this.hideBanner();
 
@@ -258,6 +342,12 @@ export class HubStationModalController {
       this.overlay.setAttribute('data-career-rank', careerRank.rankId);
       this.overlay.setAttribute('data-career-title', careerRank.title);
       this.overlay.setAttribute('data-career-score', String(careerRank.careerScore));
+
+      if (options.npcId === 'forge' || options.npcId === 'blacksmith') {
+        const advisor = getForgeStationAdvisor(options.metaSave, options.player);
+        this.overlay.setAttribute('data-forge-can-reforge', advisor.canReforge ? 'true' : 'false');
+        this.overlay.setAttribute('data-forge-advisor', advisor.summaryLine);
+      }
     }
 
     this.renderHeaderAndPurpose(options.npcId);
@@ -278,9 +368,25 @@ export class HubStationModalController {
       this.overlay.setAttribute('data-career-rank', careerRank.rankId);
       this.overlay.setAttribute('data-career-title', careerRank.title);
       this.overlay.setAttribute('data-career-score', String(careerRank.careerScore));
+
+      if (this.currentOptions.npcId === 'forge' || this.currentOptions.npcId === 'blacksmith') {
+        const advisor = getForgeStationAdvisor(this.currentOptions.metaSave, this.currentOptions.player);
+        this.overlay.setAttribute('data-forge-can-reforge', advisor.canReforge ? 'true' : 'false');
+        this.overlay.setAttribute('data-forge-advisor', advisor.summaryLine);
+      }
     }
     this.renderHeaderAndPurpose(this.currentOptions.npcId);
     this.renderBody();
+  }
+
+  /**
+   * Renders the forge station view.
+   */
+  public renderForge(options?: HubStationOpenOptions): void {
+    const opts = options || this.currentOptions;
+    if (opts) {
+      this.renderForgeBody(opts.metaSave, opts.player);
+    }
   }
 
   /**
@@ -335,6 +441,7 @@ export class HubStationModalController {
   private renderHeaderAndPurpose(npcId: string): void {
     switch (npcId) {
       case 'blacksmith':
+      case 'forge':
         if (this.kickerEl) this.kickerEl.textContent = 'SANCTUARY HIDEOUT // REFORGE STATION';
         if (this.titleEl) this.titleEl.textContent = '⚒️ THE SCRAP FORGE';
         if (this.speakerEl) this.speakerEl.textContent = 'IRONSMITH KORR';
@@ -424,7 +531,8 @@ export class HubStationModalController {
 
     switch (npcId) {
       case 'blacksmith':
-        this.renderBlacksmithBody(metaSave);
+      case 'forge':
+        this.renderForgeBody(metaSave, player);
         break;
       case 'codex':
         this.renderCodexBody(metaSave, scannerClaimed);
@@ -445,7 +553,22 @@ export class HubStationModalController {
     }
   }
 
-  private renderBlacksmithBody(metaSave: any): void {
+  public renderBlacksmith(options?: HubStationOpenOptions): void {
+    this.renderForge(options);
+  }
+
+  public renderBlacksmithBody(metaSave: any, player?: any): void {
+    this.renderForgeBody(metaSave, player);
+  }
+
+  public renderForgeBody(metaSave: any, player?: any): void {
+    const effectivePlayer = player !== undefined ? player : this.currentOptions?.player;
+    const advisor = getForgeStationAdvisor(metaSave, effectivePlayer);
+    if (this.overlay) {
+      this.overlay.setAttribute('data-forge-can-reforge', advisor.canReforge ? 'true' : 'false');
+      this.overlay.setAttribute('data-forge-advisor', advisor.summaryLine);
+    }
+
     if (!this.bodyEl || !this.currentOptions) return;
     const scrap = metaSave?.scrap || 0;
     const equipped = metaSave?.equipped || {};
@@ -498,6 +621,9 @@ export class HubStationModalController {
           <span class="hub-stat-label">REFORGE COST</span>
           <span class="hub-stat-val hub-cyan">12 ⚙️ SCRAP</span>
         </div>
+      </div>
+      <div class="hub-forge-advisor-banner" data-can-reforge="${advisor.canReforge ? 'true' : 'false'}">
+        <span class="hub-forge-advisor-text">${advisor.summaryLine}</span>
       </div>
       ${targetCardHtml}
     `;

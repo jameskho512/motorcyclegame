@@ -347,7 +347,8 @@ export function getEquipmentVisualSpec(
 ): EquipmentVisualSpec {
   const rawSlot = (item?.slot || fallbackSlot) as EquipModelSlotId;
   const slot: EquipModelSlotId = SLOT_MODEL_META[rawSlot] ? rawSlot : fallbackSlot;
-  const rawRarity = typeof item?.rarity === 'number' ? item.rarity : 0;
+  const rawRarity =
+    typeof item?.rarity === 'number' && Number.isFinite(item.rarity) ? item.rarity : 0;
   const rarity = Math.max(0, Math.min(3, Math.floor(rawRarity))) as EquipModelRarityTier;
   const pal = RARITY_PALETTES[rarity];
   const meta = SLOT_MODEL_META[slot][rarity];

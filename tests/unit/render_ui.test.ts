@@ -31,7 +31,7 @@ import { TooltipManager } from '../../src/ui/tooltip';
 import { ShopModalController } from '../../src/ui/shopModal';
 import { FilterManager } from '../../src/render/shaders';
 import { StageManager, getFloorMoteColor, getEliteAffixColor } from '../../src/render/stage';
-import { Pickup, MetaSaveState, PlayerState, Obstacle, Dungeon, Room, EquipmentItem } from '../../src/types/game';
+import { Pickup, MetaSaveState, PlayerState, Obstacle, Dungeon, Room, EquipmentItem, Enemy } from '../../src/types/game';
 import {
   GarageController,
   getWeaponMasteryTier,
@@ -2736,6 +2736,150 @@ describe('Render & UI Subsystems', () => {
       expect(bikeCanvas.getAttribute('data-equipped-visual-count')).toBe('0');
       expect(bikeCanvas.getAttribute('data-equipped-visual-summary')).toContain('STOCK CHASSIS');
       expect(PART_ANCHORS.engine).toEqual([198, 160]);
+    });
+  });
+
+  describe('HUD Live Boss Encounter Tactical Telemetry (updateBossBar & data telemetry attributes)', () => {
+    let hud: HUDController;
+    let bossBarEl: HTMLElement;
+
+    beforeEach(() => {
+      document.body.innerHTML = `
+        <div id="boss-hud">
+          <div id="boss-hud-name"></div>
+          <div id="boss-hud-sub"></div>
+          <div id="boss-hud-hp"></div>
+          <div id="boss-bar-fill"></div>
+          <div id="boss-bar-lag"></div>
+        </div>
+      `;
+      hud = new HUDController();
+      bossBarEl = document.getElementById('boss-hud')!;
+    });
+
+    it('sets telemetry attributes for null or inactive boss', () => {
+      hud.updateBossBar(null, 1);
+
+      expect(hud.bossBar?.getAttribute('data-boss-active')).toBe('false');
+      expect(hud.bossBar?.getAttribute('data-boss-phase')).toBe('1');
+      expect(hud.bossBar?.getAttribute('data-boss-enraged')).toBe('false');
+      expect(hud.bossBar?.getAttribute('data-boss-hp-pct')).toBe('0');
+      expect(hud.bossBar?.getAttribute('data-boss-counterplay')).toBe('Sector clear of boss signatures.');
+      expect(hud.bossBar?.getAttribute('data-boss-briefing')).toBe('BOSS TELEMETRY: INACTIVE');
+      expect(bossBarEl.classList.contains('is-visible')).toBe(false);
+      expect(bossBarEl.hidden).toBe(true);
+
+      // Dead boss (hp <= 0)
+      const deadBoss = {
+        id: 1,
+        type: 'boss',
+        bossVariant: 0,
+        name: 'SCRAP GOLIATH',
+        x: 0,
+        y: 0,
+        vx: 0,
+        vy: 0,
+        radius: 36,
+        hp: 0,
+        maxHp: 100,
+        speed: 50,
+        color: '#ff0055',
+        subTimer: 0
+      } as unknown as Enemy;
+      hud.updateBossBar(deadBoss);
+      expect(hud.bossBar?.getAttribute('data-boss-active')).toBe('false');
+      expect(hud.bossBar?.getAttribute('data-boss-briefing')).toBe('BOSS TELEMETRY: INACTIVE');
+    });
+
+    it('sets telemetry attributes for Phase 1 healthy boss (80% HP)', () => {
+      const healthyBoss = {
+        id: 2,
+        type: 'boss',
+        bossVariant: 0,
+        name: 'SCRAP JUGGERNAUT',
+        x: 200,
+        y: 200,
+        vx: 0,
+        vy: 0,
+        radius: 40,
+        hp: 80,
+        maxHp: 100,
+        speed: 60,
+        color: '#ff0055',
+        subTimer: 0
+      } as unknown as Enemy;
+
+      hud.updateBossBar(healthyBoss, 1);
+
+      expect(hud.bossBar?.getAttribute('data-boss-active')).toBe('true');
+      expect(hud.bossBar?.getAttribute('data-boss-phase')).toBe('1');
+      expect(hud.bossBar?.getAttribute('data-boss-enraged')).toBe('false');
+      expect(hud.bossBar?.getAttribute('data-boss-hp-pct')).toBe('80');
+      expect(hud.bossBar?.getAttribute('data-boss-counterplay')).toBe('PHASE 1: Maintain mid-range orbit and destroy elemental barrels before 50% HP enrage.');
+      expect(hud.bossBar?.getAttribute('data-boss-briefing')).toContain('80% HP');
+      expect(hud.bossBar?.getAttribute('data-boss-briefing')).toContain('PHASE 1');
+      expect(bossBarEl.classList.contains('is-visible')).toBe(true);
+      expect(bossBarEl.classList.contains('is-enraged')).toBe(false);
+    });
+
+    it('sets telemetry attributes for Phase 2 enraged boss (35% HP)', () => {
+      const enragedBoss = {
+        id: 3,
+        type: 'boss',
+        bossVariant: 0,
+        name: 'SCRAP JUGGERNAUT',
+        x: 200,
+        y: 200,
+        vx: 0,
+        vy: 0,
+        radius: 40,
+        hp: 35,
+        maxHp: 100,
+        speed: 90,
+        color: '#ff0055',
+        subTimer: 0
+      } as unknown as Enemy;
+
+      hud.updateBossBar(enragedBoss, 1);
+
+      expect(hud.bossBar?.getAttribute('data-boss-active')).toBe('true');
+      expect(hud.bossBar?.getAttribute('data-boss-phase')).toBe('2');
+      expect(hud.bossBar?.getAttribute('data-boss-enraged')).toBe('true');
+      expect(hud.bossBar?.getAttribute('data-boss-hp-pct')).toBe('35');
+      expect(hud.bossBar?.getAttribute('data-boss-counterplay')).toBe('PHASE 2 OVERDRIVE: Boss bullet cadence doubled — use Drift [SPACE] i-frames and Graze for NOS!');
+      expect(hud.bossBar?.getAttribute('data-boss-briefing')).toContain('35% HP');
+      expect(hud.bossBar?.getAttribute('data-boss-briefing')).toContain('PHASE 2 ENRAGED');
+      expect(bossBarEl.classList.contains('is-visible')).toBe(true);
+      expect(bossBarEl.classList.contains('is-enraged')).toBe(true);
+    });
+
+    it('preserves backward compatibility when floorNum is omitted and handles #boss-bar element', () => {
+      document.body.innerHTML = '<div id="boss-bar"></div>';
+      const customHud = new HUDController();
+      const boss = {
+        id: 4,
+        type: 'boss',
+        bossVariant: 1,
+        name: 'IRON BEHEMOTH',
+        x: 0,
+        y: 0,
+        vx: 0,
+        vy: 0,
+        radius: 40,
+        hp: 40,
+        maxHp: 100,
+        speed: 80,
+        color: '#ff3300',
+        subTimer: 0
+      } as unknown as Enemy;
+
+      customHud.updateBossBar(boss); // floorNum omitted -> defaults to 1
+
+      expect(customHud.bossBar?.getAttribute('data-boss-active')).toBe('true');
+      expect(customHud.bossBar?.getAttribute('data-boss-phase')).toBe('2');
+      expect(customHud.bossBar?.getAttribute('data-boss-enraged')).toBe('true');
+      expect(customHud.bossBar?.getAttribute('data-boss-hp-pct')).toBe('40');
+      expect(customHud.bossBar?.getAttribute('data-boss-briefing')).toContain('40% HP');
     });
   });
 });

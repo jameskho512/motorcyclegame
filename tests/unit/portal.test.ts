@@ -36,7 +36,9 @@ import {
 import {
   HubStationModalController,
   getHubStationPromptInfo,
-  HubStationOpenOptions
+  HubStationOpenOptions,
+  getForgeStationAdvisor,
+  ForgeStationAdvisor
 } from '../../src/ui/hubStationModal';
 import { WEAPONS, WeaponId, getWeaponTacticalProfile } from '../../src/data/weapons';
 import { getCareerOutlawRank } from '../../src/core/state';
@@ -1685,6 +1687,202 @@ describe('HubStationModalController & getHubStationPromptInfo (Wave 14-15)', () 
       expect(equippedCard?.getAttribute('data-base-dps')).toBe('58');
       expect(equippedCard?.querySelector('.hub-weapon-tactical')?.textContent).toBe(
         'RAPID SUPPRESSION · 58 BASE DPS · CLOSE-TO-MID RANGE'
+      );
+    });
+
+    it('renders forge station and sets data-forge-can-reforge and data-forge-advisor DOM attributes on overlay when scrap is insufficient (< 15)', () => {
+      const options = createHubOptions({
+        npcId: 'forge',
+        metaSave: { scrap: 9 },
+        player: { items: ['nano_repair'] }
+      });
+      modal.open(options);
+
+      const overlayEl = document.getElementById('hub-station-overlay')!;
+      expect(overlayEl.getAttribute('data-forge-can-reforge')).toBe('false');
+      expect(overlayEl.getAttribute('data-forge-advisor')).toBe(
+        'FORGE ANVIL: 9 SCRAP (COST: 15) · Need 6 more Scrap to Reforge at the Anvil'
+      );
+      expect(document.querySelector('.hub-forge-advisor-text')?.textContent).toBe(
+        'FORGE ANVIL: 9 SCRAP (COST: 15) · Need 6 more Scrap to Reforge at the Anvil'
+      );
+    });
+
+    it('renders forge station and sets data-forge-can-reforge and data-forge-advisor DOM attributes when scrap is sufficient (>= 15) with 0 mods', () => {
+      const options = createHubOptions({
+        npcId: 'forge',
+        metaSave: { scrap: 20 },
+        player: { items: [] }
+      });
+      modal.open(options);
+
+      const overlayEl = document.getElementById('hub-station-overlay')!;
+      expect(overlayEl.getAttribute('data-forge-can-reforge')).toBe('true');
+      expect(overlayEl.getAttribute('data-forge-advisor')).toBe(
+        'FORGE ANVIL: 20 SCRAP (COST: 15) · Reforge Ready (15 Scrap) — Roll your first Outlaw Mod'
+      );
+    });
+
+    it('renders forge station and sets data-forge-can-reforge and data-forge-advisor DOM attributes when scrap is sufficient (>= 15) with existing mods', () => {
+      const options = createHubOptions({
+        npcId: 'forge',
+        metaSave: { scrap: 35 },
+        player: { items: ['split_chamber', 'ricochet_mod'] }
+      });
+      modal.open(options);
+
+      const overlayEl = document.getElementById('hub-station-overlay')!;
+      expect(overlayEl.getAttribute('data-forge-can-reforge')).toBe('true');
+      expect(overlayEl.getAttribute('data-forge-advisor')).toBe(
+        'FORGE ANVIL: 35 SCRAP (COST: 15) · Reforge Ready (15 Scrap) — Reroll & upgrade active mod loadout'
+      );
+    });
+
+    it('sets forge advisor attributes when opened with blacksmith alias and updates via renderForge', () => {
+      const options = createHubOptions({
+        npcId: 'blacksmith',
+        metaSave: { scrap: 15 },
+        player: { items: [] }
+      });
+      modal.open(options);
+
+      const overlayEl = document.getElementById('hub-station-overlay')!;
+      expect(overlayEl.getAttribute('data-forge-can-reforge')).toBe('true');
+      expect(overlayEl.getAttribute('data-forge-advisor')).toBe(
+        'FORGE ANVIL: 15 SCRAP (COST: 15) · Reforge Ready (15 Scrap) — Roll your first Outlaw Mod'
+      );
+
+      // Re-render forge with updated player items
+      modal.renderForge({
+        ...options,
+        metaSave: { scrap: 25 },
+        player: { items: ['cryo_rounds'] }
+      });
+      expect(overlayEl.getAttribute('data-forge-can-reforge')).toBe('true');
+      expect(overlayEl.getAttribute('data-forge-advisor')).toBe(
+        'FORGE ANVIL: 25 SCRAP (COST: 15) · Reforge Ready (15 Scrap) — Reroll & upgrade active mod loadout'
+      );
+    });
+
+    it('supports modal.open shorthand with string npcId forge', () => {
+      modal.open('forge', { scrap: 8 }, { items: [] });
+      const overlayEl = document.getElementById('hub-station-overlay')!;
+      expect(overlayEl.getAttribute('data-forge-can-reforge')).toBe('false');
+      expect(overlayEl.getAttribute('data-forge-advisor')).toBe(
+        'FORGE ANVIL: 8 SCRAP (COST: 15) · Need 7 more Scrap to Reforge at the Anvil'
+      );
+    });
+  });
+
+  describe('getForgeStationAdvisor pure helper (M101)', () => {
+    it('returns insufficient scrap advice when scrap < 15', () => {
+      // 0 scrap
+      const adv0: ForgeStationAdvisor = getForgeStationAdvisor({ scrap: 0 }, { items: [] });
+      expect(adv0).toEqual({
+        canReforge: false,
+        scrapAvailable: 0,
+        reforgeCost: 15,
+        modCount: 0,
+        recommendedAction: 'Need 15 more Scrap to Reforge at the Anvil',
+        summaryLine: 'FORGE ANVIL: 0 SCRAP (COST: 15) · Need 15 more Scrap to Reforge at the Anvil'
+      });
+
+      // 10 scrap
+      const adv10 = getForgeStationAdvisor({ scrap: 10 }, { items: ['m1'] });
+      expect(adv10).toEqual({
+        canReforge: false,
+        scrapAvailable: 10,
+        reforgeCost: 15,
+        modCount: 1,
+        recommendedAction: 'Need 5 more Scrap to Reforge at the Anvil',
+        summaryLine: 'FORGE ANVIL: 10 SCRAP (COST: 15) · Need 5 more Scrap to Reforge at the Anvil'
+      });
+
+      // 14 scrap (boundary condition)
+      const adv14 = getForgeStationAdvisor({ scrap: 14 }, null);
+      expect(adv14.canReforge).toBe(false);
+      expect(adv14.scrapAvailable).toBe(14);
+      expect(adv14.recommendedAction).toBe('Need 1 more Scrap to Reforge at the Anvil');
+      expect(adv14.summaryLine).toBe('FORGE ANVIL: 14 SCRAP (COST: 15) · Need 1 more Scrap to Reforge at the Anvil');
+    });
+
+    it('gracefully handles missing, null, undefined, or negative scrap', () => {
+      const advNull = getForgeStationAdvisor(null, null);
+      expect(advNull.canReforge).toBe(false);
+      expect(advNull.scrapAvailable).toBe(0);
+      expect(advNull.modCount).toBe(0);
+      expect(advNull.recommendedAction).toBe('Need 15 more Scrap to Reforge at the Anvil');
+
+      const advNeg = getForgeStationAdvisor({ scrap: -10 }, undefined);
+      expect(advNeg.canReforge).toBe(false);
+      expect(advNeg.scrapAvailable).toBe(0);
+      expect(advNeg.recommendedAction).toBe('Need 15 more Scrap to Reforge at the Anvil');
+
+      const advNaN = getForgeStationAdvisor({ scrap: NaN }, { items: undefined as any });
+      expect(advNaN.canReforge).toBe(false);
+      expect(advNaN.scrapAvailable).toBe(0);
+      expect(advNaN.modCount).toBe(0);
+    });
+
+    it('returns first outlaw mod advice when scrap >= 15 and modCount === 0', () => {
+      // Exactly 15 scrap
+      const adv15 = getForgeStationAdvisor({ scrap: 15 }, { items: [] });
+      expect(adv15).toEqual({
+        canReforge: true,
+        scrapAvailable: 15,
+        reforgeCost: 15,
+        modCount: 0,
+        recommendedAction: 'Reforge Ready (15 Scrap) — Roll your first Outlaw Mod',
+        summaryLine: 'FORGE ANVIL: 15 SCRAP (COST: 15) · Reforge Ready (15 Scrap) — Roll your first Outlaw Mod'
+      });
+
+      // 40 scrap with no player provided
+      const adv40 = getForgeStationAdvisor({ scrap: 40 });
+      expect(adv40.canReforge).toBe(true);
+      expect(adv40.scrapAvailable).toBe(40);
+      expect(adv40.modCount).toBe(0);
+      expect(adv40.recommendedAction).toBe('Reforge Ready (15 Scrap) — Roll your first Outlaw Mod');
+      expect(adv40.summaryLine).toBe('FORGE ANVIL: 40 SCRAP (COST: 15) · Reforge Ready (15 Scrap) — Roll your first Outlaw Mod');
+    });
+
+    it('returns loadout reroll & upgrade advice when scrap >= 15 and modCount > 0', () => {
+      // 1 mod
+      const adv1 = getForgeStationAdvisor({ scrap: 15 }, { items: ['split_chamber'] });
+      expect(adv1).toEqual({
+        canReforge: true,
+        scrapAvailable: 15,
+        reforgeCost: 15,
+        modCount: 1,
+        recommendedAction: 'Reforge Ready (15 Scrap) — Reroll & upgrade active mod loadout',
+        summaryLine: 'FORGE ANVIL: 15 SCRAP (COST: 15) · Reforge Ready (15 Scrap) — Reroll & upgrade active mod loadout'
+      });
+
+      // Multiple mods
+      const adv3 = getForgeStationAdvisor(
+        { scrap: 60 },
+        { items: ['hollow_point', 'ricochet_mod', 'cryo_rounds'] }
+      );
+      expect(adv3).toEqual({
+        canReforge: true,
+        scrapAvailable: 60,
+        reforgeCost: 15,
+        modCount: 3,
+        recommendedAction: 'Reforge Ready (15 Scrap) — Reroll & upgrade active mod loadout',
+        summaryLine: 'FORGE ANVIL: 60 SCRAP (COST: 15) · Reforge Ready (15 Scrap) — Reroll & upgrade active mod loadout'
+      });
+    });
+
+    it('is accessible via HubStationModalController static and instance methods', () => {
+      const meta = { scrap: 25 };
+      const player = { items: ['nanite_repair'] };
+
+      expect(HubStationModalController.getForgeStationAdvisor(meta, player)).toEqual(
+        getForgeStationAdvisor(meta, player)
+      );
+
+      const controller = new HubStationModalController();
+      expect(controller.getForgeStationAdvisor(meta, player)).toEqual(
+        getForgeStationAdvisor(meta, player)
       );
     });
   });
