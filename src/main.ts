@@ -555,10 +555,14 @@ export class MotoRogueApp {
     const dt = Math.min(0.05, (now - this.lastTime) / 1000);
     this.lastTime = now;
 
-    this.update(dt);
-    this.render(now);
-
-    requestAnimationFrame((t) => this.tick(t));
+    try {
+      this.update(dt);
+      this.render(now);
+    } finally {
+      if (this.running) {
+        requestAnimationFrame((t) => this.tick(t));
+      }
+    }
   }
 
   /**
@@ -1015,6 +1019,7 @@ export class MotoRogueApp {
     // 9. Pickup Interactions
     for (let i = room.pickups.length - 1; i >= 0; i--) {
       const p = room.pickups[i];
+      if (!p) continue;
       if (Math.hypot(p.x - player.x, p.y - player.y) < player.radius + p.radius) {
         if (p.type === 'heart') {
           player.hp = Math.min(player.maxHp, player.hp + 1);
@@ -1061,7 +1066,7 @@ export class MotoRogueApp {
           if (choiceGroup) {
             this.audio.choiceLock?.();
             for (let k = room.pickups.length - 1; k >= 0; k--) {
-              if ((room.pickups[k] as any).choiceGroup === choiceGroup) {
+              if ((room.pickups[k] as any)?.choiceGroup === choiceGroup) {
                 room.pickups.splice(k, 1);
               }
             }
@@ -1074,6 +1079,7 @@ export class MotoRogueApp {
               maxLife: 1.1
             });
           }
+          i = Math.min(i, room.pickups.length);
           if (!wasEvo && isWeaponEvolved(player.weapon, player)) {
             this.hud.showToast('OVERCLOCK EVOLUTION', `⚡ ${WEAPON_EVOLUTIONS[player.weapon].evolvedName} ONLINE!`, '#ffd60a', 2600);
           } else {

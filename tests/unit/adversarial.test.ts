@@ -1270,4 +1270,50 @@ describe('MotoRogueApp openDropChoiceModal live stack telemetry (M144)', () => {
     const validPickup = { type: 'item_drop', choices: ['gasoline'] } as any;
     expect(() => (app as any).openDropChoiceModal(validPickup)).not.toThrow();
   });
+
+  it('P1 Regression: picking up either mod pedestal in the Mod Room (treasure choiceGroup) never throws or freezes the update loop', () => {
+    // Case 1: Picking up the right-hand pedestal (index 1) when choiceGroup despawns index 0
+    const app1 = new MotoRogueApp();
+    app1.startNewRun(false);
+
+    const treasureEntry1 = Object.entries(app1.dungeon).find(([, r]) => r.type === 'treasure');
+    expect(treasureEntry1).toBeDefined();
+    const [coord1, treasureRoom1] = treasureEntry1!;
+    const [tx1, ty1] = coord1.split(',').map(Number);
+
+    app1.curRoomX = tx1;
+    app1.curRoomY = ty1;
+    expect(treasureRoom1.pickups.length).toBe(2);
+
+    const rightPedestal = treasureRoom1.pickups[1];
+    app1.stateManager.player.x = rightPedestal.x;
+    app1.stateManager.player.y = rightPedestal.y;
+
+    expect(() => app1.update(0.016)).not.toThrow();
+    expect(treasureRoom1.pickups.length).toBe(0);
+    expect(app1.stateManager.player.items.length).toBe(1);
+
+    // Case 2: Picking up the left-hand pedestal (index 0) when additional pickups exist in the room
+    const app2 = new MotoRogueApp();
+    app2.startNewRun(false);
+
+    const treasureEntry2 = Object.entries(app2.dungeon).find(([, r]) => r.type === 'treasure');
+    expect(treasureEntry2).toBeDefined();
+    const [coord2, treasureRoom2] = treasureEntry2!;
+    const [tx2, ty2] = coord2.split(',').map(Number);
+
+    app2.curRoomX = tx2;
+    app2.curRoomY = ty2;
+    treasureRoom2.pickups.unshift({ x: 100, y: 100, type: 'heart', radius: 13 } as any);
+    expect(treasureRoom2.pickups.length).toBe(3);
+
+    const leftPedestal = treasureRoom2.pickups[1];
+    app2.stateManager.player.x = leftPedestal.x;
+    app2.stateManager.player.y = leftPedestal.y;
+
+    expect(() => app2.update(0.016)).not.toThrow();
+    expect(treasureRoom2.pickups.length).toBe(1);
+    expect(treasureRoom2.pickups[0].type).toBe('heart');
+    expect(app2.stateManager.player.items.length).toBe(1);
+  });
 });
