@@ -45,6 +45,7 @@ import {
   getNextSectorBriefing
 } from '@/ui/portalModal';
 import { HUDController } from '@/ui/hud';
+import { MotoRogueApp } from '@/main';
 
 describe('Adversarial Challenge 1: Type Strictness & Untyped Any Audit', () => {
   it('scans all src/ TypeScript files for ts-ignore, ts-expect-error, and ts-nocheck directives', () => {
@@ -1128,5 +1129,145 @@ describe('Adversarial Challenge 9: HUD Rider Mobility Telemetry Attributes (M77)
     // Case 3: neither present
     document.body.innerHTML = '<div></div>';
     expect(() => hud.updateSidebar(player, 1)).not.toThrow();
+  });
+});
+
+describe('MotoRogueApp openDropChoiceModal live stack telemetry (M144)', () => {
+  it('sets data-drop-* telemetry on #drop-overlay and data-choice-* on .drop-card for mixed stack tiers (NEW, STACK_2, EVO_READY)', () => {
+    document.body.innerHTML = `
+      <div id="drop-overlay" class="hidden">
+        <div id="drop-choices"></div>
+      </div>
+    `;
+
+    const app = new MotoRogueApp();
+    app.stateManager.player.itemStacks = {
+      nitro_syringe: 0,
+      tire_iron: 1,
+      gasoline: 2
+    };
+
+    const pickup = {
+      type: 'item_drop',
+      choices: ['nitro_syringe', 'tire_iron', 'gasoline']
+    } as any;
+
+    (app as any).openDropChoiceModal(pickup);
+
+    const overlay = document.getElementById('drop-overlay')!;
+    expect(overlay.getAttribute('data-drop-new-count')).toBe('1');
+    expect(overlay.getAttribute('data-drop-stack-upgrade-count')).toBe('1');
+    expect(overlay.getAttribute('data-drop-evo-ready-count')).toBe('1');
+    expect(overlay.getAttribute('data-drop-summary')).toContain('3 CHOICES');
+    expect(overlay.getAttribute('data-drop-summary')).toContain('1 NEW');
+    expect(overlay.getAttribute('data-drop-summary')).toContain('1 UPGRADE');
+    expect(overlay.getAttribute('data-drop-summary')).toContain('1 EVO-READY');
+    expect(overlay.classList.contains('hidden')).toBe(false);
+
+    const cards = document.querySelectorAll('.drop-card');
+    expect(cards.length).toBe(3);
+
+    expect(cards[0].getAttribute('data-choice-stack-tier')).toBe('NEW');
+    expect(cards[0].getAttribute('data-choice-current-stacks')).toBe('0');
+    expect(cards[0].getAttribute('data-choice-next-stacks')).toBe('1');
+
+    expect(cards[1].getAttribute('data-choice-stack-tier')).toBe('STACK_2');
+    expect(cards[1].getAttribute('data-choice-current-stacks')).toBe('1');
+    expect(cards[1].getAttribute('data-choice-next-stacks')).toBe('2');
+
+    expect(cards[2].getAttribute('data-choice-stack-tier')).toBe('EVO_READY');
+    expect(cards[2].getAttribute('data-choice-current-stacks')).toBe('2');
+    expect(cards[2].getAttribute('data-choice-next-stacks')).toBe('3');
+  });
+
+  it('populates all-NEW telemetry and default data-choice-* attributes when player has zero item stacks', () => {
+    document.body.innerHTML = `
+      <div id="drop-overlay"></div>
+    `;
+
+    const app = new MotoRogueApp();
+    app.stateManager.player.itemStacks = {};
+
+    const pickup = {
+      type: 'item_drop',
+      choices: ['adrenaline_shot', 'heavy_plating', 'nano_repair']
+    } as any;
+
+    (app as any).openDropChoiceModal(pickup);
+
+    const overlay = document.getElementById('drop-overlay')!;
+    expect(overlay.getAttribute('data-drop-new-count')).toBe('3');
+    expect(overlay.getAttribute('data-drop-stack-upgrade-count')).toBe('0');
+    expect(overlay.getAttribute('data-drop-evo-ready-count')).toBe('0');
+    expect(overlay.getAttribute('data-drop-summary')).toBe('DROPS: 3 CHOICES // 3 NEW · 0 UPGRADE · 0 EVO-READY');
+
+    const cards = document.querySelectorAll('.drop-card');
+    expect(cards.length).toBe(3);
+
+    cards.forEach((card) => {
+      expect(card.getAttribute('data-choice-stack-tier')).toBe('NEW');
+      expect(card.getAttribute('data-choice-current-stacks')).toBe('0');
+      expect(card.getAttribute('data-choice-next-stacks')).toBe('1');
+    });
+  });
+
+  it('correctly tracks OVERSTACK tier and stack counts on pre-existing .drop-card elements', () => {
+    document.body.innerHTML = `
+      <div id="drop-overlay">
+        <div class="drop-card" id="pre-card-0"></div>
+        <div class="drop-card" id="pre-card-1"></div>
+      </div>
+    `;
+
+    const app = new MotoRogueApp();
+    app.stateManager.player.itemStacks = {
+      gasoline: 3,
+      tire_iron: 5
+    };
+
+    const pickup = {
+      type: 'item_drop',
+      choices: ['gasoline', 'tire_iron']
+    } as any;
+
+    (app as any).openDropChoiceModal(pickup);
+
+    const overlay = document.getElementById('drop-overlay')!;
+    expect(overlay.getAttribute('data-drop-new-count')).toBe('0');
+    expect(overlay.getAttribute('data-drop-stack-upgrade-count')).toBe('2');
+    expect(overlay.getAttribute('data-drop-evo-ready-count')).toBe('0');
+    expect(overlay.getAttribute('data-drop-summary')).toBe('DROPS: 2 CHOICES // 0 NEW · 2 UPGRADE · 0 EVO-READY');
+
+    const card0 = document.getElementById('pre-card-0')!;
+    const card1 = document.getElementById('pre-card-1')!;
+
+    expect(card0.getAttribute('data-choice-stack-tier')).toBe('OVERSTACK');
+    expect(card0.getAttribute('data-choice-current-stacks')).toBe('3');
+    expect(card0.getAttribute('data-choice-next-stacks')).toBe('4');
+
+    expect(card1.getAttribute('data-choice-stack-tier')).toBe('OVERSTACK');
+    expect(card1.getAttribute('data-choice-current-stacks')).toBe('5');
+    expect(card1.getAttribute('data-choice-next-stacks')).toBe('6');
+  });
+
+  it('handles empty drop choices and absent DOM elements defensively without throwing', () => {
+    // Sub-case A: Empty choices array with overlay present
+    document.body.innerHTML = '<div id="drop-overlay"></div>';
+    const app = new MotoRogueApp();
+    const emptyPickup = { type: 'item_drop', choices: [] } as any;
+
+    expect(() => (app as any).openDropChoiceModal(emptyPickup)).not.toThrow();
+
+    const overlay = document.getElementById('drop-overlay')!;
+    expect(overlay.getAttribute('data-drop-new-count')).toBe('0');
+    expect(overlay.getAttribute('data-drop-stack-upgrade-count')).toBe('0');
+    expect(overlay.getAttribute('data-drop-evo-ready-count')).toBe('0');
+    expect(overlay.getAttribute('data-drop-summary')).toBe('DROPS: NO ITEMS AVAILABLE');
+    expect(document.querySelectorAll('.drop-card').length).toBe(0);
+
+    // Sub-case B: DOM without #drop-overlay present (should not throw)
+    document.body.innerHTML = '<div></div>';
+    const validPickup = { type: 'item_drop', choices: ['gasoline'] } as any;
+    expect(() => (app as any).openDropChoiceModal(validPickup)).not.toThrow();
   });
 });

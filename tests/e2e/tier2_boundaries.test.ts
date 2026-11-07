@@ -67,7 +67,8 @@ import {
   getFloorScale,
   calcEnemyHp,
   createEnemy,
-  getRoomThreatAssessment
+  getRoomThreatAssessment,
+  getRoomVisualClutterAudit
 } from '@/systems/enemyAI';
 
 import { getHubStationPromptInfo } from '@/ui/hubStationModal';
@@ -86,6 +87,10 @@ import {
 import { formatModDeckTooltipHint } from '@/ui/tooltip';
 import { getWeaponArsenalSummary } from '../../src/data/weapons';
 import { getBossEncounterBriefing } from '../../src/systems/enemyAI';
+import {
+  DropModalController,
+  getDropItemStackSummary
+} from '../../src/ui/dropModal';
 
 describe('Tier 2: Boundary & Corner Cases', () => {
   let player: PlayerState;
@@ -1612,6 +1617,323 @@ describe('Tier 2: Boundary & Corner Cases', () => {
 
       const hintUnknown = formatModDeckTooltipHint('non_existent_mod_id', { modStacks: {} });
       expect(hintUnknown).toBe('');
+    });
+  });
+
+  // ==========================================================================
+  // WAVE 39-40 BOUNDARY STRESS: VISUAL CLUTTER AUDIT & DROP MODAL (M146)
+  // ==========================================================================
+  describe('Wave 39-40 Boundary Stress: getRoomVisualClutterAudit & DropModalController (M146)', () => {
+    it('handles null, undefined, and empty room objects in getRoomVisualClutterAudit with clean fallback telemetry', () => {
+      // 1. null room
+      const auditNull = getRoomVisualClutterAudit(null);
+      expect(auditNull.obstacleCount).toBe(0);
+      expect(auditNull.hazardObstacleCount).toBe(0);
+      expect(auditNull.biomeZoneCount).toBe(0);
+      expect(auditNull.activeEnemyCount).toBe(0);
+      expect(auditNull.clutterScore).toBe(0);
+      expect(auditNull.readabilityGrade).toBe('CLEAN');
+      expect(auditNull.isCleanLayout).toBe(true);
+      expect(auditNull.layoutSummary).toBe('F1 CLEAN ARENA // 0 OBSTACLES · 0 ZONES · 0 HOSTILES');
+
+      // 2. undefined room
+      const auditUndef = getRoomVisualClutterAudit(undefined);
+      expect(auditUndef.clutterScore).toBe(0);
+      expect(auditUndef.readabilityGrade).toBe('CLEAN');
+      expect(auditUndef.isCleanLayout).toBe(true);
+
+      // 3. empty room object
+      const auditEmpty = getRoomVisualClutterAudit({});
+      expect(auditEmpty.obstacleCount).toBe(0);
+      expect(auditEmpty.clutterScore).toBe(0);
+      expect(auditEmpty.readabilityGrade).toBe('CLEAN');
+      expect(auditEmpty.isCleanLayout).toBe(true);
+
+      // 4. room with explicit null/undefined internal collections
+      const auditCorrupt = getRoomVisualClutterAudit({
+        obstacles: null as any,
+        biomeZones: undefined as any,
+        enemies: null as any
+      });
+      expect(auditCorrupt.obstacleCount).toBe(0);
+      expect(auditCorrupt.biomeZoneCount).toBe(0);
+      expect(auditCorrupt.activeEnemyCount).toBe(0);
+      expect(auditCorrupt.clutterScore).toBe(0);
+      expect(auditCorrupt.isCleanLayout).toBe(true);
+    });
+
+    it('handles corrupted room properties (non-arrays, null items, negative/NaN enemy hp) in getRoomVisualClutterAudit', () => {
+      // 1. Non-array properties
+      const auditMalformedProps = getRoomVisualClutterAudit({
+        obstacles: 'invalid_string' as any,
+        biomeZones: 9999 as any,
+        enemies: { malformed: true } as any
+      }, 3);
+      expect(auditMalformedProps.obstacleCount).toBe(0);
+      expect(auditMalformedProps.biomeZoneCount).toBe(0);
+      expect(auditMalformedProps.activeEnemyCount).toBe(0);
+      expect(auditMalformedProps.clutterScore).toBe(0);
+      expect(auditMalformedProps.readabilityGrade).toBe('CLEAN');
+      expect(auditMalformedProps.isCleanLayout).toBe(true);
+      expect(auditMalformedProps.layoutSummary).toContain('F3 CLEAN ARENA');
+
+      // 2. Corrupted items inside arrays
+      const auditCorruptedEntries = getRoomVisualClutterAudit({
+        obstacles: [
+          null,
+          undefined,
+          { type: 'rock' },
+          { type: 'explosive_barrel' },
+          { type: 'cryo_barrel' },
+          { type: 'spikes' },
+          { type: 'unknown_hazard' }
+        ] as any,
+        biomeZones: [
+          { type: 'oil_slick', x: 100, y: 100, radius: 40 }
+        ] as any,
+        enemies: [
+          null,
+          undefined,
+          { hp: 0 },
+          { hp: -50 },
+          { hp: NaN },
+          { hp: 120 },
+          { hp: 35 }
+        ] as any
+      }, 2);
+
+      // obstacleCount = 7 elements in array
+      expect(auditCorruptedEntries.obstacleCount).toBe(7);
+      // hazardObstacleCount = explosive_barrel + cryo_barrel + spikes = 3
+      expect(auditCorruptedEntries.hazardObstacleCount).toBe(3);
+      expect(auditCorruptedEntries.biomeZoneCount).toBe(1);
+      // activeEnemyCount = only enemies with hp > 0 (120, 35) = 2
+      expect(auditCorruptedEntries.activeEnemyCount).toBe(2);
+
+      // clutterScore = 7 * 2 + 1 * 3 + 2 = 19 -> 'MODERATE'
+      expect(auditCorruptedEntries.clutterScore).toBe(19);
+      expect(auditCorruptedEntries.readabilityGrade).toBe('MODERATE');
+      expect(auditCorruptedEntries.isCleanLayout).toBe(true);
+      expect(auditCorruptedEntries.layoutSummary).toBe(
+        'F2 MODERATE ARENA // 7 OBSTACLES · 1 ZONES · 2 HOSTILES'
+      );
+    });
+
+    it('sanitizes NaN, Infinity, -Infinity, negative, and decimal floor numbers in getRoomVisualClutterAudit to safe floor values', () => {
+      const mockRoom = {
+        obstacles: [{ type: 'rock' }] as any,
+        biomeZones: [],
+        enemies: [{ hp: 50 }] as any
+      };
+
+      // 1. NaN floor
+      const auditNaN = getRoomVisualClutterAudit(mockRoom, NaN);
+      expect(auditNaN.layoutSummary).toContain('F1 ');
+
+      // 2. Infinity floor
+      const auditInf = getRoomVisualClutterAudit(mockRoom, Infinity);
+      expect(auditInf.layoutSummary).toContain('F1 ');
+
+      // 3. -Infinity floor
+      const auditNegInf = getRoomVisualClutterAudit(mockRoom, -Infinity);
+      expect(auditNegInf.layoutSummary).toContain('F1 ');
+
+      // 4. -999 floor
+      const auditNeg999 = getRoomVisualClutterAudit(mockRoom, -999);
+      expect(auditNeg999.layoutSummary).toContain('F1 ');
+
+      // 5. 0 floor
+      const auditZero = getRoomVisualClutterAudit(mockRoom, 0);
+      expect(auditZero.layoutSummary).toContain('F1 ');
+
+      // 6. Decimal floor (4.85 -> 4)
+      const auditDecimal = getRoomVisualClutterAudit(mockRoom, 4.85);
+      expect(auditDecimal.layoutSummary).toContain('F4 ');
+
+      // 7. Large integer floor (9999)
+      const auditHigh = getRoomVisualClutterAudit(mockRoom, 9999);
+      expect(auditHigh.layoutSummary).toContain('F9999 ');
+      expect(Number.isFinite(auditHigh.clutterScore)).toBe(true);
+    });
+
+    it('handles empty, null, undefined, and corrupted drop choice arrays in getDropItemStackSummary and DropModalController', () => {
+      // 1. null choices and player
+      const sumNull = getDropItemStackSummary(null, null);
+      expect(sumNull.totalChoices).toBe(0);
+      expect(sumNull.newItemsCount).toBe(0);
+      expect(sumNull.stackUpgradeCount).toBe(0);
+      expect(sumNull.evoReadyCount).toBe(0);
+      expect(sumNull.summaryLine).toBe('DROPS: NO ITEMS AVAILABLE');
+      expect(sumNull.choiceBreakdown).toEqual([]);
+
+      // 2. undefined choices and player
+      const sumUndef = getDropItemStackSummary(undefined, undefined);
+      expect(sumUndef.totalChoices).toBe(0);
+      expect(sumUndef.summaryLine).toBe('DROPS: NO ITEMS AVAILABLE');
+
+      // 3. empty choices array
+      const sumEmpty = getDropItemStackSummary([], null);
+      expect(sumEmpty.totalChoices).toBe(0);
+      expect(sumEmpty.summaryLine).toBe('DROPS: NO ITEMS AVAILABLE');
+
+      // 4. Corrupted choice array items (null, undefined, number, object without id)
+      const corruptedChoices = [
+        null,
+        undefined,
+        42,
+        '',
+        { invalid: true },
+        'unknown_item_xyz'
+      ] as any;
+      const sumCorrupt = getDropItemStackSummary(corruptedChoices, null);
+      expect(sumCorrupt.totalChoices).toBe(6);
+      expect(sumCorrupt.choiceBreakdown.length).toBe(6);
+      expect(sumCorrupt.newItemsCount).toBe(6);
+
+      // 5. DropModalController with empty choices array and null player
+      document.body.innerHTML = `
+        <div id="drop-overlay" class="hidden">
+          <div id="drop-choices"></div>
+        </div>
+      `;
+      const modal = new DropModalController();
+      modal.open([]);
+      expect(modal.isOpen()).toBe(true);
+
+      const overlay = document.getElementById('drop-overlay')!;
+      expect(overlay.getAttribute('data-drop-new-count')).toBe('0');
+      expect(overlay.getAttribute('data-drop-stack-upgrade-count')).toBe('0');
+      expect(overlay.getAttribute('data-drop-evo-ready-count')).toBe('0');
+      expect(overlay.getAttribute('data-drop-summary')).toBe('DROPS: NO ITEMS AVAILABLE');
+
+      // Out-of-bounds selection tests
+      modal.select(999);
+      modal.select(-1);
+      expect(modal.isOpen()).toBe(false);
+      modal.close();
+    });
+
+    it('handles extreme stack counts (9999), negative stacks, and non-numeric player itemStacks in getDropItemStackSummary', () => {
+      // 1. Extreme stack count = 9999
+      const extremeSummary = getDropItemStackSummary(['nitro_syringe'], {
+        itemStacks: { nitro_syringe: 9999 }
+      });
+      expect(extremeSummary.totalChoices).toBe(1);
+      expect(extremeSummary.newItemsCount).toBe(0);
+      expect(extremeSummary.stackUpgradeCount).toBe(1);
+      expect(extremeSummary.evoReadyCount).toBe(0);
+      expect(extremeSummary.choiceBreakdown[0]).toEqual({
+        id: 'nitro_syringe',
+        name: 'Nitro Syringe',
+        currentStacks: 9999,
+        nextStacks: 10000,
+        nextTier: 'OVERSTACK'
+      });
+
+      // 2. Negative stack counts clamped to 0
+      const negativeSummary = getDropItemStackSummary(['nitro_syringe'], {
+        itemStacks: { nitro_syringe: -100 }
+      });
+      expect(negativeSummary.choiceBreakdown[0].currentStacks).toBe(0);
+      expect(negativeSummary.choiceBreakdown[0].nextStacks).toBe(1);
+      expect(negativeSummary.choiceBreakdown[0].nextTier).toBe('NEW');
+      expect(negativeSummary.newItemsCount).toBe(1);
+
+      // 3. NaN, Infinity, -Infinity stacks clamped to 0
+      const nanSummary = getDropItemStackSummary(['nitro_syringe', 'tire_iron', 'gasoline'], {
+        itemStacks: {
+          nitro_syringe: NaN,
+          tire_iron: Infinity,
+          gasoline: -Infinity
+        }
+      });
+      expect(nanSummary.newItemsCount).toBe(3);
+      for (const breakdown of nanSummary.choiceBreakdown) {
+        expect(breakdown.currentStacks).toBe(0);
+        expect(breakdown.nextStacks).toBe(1);
+        expect(breakdown.nextTier).toBe('NEW');
+      }
+
+      // 4. Non-numeric string and object stack values clamped to 0
+      const stringSummary = getDropItemStackSummary(['nitro_syringe', 'tire_iron'], {
+        itemStacks: {
+          nitro_syringe: 'ten' as any,
+          tire_iron: { nested: true } as any
+        }
+      });
+      expect(stringSummary.newItemsCount).toBe(2);
+      expect(stringSummary.choiceBreakdown[0].nextTier).toBe('NEW');
+      expect(stringSummary.choiceBreakdown[1].nextTier).toBe('NEW');
+
+      // 5. Player with null or corrupted itemStacks property
+      const nullStacksSummary = getDropItemStackSummary(['nitro_syringe'], {
+        itemStacks: null
+      });
+      expect(nullStacksSummary.newItemsCount).toBe(1);
+      expect(nullStacksSummary.choiceBreakdown[0].nextTier).toBe('NEW');
+    });
+
+    it('stress tests DropModalController with missing DOM containers, mismatched card counts, and rapid cycling under extreme stack conditions', () => {
+      // 1. Missing DOM containers completely (document.body empty)
+      document.body.innerHTML = '';
+      const noDomModal = new DropModalController();
+      noDomModal.open(['nitro_syringe'], { itemStacks: { nitro_syringe: 9999 } });
+      expect(noDomModal.isOpen()).toBe(true);
+      expect(noDomModal.getStackSummary()?.choiceBreakdown[0].nextTier).toBe('OVERSTACK');
+      expect(noDomModal.getActiveChoices()).toEqual(['nitro_syringe']);
+      noDomModal.close();
+      expect(noDomModal.isOpen()).toBe(false);
+
+      // 2. Pre-existing DOM with fewer cards than choices (1 card vs 3 choices)
+      document.body.innerHTML = `
+        <div id="drop-overlay">
+          <div class="drop-choice-card"></div>
+        </div>
+      `;
+      const mismatchedModal = new DropModalController();
+      mismatchedModal.open(['nitro_syringe', 'tire_iron', 'gasoline'], {
+        itemStacks: { nitro_syringe: 9999 }
+      });
+      expect(mismatchedModal.isOpen()).toBe(true);
+      const singleCard = document.querySelector('.drop-choice-card')!;
+      expect(singleCard.getAttribute('data-choice-stack-tier')).toBe('OVERSTACK');
+      expect(singleCard.getAttribute('data-choice-current-stacks')).toBe('9999');
+      mismatchedModal.close();
+
+      // 3. Pre-existing DOM with more cards than choices (3 cards vs 1 choice)
+      document.body.innerHTML = `
+        <div id="drop-overlay">
+          <div class="drop-choice-card"></div>
+          <div class="drop-choice-card"></div>
+          <div class="drop-choice-card"></div>
+        </div>
+      `;
+      const excessCardsModal = new DropModalController();
+      excessCardsModal.open(['nitro_syringe'], { itemStacks: { nitro_syringe: 9999 } });
+      expect(excessCardsModal.isOpen()).toBe(true);
+      const cards = document.querySelectorAll('.drop-choice-card');
+      expect(cards[0].getAttribute('data-choice-stack-tier')).toBe('OVERSTACK');
+      excessCardsModal.close();
+
+      // 4. Rapid open/close cycling stress (10 sequential toggles with extreme/corrupt data)
+      document.body.innerHTML = `
+        <div id="drop-overlay" class="hidden">
+          <div id="drop-choices"></div>
+        </div>
+      `;
+      const cycleModal = new DropModalController();
+      for (let i = 0; i < 10; i++) {
+        if (i % 3 === 0) {
+          cycleModal.open([], null);
+        } else if (i % 3 === 1) {
+          cycleModal.open(['nitro_syringe'], { itemStacks: { nitro_syringe: 9999 } });
+        } else {
+          cycleModal.open(['gasoline', 'tire_iron'], { itemStacks: { gasoline: -99, tire_iron: NaN } });
+        }
+        expect(cycleModal.isOpen()).toBe(true);
+        cycleModal.close();
+        expect(cycleModal.isOpen()).toBe(false);
+      }
     });
   });
 });

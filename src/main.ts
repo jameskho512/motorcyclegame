@@ -53,6 +53,7 @@ import { PortalModalController, shouldPromptPortal, isClearOfPortal } from './ui
 import { SettingsController } from './ui/settings';
 import { TooltipManager } from './ui/tooltip';
 import { HubStationModalController } from './ui/hubStationModal';
+import { getDropItemStackSummary } from './ui/dropModal';
 import { WEAPONS, WEAPON_EVOLUTIONS, isWeaponEvolved } from './data/weapons';
 
 export class MotoRogueApp {
@@ -1026,6 +1027,11 @@ export class MotoRogueApp {
           room.pickups.splice(i, 1);
           this.updateHUD();
         } else if (p.type === 'item_drop') {
+          if ((p as any).choices && (p as any).choices.length > 0) {
+            this.openDropChoiceModal(p);
+            room.pickups.splice(i, 1);
+            continue;
+          }
           const wasEvo = isWeaponEvolved(player.weapon, player);
           const prevDuos = new Set(getActiveDuoSynergies(player).map(d => d.id));
           player.itemStacks[p.itemId] = (player.itemStacks[p.itemId] || 0) + 1;
@@ -1432,6 +1438,69 @@ export class MotoRogueApp {
         maxLife: 2.5
       });
       this.updateHUD();
+    }
+  }
+
+  public openDropChoiceModal(pickup: Pickup): void {
+    const choices: any[] = Array.isArray(pickup)
+      ? pickup
+      : ((pickup as any)?.choices ||
+         (pickup as any)?.dropChoices ||
+         (pickup as any)?.items ||
+         ((pickup as any)?.itemId ? [(pickup as any).itemId] : []));
+
+    const stackSummary = getDropItemStackSummary(choices, this.stateManager?.player);
+
+    const overlay = typeof document !== 'undefined' ? document.getElementById('drop-overlay') : null;
+    if (overlay) {
+      overlay.setAttribute('data-drop-new-count', String(stackSummary.newItemsCount));
+      overlay.setAttribute('data-drop-stack-upgrade-count', String(stackSummary.stackUpgradeCount));
+      overlay.setAttribute('data-drop-evo-ready-count', String(stackSummary.evoReadyCount));
+      overlay.setAttribute('data-drop-summary', stackSummary.summaryLine);
+      overlay.classList.remove('hidden');
+      overlay.style.display = 'flex';
+    }
+
+    const container = overlay
+      ? (overlay.querySelector('#drop-choices') || overlay.querySelector('.drop-choices') || overlay)
+      : null;
+
+    const existingCards = overlay?.querySelectorAll('.drop-card');
+    if (existingCards && existingCards.length === choices.length && choices.length > 0) {
+      choices.forEach((item, idx) => {
+        const card = existingCards[idx];
+        const breakdown = stackSummary.choiceBreakdown[idx];
+        if (breakdown) {
+          card.setAttribute('data-choice-stack-tier', breakdown.nextTier);
+          card.setAttribute('data-choice-current-stacks', String(breakdown.currentStacks));
+          card.setAttribute('data-choice-next-stacks', String(breakdown.nextStacks));
+        }
+        const itemId = typeof item === 'string' ? item : (item?.id || item?.itemId || '');
+        if (itemId) {
+          card.setAttribute('data-item-id', itemId);
+        }
+      });
+    } else if (container && typeof document !== 'undefined') {
+      if (existingCards && existingCards.length > 0) {
+        existingCards.forEach((c) => c.remove());
+      }
+      choices.forEach((item, idx) => {
+        const card = document.createElement('div');
+        card.className = 'drop-card drop-choice-card';
+        const breakdown = stackSummary.choiceBreakdown[idx];
+        if (breakdown) {
+          card.setAttribute('data-choice-stack-tier', breakdown.nextTier);
+          card.setAttribute('data-choice-current-stacks', String(breakdown.currentStacks));
+          card.setAttribute('data-choice-next-stacks', String(breakdown.nextStacks));
+        }
+        const itemId = typeof item === 'string' ? item : (item?.id || item?.itemId || '');
+        const itemName = typeof item === 'string' ? item : (item?.name || itemId || 'Item');
+        card.textContent = itemName;
+        if (itemId) {
+          card.setAttribute('data-item-id', itemId);
+        }
+        container.appendChild(card);
+      });
     }
   }
 }

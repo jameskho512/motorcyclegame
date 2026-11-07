@@ -24,6 +24,7 @@ import {
   updateWeaponDeck,
   updateModDeck,
   updateSurvivabilityTelemetry,
+  updateRoomThreatTelemetry,
   type ModStackTierClass,
   type MinimapFloorSummary,
   type DungeonGrid
@@ -4530,6 +4531,237 @@ describe('Render & UI Subsystems', () => {
       expect(summary.evoReadyCount).toBe(1);
       expect(summary.choiceBreakdown[0].nextTier).toBe('EVO_READY');
       expect(DropModalController.getDropItemStackSummary).toBe(getDropItemStackSummary);
+    });
+  });
+
+  describe('HUDController live room visual clutter audit telemetry (M143)', () => {
+    beforeEach(() => {
+      document.body.innerHTML = '';
+    });
+
+    const createRoom = (overrides: Partial<Room> = {}): Room => ({
+      x: 0,
+      y: 0,
+      type: 'combat',
+      cleared: false,
+      visited: true,
+      doors: { N: false, S: false, E: false, W: false },
+      obstacles: [],
+      enemies: [],
+      pickups: [],
+      hazards: [],
+      skids: [],
+      trapdoor: false,
+      ...overrides
+    });
+
+    it('stamps CLEAN readability grade, clean layout true, obstacle count, and layout summary on #hud-map, #hud-right, and minimapCanvas via updateRoomThreatTelemetry for clean room', () => {
+      document.body.innerHTML = `
+        <div id="game-wrapper">
+          <div id="hud-map"></div>
+          <div id="hud-right"></div>
+          <canvas id="minimap-canvas" width="240" height="150"></canvas>
+        </div>
+      `;
+
+      const hud = new HUDController();
+      const cleanRoom = createRoom({
+        obstacles: [
+          { x: 10, y: 10, type: 'rock' } as any,
+          { x: 20, y: 20, type: 'rock' } as any
+        ],
+        biomeZones: [
+          { type: 'oil_slick', bounds: { x: 0, y: 0, width: 50, height: 50 } } as any
+        ],
+        enemies: [
+          { id: 1, hp: 20, type: 'swarmer', isDummy: false } as any,
+          { id: 2, hp: 30, type: 'dasher', isDummy: false } as any
+        ]
+      });
+
+      hud.updateRoomThreatTelemetry(cleanRoom, 1);
+
+      const mapEl = document.getElementById('hud-map')!;
+      const rightEl = document.getElementById('hud-right')!;
+      const canvasEl = document.getElementById('minimap-canvas')!;
+
+      for (const el of [mapEl, rightEl, canvasEl]) {
+        expect(el.getAttribute('data-room-readability-grade')).toBe('CLEAN');
+        expect(el.getAttribute('data-room-clean-layout')).toBe('true');
+        expect(el.getAttribute('data-room-obstacle-count')).toBe('2');
+        expect(el.getAttribute('data-room-layout-summary')).toBe('F1 CLEAN ARENA // 2 OBSTACLES · 1 ZONES · 2 HOSTILES');
+      }
+    });
+
+    it('stamps MODERATE readability grade and clean layout true on #hud-map and #hud-right for moderate combat room', () => {
+      document.body.innerHTML = `
+        <div id="hud-map"></div>
+        <div id="hud-right"></div>
+      `;
+
+      const hud = new HUDController();
+      // 6 obstacles (<=8), 2 biome zones (<=3), 9 active enemies
+      // clutterScore = 6*2 + 2*3 + 9 = 12 + 6 + 9 = 27 (19..30 -> MODERATE)
+      const moderateRoom = createRoom({
+        obstacles: Array.from({ length: 6 }, (_, i) => ({ x: i * 10, y: 10, type: 'rock' } as any)),
+        biomeZones: [
+          { type: 'acid_pool', bounds: { x: 0, y: 0, width: 30, height: 30 } } as any,
+          { type: 'oil_slick', bounds: { x: 40, y: 40, width: 30, height: 30 } } as any
+        ],
+        enemies: Array.from({ length: 9 }, (_, i) => ({ id: i + 1, hp: 15, type: 'swarmer', isDummy: false } as any))
+      });
+
+      hud.updateRoomThreatTelemetry(moderateRoom, 2);
+
+      const mapEl = document.getElementById('hud-map')!;
+      const rightEl = document.getElementById('hud-right')!;
+
+      expect(mapEl.getAttribute('data-room-readability-grade')).toBe('MODERATE');
+      expect(mapEl.getAttribute('data-room-clean-layout')).toBe('true');
+      expect(mapEl.getAttribute('data-room-obstacle-count')).toBe('6');
+      expect(mapEl.getAttribute('data-room-layout-summary')).toBe('F2 MODERATE ARENA // 6 OBSTACLES · 2 ZONES · 9 HOSTILES');
+
+      expect(rightEl.getAttribute('data-room-readability-grade')).toBe('MODERATE');
+      expect(rightEl.getAttribute('data-room-clean-layout')).toBe('true');
+      expect(rightEl.getAttribute('data-room-obstacle-count')).toBe('6');
+      expect(rightEl.getAttribute('data-room-layout-summary')).toBe('F2 MODERATE ARENA // 6 OBSTACLES · 2 ZONES · 9 HOSTILES');
+    });
+
+    it('stamps DENSE readability grade and clean layout false for congested room with >8 obstacles or >3 zones', () => {
+      document.body.innerHTML = `
+        <div id="hud-map"></div>
+        <div id="hud-right"></div>
+      `;
+
+      const hud = new HUDController();
+      // 10 obstacles (>8 => isCleanLayout false), 4 zones (>3), 8 active enemies
+      // clutterScore = 10*2 + 4*3 + 8 = 20 + 12 + 8 = 40 (>30 -> DENSE)
+      const denseRoom = createRoom({
+        obstacles: Array.from({ length: 10 }, (_, i) => ({ x: i * 10, y: 10, type: 'explosive_barrel' } as any)),
+        biomeZones: Array.from({ length: 4 }, (_, i) => ({ type: 'spikes', bounds: { x: i * 20, y: 0, width: 20, height: 20 } } as any)),
+        enemies: Array.from({ length: 8 }, (_, i) => ({ id: i + 1, hp: 25, type: 'gunner', isDummy: false } as any))
+      });
+
+      hud.updateRoomThreatTelemetry(denseRoom, 3);
+
+      const mapEl = document.getElementById('hud-map')!;
+      const rightEl = document.getElementById('hud-right')!;
+
+      expect(mapEl.getAttribute('data-room-readability-grade')).toBe('DENSE');
+      expect(mapEl.getAttribute('data-room-clean-layout')).toBe('false');
+      expect(mapEl.getAttribute('data-room-obstacle-count')).toBe('10');
+      expect(mapEl.getAttribute('data-room-layout-summary')).toBe('F3 DENSE ARENA // 10 OBSTACLES · 4 ZONES · 8 HOSTILES');
+
+      expect(rightEl.getAttribute('data-room-readability-grade')).toBe('DENSE');
+      expect(rightEl.getAttribute('data-room-clean-layout')).toBe('false');
+      expect(rightEl.getAttribute('data-room-obstacle-count')).toBe('10');
+      expect(rightEl.getAttribute('data-room-layout-summary')).toBe('F3 DENSE ARENA // 10 OBSTACLES · 4 ZONES · 8 HOSTILES');
+    });
+
+    it('automatically stamps visual clutter telemetry across #hud-map and #hud-right during hud.updateMinimap(dungeon, gx, gy, floorNum, heat)', () => {
+      document.body.innerHTML = `
+        <div id="hud-map"></div>
+        <div id="hud-right"></div>
+        <canvas id="minimap-canvas" width="240" height="150"></canvas>
+      `;
+
+      const canvas = document.getElementById('minimap-canvas') as HTMLCanvasElement;
+      const mockCtx = {
+        setTransform: vi.fn(),
+        clearRect: vi.fn(),
+        fillRect: vi.fn(),
+        save: vi.fn(),
+        restore: vi.fn(),
+        beginPath: vi.fn(),
+        moveTo: vi.fn(),
+        lineTo: vi.fn(),
+        stroke: vi.fn(),
+        fill: vi.fn(),
+        closePath: vi.fn(),
+        arc: vi.fn(),
+        fillText: vi.fn(),
+        strokeText: vi.fn(),
+        measureText: vi.fn().mockReturnValue({ width: 24 }),
+        rect: vi.fn(),
+        roundRect: vi.fn(),
+        fillStyle: '',
+        strokeStyle: '',
+        lineWidth: 1,
+        lineCap: 'round',
+        shadowColor: '',
+        shadowBlur: 0,
+        font: '',
+        textAlign: 'left',
+        textBaseline: 'alphabetic',
+        lineJoin: 'miter'
+      };
+      vi.spyOn(canvas, 'getContext').mockReturnValue(mockCtx as any);
+
+      const hud = new HUDController();
+      const arenaRoom = createRoom({
+        x: 2,
+        y: 1,
+        obstacles: [
+          { x: 15, y: 15, type: 'barrier' } as any,
+          { x: 30, y: 30, type: 'rock' } as any,
+          { x: 45, y: 45, type: 'rock' } as any
+        ],
+        biomeZones: [],
+        enemies: [
+          { id: 1, hp: 50, type: 'charger', isDummy: false } as any
+        ]
+      });
+
+      const dungeon: DungeonGrid = {
+        '2,1': arenaRoom
+      };
+
+      // Call updateMinimap(dungeon, gx, gy, floorNum, heat)
+      hud.updateMinimap(dungeon, 2, 1, 4, 2);
+
+      const mapEl = document.getElementById('hud-map')!;
+      const rightEl = document.getElementById('hud-right')!;
+
+      // clutterScore = 3*2 + 0*3 + 1 = 7 <= 18 -> CLEAN
+      expect(mapEl.getAttribute('data-room-readability-grade')).toBe('CLEAN');
+      expect(mapEl.getAttribute('data-room-clean-layout')).toBe('true');
+      expect(mapEl.getAttribute('data-room-obstacle-count')).toBe('3');
+      expect(mapEl.getAttribute('data-room-layout-summary')).toBe('F4 CLEAN ARENA // 3 OBSTACLES · 0 ZONES · 1 HOSTILES');
+
+      expect(rightEl.getAttribute('data-room-readability-grade')).toBe('CLEAN');
+      expect(rightEl.getAttribute('data-room-clean-layout')).toBe('true');
+      expect(rightEl.getAttribute('data-room-obstacle-count')).toBe('3');
+      expect(rightEl.getAttribute('data-room-layout-summary')).toBe('F4 CLEAN ARENA // 3 OBSTACLES · 0 ZONES · 1 HOSTILES');
+
+      expect(canvas.getAttribute('data-room-readability-grade')).toBe('CLEAN');
+      expect(canvas.getAttribute('data-room-clean-layout')).toBe('true');
+      expect(canvas.getAttribute('data-room-obstacle-count')).toBe('3');
+      expect(canvas.getAttribute('data-room-layout-summary')).toBe('F4 CLEAN ARENA // 3 OBSTACLES · 0 ZONES · 1 HOSTILES');
+    });
+
+    it('handles undefined or null room gracefully and matches standalone updateRoomThreatTelemetry helper', () => {
+      document.body.innerHTML = `
+        <div id="hud-map"></div>
+        <div id="hud-right"></div>
+      `;
+
+      const hud = new HUDController();
+      hud.updateRoomThreatTelemetry(undefined, 1);
+
+      const mapEl = document.getElementById('hud-map')!;
+      const rightEl = document.getElementById('hud-right')!;
+
+      expect(mapEl.getAttribute('data-room-readability-grade')).toBe('CLEAN');
+      expect(mapEl.getAttribute('data-room-clean-layout')).toBe('true');
+      expect(mapEl.getAttribute('data-room-obstacle-count')).toBe('0');
+      expect(mapEl.getAttribute('data-room-layout-summary')).toBe('F1 CLEAN ARENA // 0 OBSTACLES · 0 ZONES · 0 HOSTILES');
+
+      // Standalone helper parity check
+      updateRoomThreatTelemetry(null, 5);
+      expect(rightEl.getAttribute('data-room-readability-grade')).toBe('CLEAN');
+      expect(rightEl.getAttribute('data-room-clean-layout')).toBe('true');
+      expect(rightEl.getAttribute('data-room-obstacle-count')).toBe('0');
+      expect(rightEl.getAttribute('data-room-layout-summary')).toBe('F5 CLEAN ARENA // 0 OBSTACLES · 0 ZONES · 0 HOSTILES');
     });
   });
 });

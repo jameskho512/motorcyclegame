@@ -8,6 +8,12 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+  getDuoSynergyAdvisor,
+  type DuoSynergyAdvisorSummary,
+  type PartialDuoSynergyInfo,
+  DUO_SYNERGIES as ITEM_DUO_SYNERGIES
+} from '@/data/items';
+import {
   formatWeaponMasteryHint,
   formatHubNpcTooltip,
   HubNpcTooltipInfo,
@@ -1861,3 +1867,138 @@ describe('Tooltip: formatHubNpcTooltip', () => {
     });
   });
 });
+
+describe('getDuoSynergyAdvisor (M145)', () => {
+  it('0. defines 5 canonical paired recipes in ITEM_DUO_SYNERGIES', () => {
+    expect(ITEM_DUO_SYNERGIES).toHaveLength(5);
+    for (const syn of ITEM_DUO_SYNERGIES) {
+      expect(syn.items).toHaveLength(2);
+      expect(syn.id).toBeTruthy();
+      expect(syn.name).toBeTruthy();
+      expect(syn.desc).toBeTruthy();
+    }
+  });
+
+  it('1. handles null, undefined, and empty player states gracefully', () => {
+    const emptyStates = [
+      null,
+      undefined,
+      {},
+      { items: [] },
+      { items: 'not_an_array' as any, itemStacks: null as any },
+      { items: [], itemStacks: {} }
+    ];
+
+    for (const st of emptyStates) {
+      const result: DuoSynergyAdvisorSummary = getDuoSynergyAdvisor(st as any);
+      expect(result.unlockedDuos).toEqual([]);
+      expect(result.partialDuos).toEqual([]);
+      expect(result.unlockedCount).toBe(0);
+      expect(result.nearMissCount).toBe(0);
+      expect(result.summaryLine).toBe('DUOS: 0 ACTIVE · COLLECT PAIRED MODS TO UNLOCK');
+    }
+  });
+
+  it('2. detects single near-miss item with exactly one synergy requirement satisfied', () => {
+    // magnet_coil is only used in VOID VORTEX (magnet_coil + high_explosive)
+    const player = { items: ['magnet_coil'] };
+    const advisor = getDuoSynergyAdvisor(player);
+
+    expect(advisor.unlockedCount).toBe(0);
+    expect(advisor.unlockedDuos).toEqual([]);
+    expect(advisor.nearMissCount).toBe(1);
+    expect(advisor.partialDuos).toHaveLength(1);
+
+    const partial: PartialDuoSynergyInfo = advisor.partialDuos[0];
+    expect(partial.id).toBe('void_vortex');
+    expect(partial.name).toBe('VOID VORTEX');
+    expect(partial.ownedItem).toBe('magnet_coil');
+    expect(partial.missingItem).toBe('high_explosive');
+    expect(partial.effectDesc).toBeTruthy();
+
+    expect(advisor.summaryLine).toBe('DUOS: 0 ACTIVE · 1 NEAR-MISS (NEED HIGH_EXPLOSIVE)');
+  });
+
+  it('3. detects multiple near-misses when a single owned item is a component in multiple synergies', () => {
+    // cryo_rounds is in THERMAL SHOCK (cryo_rounds + high_explosive) and SUPERCONDUCTOR (cryo_rounds + tesla_capacitor)
+    const player = { items: ['cryo_rounds'] };
+    const advisor = getDuoSynergyAdvisor(player);
+
+    expect(advisor.unlockedCount).toBe(0);
+    expect(advisor.unlockedDuos).toEqual([]);
+    expect(advisor.nearMissCount).toBe(2);
+    expect(advisor.partialDuos).toHaveLength(2);
+
+    expect(advisor.partialDuos[0].id).toBe('thermal_shock');
+    expect(advisor.partialDuos[0].missingItem).toBe('high_explosive');
+    expect(advisor.partialDuos[0].ownedItem).toBe('cryo_rounds');
+
+    expect(advisor.partialDuos[1].id).toBe('superconductor');
+    expect(advisor.partialDuos[1].missingItem).toBe('tesla_capacitor');
+    expect(advisor.partialDuos[1].ownedItem).toBe('cryo_rounds');
+
+    expect(advisor.summaryLine).toBe('DUOS: 0 ACTIVE · 2 NEAR-MISS (NEED HIGH_EXPLOSIVE)');
+  });
+
+  it('4. detects exactly 1 unlocked duo synergy with zero near-misses', () => {
+    // titanium_spikes + turbo_charger unlocks JUGGERNAUT OVERDRIVE.
+    // Neither item participates in any of the other 4 synergies.
+    const player = { items: ['titanium_spikes', 'turbo_charger'] };
+    const advisor = getDuoSynergyAdvisor(player);
+
+    expect(advisor.unlockedCount).toBe(1);
+    expect(advisor.unlockedDuos).toEqual(['JUGGERNAUT OVERDRIVE']);
+    expect(advisor.nearMissCount).toBe(0);
+    expect(advisor.partialDuos).toEqual([]);
+    expect(advisor.summaryLine).toBe('DUOS: 1 ACTIVE (JUGGERNAUT OVERDRIVE)');
+  });
+
+  it('5. detects multiple unlocked duos alongside near-miss duos simultaneously', () => {
+    // Unlocks: JUGGERNAUT OVERDRIVE (titanium_spikes + turbo_charger) and VOLTAIC WAKE (exhaust_afterburner + gasoline)
+    // Near-miss: VOID VORTEX (has magnet_coil, missing high_explosive)
+    const player = {
+      items: ['titanium_spikes', 'turbo_charger', 'exhaust_afterburner', 'gasoline', 'magnet_coil']
+    };
+    const advisor = getDuoSynergyAdvisor(player);
+
+    expect(advisor.unlockedCount).toBe(2);
+    expect(advisor.unlockedDuos).toEqual(['JUGGERNAUT OVERDRIVE', 'VOLTAIC WAKE']);
+    expect(advisor.nearMissCount).toBe(1);
+    expect(advisor.partialDuos).toHaveLength(1);
+    expect(advisor.partialDuos[0].id).toBe('void_vortex');
+    expect(advisor.partialDuos[0].missingItem).toBe('high_explosive');
+    expect(advisor.partialDuos[0].ownedItem).toBe('magnet_coil');
+
+    expect(advisor.summaryLine).toBe('DUOS: 2 ACTIVE (JUGGERNAUT OVERDRIVE, VOLTAIC WAKE) · 1 NEAR-MISS');
+  });
+
+  it('6. detects items via itemStacks fallback and ignores keys with count <= 0', () => {
+    const player = {
+      items: [],
+      itemStacks: {
+        titanium_spikes: 3,
+        turbo_charger: 1,
+        cryo_rounds: 0,
+        high_explosive: -1
+      }
+    };
+    const advisor = getDuoSynergyAdvisor(player);
+
+    expect(advisor.unlockedCount).toBe(1);
+    expect(advisor.unlockedDuos).toEqual(['JUGGERNAUT OVERDRIVE']);
+    expect(advisor.nearMissCount).toBe(0);
+    expect(advisor.partialDuos).toEqual([]);
+    expect(advisor.summaryLine).toBe('DUOS: 1 ACTIVE (JUGGERNAUT OVERDRIVE)');
+  });
+
+  it('7. normalizes item keys via trimming, case-insensitivity, and common alias resolution', () => {
+    const player = {
+      items: ['  Cryo-Jacketed Shells  ', 'THERMOBARIC MIX  ']
+    };
+    const advisor = getDuoSynergyAdvisor(player);
+
+    expect(advisor.unlockedCount).toBe(1);
+    expect(advisor.unlockedDuos).toEqual(['THERMAL SHOCK']);
+  });
+});
+

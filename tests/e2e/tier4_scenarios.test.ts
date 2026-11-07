@@ -19,6 +19,7 @@
  * 14. Full 6-Slot Equipment Upgrade, Visual Model Mounting & Set Bonus Progression (M99)
  * 15. Full Career Progression Across Tuning, Armory & Floor 1-6 Bounty Contracts (M114)
  * 16. Full Multi-Floor Portal Descent, Livery Customization & Shop Buyout Progression (M132)
+ * 17. Clean Arena Readability Audit & Drop Stack Progression Across Floors 1-6 (M146)
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -55,6 +56,10 @@ import {
   ShopModalController,
   getShopBudgetSummary
 } from '../../src/ui/shopModal';
+import {
+  DropModalController,
+  getDropItemStackSummary
+} from '../../src/ui/dropModal';
 
 import { RUN_MOD_POOL, calcUpgradeCost, getMetaTuningSummary } from '@/data/upgrades';
 import { isWeaponEvolved, getWeaponArsenalSummary } from '@/data/weapons';
@@ -89,7 +94,8 @@ import {
   BOSS_NAMES,
   createEnemy,
   updateEnemyAI,
-  getRoomThreatAssessment
+  getRoomThreatAssessment,
+  getRoomVisualClutterAudit
 } from '@/systems/enemyAI';
 
 import {
@@ -2379,6 +2385,330 @@ describe('Tier 4: Real-World Application Scenarios', () => {
       expect(overlayEl.getAttribute('data-shop-buyout-cost')).toBe('0');
       expect(overlayEl.getAttribute('data-shop-budget-summary')).toBe('BUDGET: 0 COINS 🪙 // SHOP SOLD OUT');
       expect(overlayEl.getAttribute('data-shop-budget-summary')).toContain('SHOP SOLD OUT');
+    });
+  });
+
+  // ==========================================================================
+  // SCENARIO 17: CLEAN ARENA READABILITY AUDIT & DROP STACK PROGRESSION (M146)
+  // ==========================================================================
+  describe('Scenario 17: Clean Arena Readability Audit & Drop Stack Progression Across Floors 1-6 (M146)', () => {
+    it('verifies every generated room across Floors 1-6 passes getRoomVisualClutterAudit with finite clutterScore and isCleanLayout on normal, start, treasure, and shop rooms', () => {
+      let totalRoomsAudited = 0;
+
+      for (let floor = 1; floor <= 6; floor++) {
+        const dungeon = generateDungeon(floor);
+        const rooms = Object.values(dungeon);
+        expect(rooms.length).toBeGreaterThan(0);
+
+        for (const room of rooms) {
+          totalRoomsAudited++;
+          const audit = getRoomVisualClutterAudit(room, floor);
+
+          // Finite non-negative clutter score
+          expect(Number.isFinite(audit.clutterScore)).toBe(true);
+          expect(audit.clutterScore).toBeGreaterThanOrEqual(0);
+
+          // Valid readability grade
+          expect(['CLEAN', 'MODERATE', 'DENSE']).toContain(audit.readabilityGrade);
+
+          // Sub-counts integrity
+          expect(audit.obstacleCount).toBeGreaterThanOrEqual(0);
+          expect(audit.hazardObstacleCount).toBeGreaterThanOrEqual(0);
+          expect(audit.hazardObstacleCount).toBeLessThanOrEqual(audit.obstacleCount);
+          expect(audit.biomeZoneCount).toBeGreaterThanOrEqual(0);
+          expect(audit.activeEnemyCount).toBeGreaterThanOrEqual(0);
+
+          // Clean layout validation for combat, start, treasure, and shop rooms
+          if (['combat', 'start', 'treasure', 'shop'].includes(room.type)) {
+            expect(audit.isCleanLayout).toBe(true);
+            expect(audit.obstacleCount).toBeLessThanOrEqual(8);
+            expect(audit.biomeZoneCount).toBeLessThanOrEqual(3);
+          }
+
+          // Start, treasure, shop, and hub rooms have zero hostiles, obstacles, or biome hazards
+          if (['start', 'treasure', 'shop', 'hub'].includes(room.type)) {
+            expect(audit.obstacleCount).toBe(0);
+            expect(audit.hazardObstacleCount).toBe(0);
+            expect(audit.biomeZoneCount).toBe(0);
+            expect(audit.activeEnemyCount).toBe(0);
+            expect(audit.clutterScore).toBe(0);
+            expect(audit.readabilityGrade).toBe('CLEAN');
+            expect(audit.isCleanLayout).toBe(true);
+          }
+
+          // Layout summary string format: F<floor> <grade> ARENA // ...
+          expect(audit.layoutSummary).toContain(`F${floor} `);
+          expect(audit.layoutSummary).toContain(audit.readabilityGrade);
+          expect(audit.layoutSummary).toContain(`${audit.obstacleCount} OBSTACLES`);
+          expect(audit.layoutSummary).toContain(`${audit.biomeZoneCount} ZONES`);
+          expect(audit.layoutSummary).toContain(`${audit.activeEnemyCount} HOSTILES`);
+        }
+      }
+
+      expect(totalRoomsAudited).toBeGreaterThan(35);
+    });
+
+    it('verifies item drop stack progression across multi-floor crates transitioning NEW -> STACK_2 -> EVO_READY -> OVERSTACK and unlocking weapon evolution at 3 stacks without Outlaw Style buffs', () => {
+      // Initialize clean player state without Outlaw Style mechanics or pre-run buffs
+      const metaSave = createDefaultMetaSave();
+      const runner = createDefaultPlayerState();
+      resetPlayerStatsForRun(runner, metaSave);
+      runner.weapon = 'pistol';
+
+      // Strict user design constraint verification: zero Outlaw Style mechanics or pre-run buffs
+      expect((runner as any).outlawStyle).toBeUndefined();
+      expect((runner as any).preRunBuffs).toBeUndefined();
+      expect((runner as any).activeBuffs).toBeUndefined();
+      expect(runner.speedMult).toBe(1);
+      expect(runner.dmgMult).toBe(1);
+      expect(runner.fireRateMult).toBe(1);
+      expect(runner.items).toHaveLength(0);
+      expect(Object.keys(runner.itemStacks)).toHaveLength(0);
+
+      // Baseline weapon evolution check: pistol is not evolved with 0 stacks
+      expect(isWeaponEvolved('pistol', runner)).toBe(false);
+
+      // Floor 1 Crate Drop: Choice includes 'nitro_syringe' (0 stacks -> NEW)
+      const floor1Choices = ['nitro_syringe', 'chrome_lens', 'tire_iron'];
+      const f1Summary = getDropItemStackSummary(floor1Choices, runner);
+      expect(f1Summary.totalChoices).toBe(3);
+      expect(f1Summary.newItemsCount).toBe(3);
+      expect(f1Summary.stackUpgradeCount).toBe(0);
+      expect(f1Summary.evoReadyCount).toBe(0);
+      expect(f1Summary.choiceBreakdown[0]).toEqual({
+        id: 'nitro_syringe',
+        name: 'Nitro Syringe',
+        currentStacks: 0,
+        nextStacks: 1,
+        nextTier: 'NEW'
+      });
+      // Player selects 'nitro_syringe'
+      runner.items.push('nitro_syringe');
+      runner.itemStacks['nitro_syringe'] = 1;
+      expect(isWeaponEvolved('pistol', runner)).toBe(false);
+
+      // Floor 2 Crate Drop: Choice includes 'nitro_syringe' (1 stack -> STACK_2)
+      const floor2Choices = ['nitro_syringe', 'gasoline', 'oil_infusion'];
+      const f2Summary = getDropItemStackSummary(floor2Choices, runner);
+      expect(f2Summary.totalChoices).toBe(3);
+      expect(f2Summary.newItemsCount).toBe(2);
+      expect(f2Summary.stackUpgradeCount).toBe(1);
+      expect(f2Summary.evoReadyCount).toBe(0);
+      expect(f2Summary.choiceBreakdown[0]).toEqual({
+        id: 'nitro_syringe',
+        name: 'Nitro Syringe',
+        currentStacks: 1,
+        nextStacks: 2,
+        nextTier: 'STACK_2'
+      });
+      // Player selects 'nitro_syringe' a second time
+      runner.items.push('nitro_syringe');
+      runner.itemStacks['nitro_syringe'] = 2;
+      expect(isWeaponEvolved('pistol', runner)).toBe(false);
+
+      // Floor 3 Crate Drop: Choice includes 'nitro_syringe' (2 stacks -> EVO_READY)
+      const floor3Choices = ['nitro_syringe', 'magnet_coil'];
+      const f3Summary = getDropItemStackSummary(floor3Choices, runner);
+      expect(f3Summary.totalChoices).toBe(2);
+      expect(f3Summary.newItemsCount).toBe(1);
+      expect(f3Summary.stackUpgradeCount).toBe(0);
+      expect(f3Summary.evoReadyCount).toBe(1);
+      expect(f3Summary.choiceBreakdown[0]).toEqual({
+        id: 'nitro_syringe',
+        name: 'Nitro Syringe',
+        currentStacks: 2,
+        nextStacks: 3,
+        nextTier: 'EVO_READY'
+      });
+      // Player selects 'nitro_syringe' a third time -> triggers weapon evolution!
+      runner.items.push('nitro_syringe');
+      runner.itemStacks['nitro_syringe'] = 3;
+      expect(isWeaponEvolved('pistol', runner)).toBe(true);
+
+      // Floor 4 Crate Drop: Choice includes 'nitro_syringe' (3 stacks -> OVERSTACK)
+      const floor4Choices = ['nitro_syringe', 'tire_iron'];
+      const f4Summary = getDropItemStackSummary(floor4Choices, runner);
+      expect(f4Summary.totalChoices).toBe(2);
+      expect(f4Summary.newItemsCount).toBe(1);
+      expect(f4Summary.stackUpgradeCount).toBe(1);
+      expect(f4Summary.evoReadyCount).toBe(0);
+      expect(f4Summary.choiceBreakdown[0]).toEqual({
+        id: 'nitro_syringe',
+        name: 'Nitro Syringe',
+        currentStacks: 3,
+        nextStacks: 4,
+        nextTier: 'OVERSTACK'
+      });
+      // Player selects 'nitro_syringe' a fourth time
+      runner.items.push('nitro_syringe');
+      runner.itemStacks['nitro_syringe'] = 4;
+      expect(isWeaponEvolved('pistol', runner)).toBe(true);
+
+      // Ensure no outlaw style mechanics or pre-run buffs were added during progression
+      expect((runner as any).outlawStyle).toBeUndefined();
+      expect((runner as any).preRunBuffs).toBeUndefined();
+    });
+
+    it('verifies DropModalController renders .drop-choice-card elements with accurate data-choice-stack-tier attributes and clean selection callbacks', () => {
+      document.body.innerHTML = `
+        <div id="drop-overlay" class="hidden">
+          <div id="drop-choices"></div>
+        </div>
+      `;
+
+      const testPlayer = createDefaultPlayerState();
+      resetPlayerStatsForRun(testPlayer, createDefaultMetaSave());
+      testPlayer.itemStacks = {
+        nitro_syringe: 0,
+        tire_iron: 1,
+        gasoline: 2,
+        racing_slicks: 3
+      };
+
+      const dropChoices = ['nitro_syringe', 'tire_iron', 'gasoline', 'racing_slicks'];
+      const modal = new DropModalController();
+      const onSelectSpy = vi.fn();
+
+      modal.open(dropChoices, testPlayer, onSelectSpy);
+
+      expect(modal.isOpen()).toBe(true);
+      const overlayEl = document.getElementById('drop-overlay')!;
+      expect(overlayEl.classList.contains('hidden')).toBe(false);
+      expect(overlayEl.style.display).toBe('flex');
+
+      // Verify overlay dataset attributes
+      expect(overlayEl.getAttribute('data-drop-new-count')).toBe('1');
+      expect(overlayEl.getAttribute('data-drop-stack-upgrade-count')).toBe('2');
+      expect(overlayEl.getAttribute('data-drop-evo-ready-count')).toBe('1');
+      expect(overlayEl.getAttribute('data-drop-summary')).toContain('4 CHOICES');
+      expect(overlayEl.getAttribute('data-drop-summary')).toContain('1 NEW');
+      expect(overlayEl.getAttribute('data-drop-summary')).toContain('2 UPGRADE');
+      expect(overlayEl.getAttribute('data-drop-summary')).toContain('1 EVO-READY');
+
+      // Verify individual .drop-choice-card elements
+      const cards = document.querySelectorAll('.drop-choice-card');
+      expect(cards.length).toBe(4);
+
+      // Card 0: NEW
+      expect(cards[0].getAttribute('data-choice-stack-tier')).toBe('NEW');
+      expect(cards[0].getAttribute('data-choice-current-stacks')).toBe('0');
+      expect(cards[0].getAttribute('data-choice-next-stacks')).toBe('1');
+      expect(cards[0].textContent).toContain('[NEW]');
+
+      // Card 1: STACK_2
+      expect(cards[1].getAttribute('data-choice-stack-tier')).toBe('STACK_2');
+      expect(cards[1].getAttribute('data-choice-current-stacks')).toBe('1');
+      expect(cards[1].getAttribute('data-choice-next-stacks')).toBe('2');
+      expect(cards[1].textContent).toContain('[STACK_2]');
+
+      // Card 2: EVO_READY
+      expect(cards[2].getAttribute('data-choice-stack-tier')).toBe('EVO_READY');
+      expect(cards[2].getAttribute('data-choice-current-stacks')).toBe('2');
+      expect(cards[2].getAttribute('data-choice-next-stacks')).toBe('3');
+      expect(cards[2].textContent).toContain('[EVO_READY]');
+
+      // Card 3: OVERSTACK
+      expect(cards[3].getAttribute('data-choice-stack-tier')).toBe('OVERSTACK');
+      expect(cards[3].getAttribute('data-choice-current-stacks')).toBe('3');
+      expect(cards[3].getAttribute('data-choice-next-stacks')).toBe('4');
+      expect(cards[3].textContent).toContain('[OVERSTACK]');
+
+      // Click card 2 (EVO_READY item) and verify callback & clean closure
+      (cards[2] as HTMLElement).click();
+      expect(onSelectSpy).toHaveBeenCalledTimes(1);
+      expect(onSelectSpy).toHaveBeenCalledWith('gasoline', 2);
+      expect(modal.isOpen()).toBe(false);
+      expect(overlayEl.classList.contains('hidden')).toBe(true);
+      expect(overlayEl.style.display).toBe('none');
+    });
+
+    it('simulates full Floor 1-6 multi-floor descent combining arena clutter auditing, drop crate modal selections, and weapon evolution in a clean run without outlaw mechanics', () => {
+      document.body.innerHTML = `
+        <div id="drop-overlay" class="hidden">
+          <div id="drop-choices"></div>
+        </div>
+      `;
+
+      const playerRun = createDefaultPlayerState();
+      resetPlayerStatsForRun(playerRun, createDefaultMetaSave());
+      playerRun.weapon = 'pistol';
+
+      const dropModal = new DropModalController();
+
+      // Ensure pure baseline state
+      expect((playerRun as any).outlawStyle).toBeUndefined();
+      expect((playerRun as any).preRunBuffs).toBeUndefined();
+      expect(isWeaponEvolved('pistol', playerRun)).toBe(false);
+
+      // Multi-floor progression loop: Floors 1 to 6
+      for (let floor = 1; floor <= 6; floor++) {
+        const dungeon = generateDungeon(floor);
+        const rooms = Object.values(dungeon);
+
+        // Audit every room on this floor
+        for (const room of rooms) {
+          const audit = getRoomVisualClutterAudit(room, floor);
+          expect(Number.isFinite(audit.clutterScore)).toBe(true);
+          expect(['CLEAN', 'MODERATE', 'DENSE']).toContain(audit.readabilityGrade);
+          if (['combat', 'start', 'treasure', 'shop'].includes(room.type)) {
+            expect(audit.isCleanLayout).toBe(true);
+          }
+        }
+
+        // On floors 1, 2, and 3, simulate discovering and opening a drop crate
+        if (floor <= 3) {
+          const choices = ['tire_iron', 'nitro_syringe', 'gasoline'];
+          let selectedItem: string | null = null;
+          let selectedIdx: number = -1;
+
+          dropModal.open(choices, playerRun, (choice, idx) => {
+            selectedItem = typeof choice === 'string' ? choice : (choice as any).id;
+            selectedIdx = idx;
+          });
+
+          expect(dropModal.isOpen()).toBe(true);
+          const cards = document.querySelectorAll('.drop-choice-card');
+          expect(cards.length).toBe(3);
+
+          if (floor === 1) {
+            expect(cards[0].getAttribute('data-choice-stack-tier')).toBe('NEW');
+          } else if (floor === 2) {
+            expect(cards[0].getAttribute('data-choice-stack-tier')).toBe('STACK_2');
+          } else if (floor === 3) {
+            expect(cards[0].getAttribute('data-choice-stack-tier')).toBe('EVO_READY');
+          }
+
+          // Pick choice 0 ('tire_iron')
+          (cards[0] as HTMLElement).click();
+          expect(selectedItem).toBe('tire_iron');
+          expect(selectedIdx).toBe(0);
+          expect(dropModal.isOpen()).toBe(false);
+
+          // Update player inventory
+          playerRun.items.push('tire_iron');
+          playerRun.itemStacks['tire_iron'] = (playerRun.itemStacks['tire_iron'] || 0) + 1;
+
+          if (floor < 3) {
+            expect(isWeaponEvolved('pistol', playerRun)).toBe(false);
+          } else {
+            // Reaching 3 stacks triggers weapon evolution at Floor 3
+            expect(isWeaponEvolved('pistol', playerRun)).toBe(true);
+          }
+        }
+
+        // Floor 4 to 6: weapon remains evolved
+        if (floor >= 3) {
+          expect(isWeaponEvolved('pistol', playerRun)).toBe(true);
+        }
+
+        // Verify player remains completely free of Outlaw Style mechanics and pre-run buffs
+        expect((playerRun as any).outlawStyle).toBeUndefined();
+        expect((playerRun as any).preRunBuffs).toBeUndefined();
+      }
+
+      // Final inventory check
+      expect(playerRun.itemStacks['tire_iron']).toBe(3);
+      expect(isWeaponEvolved('pistol', playerRun)).toBe(true);
     });
   });
 });

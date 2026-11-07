@@ -15,6 +15,7 @@
 import {
   PlayerState,
   Dungeon,
+  Room,
   WeaponId,
   DropItemId,
   Boss,
@@ -34,12 +35,12 @@ import { getFloorBountyContract, getRoomHazardSummary, getFloorExplorationStatus
 import { getDungeonSectorSummary } from '../world/dungeon';
 import { getCombatOffenseSummary } from '@/systems/combat';
 import { getCombatSurvivabilitySummary } from '../systems/combat';
-import { getRoomThreatAssessment, getBossEncounterBriefing } from '@/systems/enemyAI';
+import { getRoomThreatAssessment, getBossEncounterBriefing, getRoomVisualClutterAudit, type RoomVisualClutterAudit } from '../systems/enemyAI';
 import { getRiderMobilitySummary } from '@/systems/physics';
 import { getFloorBountyContractStatus } from '@/core/state';
 
 export type DungeonGrid = Dungeon;
-export type { RoomHazardSummary };
+export type { RoomHazardSummary, RoomVisualClutterAudit };
 
 export interface MinimapCoord {
   rx: number;
@@ -483,6 +484,46 @@ export class HUDController {
       this.minimapCanvas.setAttribute('data-floor-exploration-status', expStatus.statusLine);
       this.minimapCanvas.setAttribute('data-remaining-pickups', String(expStatus.remainingPickups));
     }
+
+    this.updateRoomThreatTelemetry(currentRoom ?? undefined, floorNum);
+  }
+
+  /**
+   * Evaluates live room visual clutter audit and threat telemetry (M143),
+   * updating data attributes on minimap canvas, #hud-map, and #hud-right.
+   */
+  public updateRoomThreatTelemetry(
+    room: Room | undefined | null,
+    floorNum: number = 1
+  ): void {
+    if (typeof document === 'undefined') return;
+
+    if (!this.minimapCanvas) {
+      this.minimapCanvas = (document.getElementById('minimap-canvas') || document.getElementById('minimap')) as HTMLCanvasElement | null;
+      if (this.minimapCanvas && !this.minimapCtx) {
+        this.minimapCtx = this.minimapCanvas.getContext('2d');
+      }
+    }
+
+    const clutterAudit = getRoomVisualClutterAudit(room, floorNum);
+    const threatInfo = getRoomThreatAssessment(room, floorNum);
+
+    const hudMapEl = document.getElementById('hud-map');
+    const hudRightEl = document.getElementById('hud-right');
+
+    const targets = [this.minimapCanvas, hudMapEl, hudRightEl].filter(
+      (el, idx, arr): el is HTMLElement | HTMLCanvasElement => Boolean(el) && arr.indexOf(el) === idx
+    );
+
+    for (const el of targets) {
+      el.setAttribute('data-room-threat-tier', threatInfo.threatTier);
+      el.setAttribute('data-room-threat-score', String(threatInfo.threatScore));
+      el.setAttribute('data-room-threat-advisory', threatInfo.advisory);
+      el.setAttribute('data-room-readability-grade', clutterAudit.readabilityGrade);
+      el.setAttribute('data-room-clean-layout', String(clutterAudit.isCleanLayout));
+      el.setAttribute('data-room-obstacle-count', String(clutterAudit.obstacleCount));
+      el.setAttribute('data-room-layout-summary', clutterAudit.layoutSummary);
+    }
   }
 
   /**
@@ -558,7 +599,11 @@ export class HUDController {
 
     if (dungeon && curX !== undefined && curY !== undefined) {
       this.updateRoomHazardTelemetry(dungeon, curX, curY, fNum);
+      const currentRoom = dungeon[`${curX},${curY}`];
+      this.updateRoomThreatTelemetry(currentRoom, fNum);
       this.drawMinimap(dungeon, curX, curY, fNum);
+    } else {
+      this.updateRoomThreatTelemetry(undefined, fNum);
     }
   }
 
@@ -1924,6 +1969,37 @@ export class HUDController {
     this.updateModDeckTelemetry(player);
     this.updateSurvivabilityTelemetry(player);
   }
+
+  /**
+   * General HUD update sync loop (M143).
+   */
+  public update(
+    player: PlayerState,
+    arg2: number = 1,
+    arg3?: any,
+    arg4?: Record<string, boolean>,
+    dungeon?: Dungeon,
+    curRoomX?: number,
+    curRoomY?: number,
+    extraMetaSave?: any
+  ): void {
+    this.updateSidebar(player, arg2, arg3, arg4, dungeon, curRoomX, curRoomY, extraMetaSave);
+    let floorNum = 1;
+    let dun: Dungeon | undefined = dungeon;
+    let rx: number | undefined = curRoomX;
+    let ry: number | undefined = curRoomY;
+    if (typeof arg2 === 'number') {
+      floorNum = Math.max(1, Math.floor(arg2));
+    }
+    if (typeof arg3 === 'number') {
+      floorNum = Math.max(1, Math.floor(arg3));
+    }
+    if (typeof arg4 === 'object' && arg4 !== null && !('weaponKills' in arg4)) {
+      dun = arg4 as any;
+    }
+    const curRoom = (dun && rx !== undefined && ry !== undefined) ? dun[`${rx},${ry}`] : undefined;
+    this.updateRoomThreatTelemetry(curRoom, floorNum);
+  }
 }
 
 /**
@@ -1950,5 +2026,13 @@ export function updateModDeck(player: PlayerState): void {
 export function updateSurvivabilityTelemetry(player: PlayerState): void {
   const tempHud = new HUDController();
   tempHud.updateSurvivabilityTelemetry(player);
+}
+
+/**
+ * Standalone helper to render or update room threat & visual clutter audit telemetry attributes (M143).
+ */
+export function updateRoomThreatTelemetry(room: Room | undefined | null, floorNum: number = 1): void {
+  const tempHud = new HUDController();
+  tempHud.updateRoomThreatTelemetry(room, floorNum);
 }
 
