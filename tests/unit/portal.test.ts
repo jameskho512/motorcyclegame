@@ -45,7 +45,9 @@ import {
   WarRoomStationAdvisor,
   getLaunchGateAdvisor,
   getGarageStationAdvisor,
-  GarageStationAdvisor
+  GarageStationAdvisor,
+  getArmoryStationAdvisor,
+  ArmoryStationAdvisor
 } from '../../src/ui/hubStationModal';
 import { WEAPONS, WeaponId, getWeaponTacticalProfile } from '../../src/data/weapons';
 import { getCareerOutlawRank } from '../../src/core/state';
@@ -1781,6 +1783,142 @@ describe('HubStationModalController & getHubStationPromptInfo (Wave 14-15)', () 
       );
     });
 
+    it('sets data-armory-unlocked-count, data-armory-equipped-role, and data-armory-advisor DOM attributes on overlay when opening armory', () => {
+      const options = createHubOptions({
+        npcId: 'armory',
+        metaSave: {
+          scrap: 100,
+          unlocked: { machine_gun: true },
+          weaponKills: { pistol: 15, machine_gun: 10 }
+        },
+        player: { weapon: 'pistol' }
+      });
+      modal.open(options);
+
+      const overlayEl = document.getElementById('hub-station-overlay')!;
+      expect(overlayEl.getAttribute('data-armory-unlocked-count')).toBe('2');
+      expect(overlayEl.getAttribute('data-armory-equipped-role')).toBe('PRECISION SIDEARM');
+      expect(overlayEl.getAttribute('data-armory-advisor')).toBe(
+        'ARSENAL: 2/7 UNLOCKED (25 KILLS) // EQUIPPED: PISTOL (PRECISION SIDEARM, 48 DPS)'
+      );
+      expect(document.querySelector('.hub-armory-advisor-text')?.textContent).toBe(
+        'ARSENAL: 2/7 UNLOCKED (25 KILLS) // EQUIPPED: PISTOL (PRECISION SIDEARM, 48 DPS)'
+      );
+    });
+
+    it('updates DOM attributes when equipping an unlocked weapon inside armory modal', () => {
+      const onEquipWeapon = vi.fn();
+      const options = createHubOptions({
+        npcId: 'armory',
+        metaSave: {
+          scrap: 100,
+          unlocked: { shotgun: true },
+          weaponKills: { shotgun: 40 }
+        },
+        player: { weapon: 'pistol' },
+        onEquipWeapon
+      });
+      modal.open(options);
+
+      const overlayEl = document.getElementById('hub-station-overlay')!;
+      expect(overlayEl.getAttribute('data-armory-equipped-role')).toBe('PRECISION SIDEARM');
+
+      // Click on shotgun card
+      const shotgunCard = document.querySelector<HTMLElement>('.hub-weapon-card[data-weapon-id="shotgun"]')!;
+      shotgunCard.click();
+
+      expect(onEquipWeapon).toHaveBeenCalledWith('shotgun');
+      expect(overlayEl.getAttribute('data-armory-equipped-role')).toBe('CLOSE-QUARTERS BURST');
+      expect(overlayEl.getAttribute('data-armory-advisor')).toBe(
+        'ARSENAL: 2/7 UNLOCKED (40 KILLS) // EQUIPPED: SHOTGUN (CLOSE-QUARTERS BURST, 56 DPS)'
+      );
+      const updatedShotgunCard = document.querySelector<HTMLElement>('.hub-weapon-card[data-weapon-id="shotgun"]');
+      expect(updatedShotgunCard?.className).toContain('is-equipped');
+      expect(document.querySelector('.hub-stat-val.hub-cyan')?.textContent).toBe('SAWED-OFF SHOTGUN');
+    });
+
+    it('updates DOM attributes when unlocking a weapon inside armory modal with sufficient scrap', () => {
+      const onUnlockWeapon = vi.fn();
+      const options = createHubOptions({
+        npcId: 'armory',
+        metaSave: {
+          scrap: 80,
+          unlocked: {},
+          weaponKills: { pistol: 5 }
+        },
+        player: { weapon: 'pistol' },
+        onUnlockWeapon
+      });
+      modal.open(options);
+
+      const overlayEl = document.getElementById('hub-station-overlay')!;
+      expect(overlayEl.getAttribute('data-armory-unlocked-count')).toBe('1');
+
+      // Machine gun costs 55 scrap (scrap 80 >= 55)
+      const mgCard = document.querySelector<HTMLElement>('.hub-weapon-card[data-weapon-id="machine_gun"]')!;
+      mgCard.click();
+
+      expect(onUnlockWeapon).toHaveBeenCalledWith('machine_gun');
+      expect(overlayEl.getAttribute('data-armory-unlocked-count')).toBe('2');
+      expect(overlayEl.getAttribute('data-armory-advisor')).toBe(
+        'ARSENAL: 2/7 UNLOCKED (5 KILLS) // EQUIPPED: PISTOL (PRECISION SIDEARM, 48 DPS)'
+      );
+      expect(options.metaSave.scrap).toBe(25);
+      expect(document.querySelector('.hub-stat-val.hub-gold')?.textContent).toContain('25 SCRAP');
+
+      // Now click machine gun card again to equip it
+      const mgCardUpdated = document.querySelector<HTMLElement>('.hub-weapon-card[data-weapon-id="machine_gun"]')!;
+      mgCardUpdated.click();
+      expect(overlayEl.getAttribute('data-armory-equipped-role')).toBe('RAPID SUPPRESSION');
+      expect(overlayEl.getAttribute('data-armory-advisor')).toBe(
+        'ARSENAL: 2/7 UNLOCKED (5 KILLS) // EQUIPPED: MACHINE_GUN (RAPID SUPPRESSION, 58 DPS)'
+      );
+    });
+
+    it('fails to unlock a weapon when scrap is insufficient and preserves overlay attributes', () => {
+      const options = createHubOptions({
+        npcId: 'armory',
+        metaSave: {
+          scrap: 10, // Railgun costs 120 scrap
+          unlocked: {},
+          weaponKills: {}
+        },
+        player: { weapon: 'pistol' }
+      });
+      modal.open(options);
+
+      const overlayEl = document.getElementById('hub-station-overlay')!;
+      expect(overlayEl.getAttribute('data-armory-unlocked-count')).toBe('1');
+
+      const railgunCard = document.querySelector<HTMLElement>('.hub-weapon-card[data-weapon-id="railgun"]')!;
+      railgunCard.click();
+
+      // Scrap unchanged, still locked
+      expect(options.metaSave.scrap).toBe(10);
+      expect(overlayEl.getAttribute('data-armory-unlocked-count')).toBe('1');
+      expect(overlayEl.getAttribute('data-armory-equipped-role')).toBe('PRECISION SIDEARM');
+      const feedback = document.querySelector('.hub-station-feedback');
+      expect(feedback?.textContent).toContain('Need 110 more Scrap');
+    });
+
+    it('prevents equipping a locked weapon via controller method', () => {
+      const options = createHubOptions({
+        npcId: 'armory',
+        metaSave: {
+          scrap: 0,
+          unlocked: {}
+        },
+        player: { weapon: 'pistol' }
+      });
+      modal.open(options);
+
+      const res = modal.equipWeapon('railgun');
+      expect(res).toBe(false);
+      expect(options.player.weapon).toBe('pistol');
+      const overlayEl = document.getElementById('hub-station-overlay')!;
+      expect(overlayEl.getAttribute('data-armory-equipped-role')).toBe('PRECISION SIDEARM');
+    });
+
     it('renders forge station and sets data-forge-can-reforge and data-forge-advisor DOM attributes on overlay when scrap is insufficient (< 15)', () => {
       const options = createHubOptions({
         npcId: 'forge',
@@ -2795,6 +2933,130 @@ describe('HubStationModalController & getHubStationPromptInfo (Wave 14-15)', () 
       const controller = new HubStationModalController();
       expect(controller.getGarageStationAdvisor(meta)).toEqual(
         getGarageStationAdvisor(meta)
+      );
+    });
+  });
+
+  describe('getArmoryStationAdvisor pure helper (M121)', () => {
+    it('returns stock advisor telemetry (1/7 unlocked, 0 kills, pistol equipped) on fresh save', () => {
+      const advStock: ArmoryStationAdvisor = getArmoryStationAdvisor(
+        { unlocked: {}, weaponKills: {} },
+        { weapon: 'pistol' }
+      );
+
+      expect(advStock).toEqual({
+        unlockedCount: 1,
+        totalWeapons: 7,
+        totalKills: 0,
+        equippedWeaponId: 'pistol',
+        equippedRoleLabel: 'PRECISION SIDEARM',
+        equippedBaseDps: 48,
+        summaryLine: 'ARSENAL: 1/7 UNLOCKED (0 KILLS) // EQUIPPED: PISTOL (PRECISION SIDEARM, 48 DPS)'
+      });
+    });
+
+    it('returns multi-unlocked advisor telemetry (7/7 unlocked) with railgun equipped', () => {
+      const allUnlockedMeta = {
+        unlocked: {
+          machine_gun: true,
+          shotgun: true,
+          flamethrower: true,
+          grenade_launcher: true,
+          railgun: true,
+          arc_coil: true
+        },
+        weaponKills: {
+          railgun: 60,
+          shotgun: 40
+        }
+      };
+      const advRailgun: ArmoryStationAdvisor = getArmoryStationAdvisor(
+        allUnlockedMeta,
+        { weapon: 'railgun' }
+      );
+
+      expect(advRailgun).toEqual({
+        unlockedCount: 7,
+        totalWeapons: 7,
+        totalKills: 100,
+        equippedWeaponId: 'railgun',
+        equippedRoleLabel: 'SNIPER PIERCE',
+        equippedBaseDps: 44,
+        summaryLine: 'ARSENAL: 7/7 UNLOCKED (100 KILLS) // EQUIPPED: RAILGUN (SNIPER PIERCE, 44 DPS)'
+      });
+    });
+
+    it('returns multi-unlocked advisor telemetry (7/7 unlocked) with shotgun equipped', () => {
+      const allUnlockedMeta = {
+        unlocked: {
+          machine_gun: true,
+          shotgun: true,
+          flamethrower: true,
+          grenade_launcher: true,
+          railgun: true,
+          arc_coil: true
+        },
+        weaponKills: {
+          shotgun: 250
+        }
+      };
+      const advShotgun: ArmoryStationAdvisor = getArmoryStationAdvisor(
+        allUnlockedMeta,
+        { weapon: 'shotgun' }
+      );
+
+      expect(advShotgun).toEqual({
+        unlockedCount: 7,
+        totalWeapons: 7,
+        totalKills: 250,
+        equippedWeaponId: 'shotgun',
+        equippedRoleLabel: 'CLOSE-QUARTERS BURST',
+        equippedBaseDps: 56,
+        summaryLine: 'ARSENAL: 7/7 UNLOCKED (250 KILLS) // EQUIPPED: SHOTGUN (CLOSE-QUARTERS BURST, 56 DPS)'
+      });
+    });
+
+    it('handles malformed, null, undefined, and non-weapon inputs gracefully', () => {
+      const advNull = getArmoryStationAdvisor(null, null);
+      expect(advNull).toEqual({
+        unlockedCount: 1,
+        totalWeapons: 7,
+        totalKills: 0,
+        equippedWeaponId: 'pistol',
+        equippedRoleLabel: 'PRECISION SIDEARM',
+        equippedBaseDps: 48,
+        summaryLine: 'ARSENAL: 1/7 UNLOCKED (0 KILLS) // EQUIPPED: PISTOL (PRECISION SIDEARM, 48 DPS)'
+      });
+
+      const advUndef = getArmoryStationAdvisor(undefined, undefined);
+      expect(advUndef.unlockedCount).toBe(1);
+      expect(advUndef.equippedWeaponId).toBe('pistol');
+
+      const advMalformed = getArmoryStationAdvisor(
+        { unlocked: 'invalid' as any, weaponKills: { pistol: -50, test: NaN } },
+        { weapon: 'plasma_cannon_9000' as any }
+      );
+      expect(advMalformed.unlockedCount).toBe(1);
+      expect(advMalformed.totalKills).toBe(0);
+      expect(advMalformed.equippedWeaponId).toBe('pistol');
+      expect(advMalformed.equippedRoleLabel).toBe('PRECISION SIDEARM');
+      expect(advMalformed.equippedBaseDps).toBe(48);
+    });
+
+    it('is accessible via HubStationModalController static and instance methods', () => {
+      const meta = {
+        unlocked: { machine_gun: true },
+        weaponKills: { pistol: 10, machine_gun: 20 }
+      };
+      const player = { weapon: 'machine_gun' };
+
+      expect(HubStationModalController.getArmoryStationAdvisor(meta, player)).toEqual(
+        getArmoryStationAdvisor(meta, player)
+      );
+
+      const controller = new HubStationModalController();
+      expect(controller.getArmoryStationAdvisor(meta, player)).toEqual(
+        getArmoryStationAdvisor(meta, player)
       );
     });
   });

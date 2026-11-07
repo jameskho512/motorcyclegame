@@ -7,7 +7,15 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { formatWeaponMasteryHint, formatHubNpcTooltip, HubNpcTooltipInfo, formatStyleRankTooltip, formatWeaponEvolutionTooltipHint } from '@/ui/tooltip';
+import {
+  formatWeaponMasteryHint,
+  formatHubNpcTooltip,
+  HubNpcTooltipInfo,
+  formatStyleRankTooltip,
+  formatWeaponEvolutionTooltipHint,
+  formatModDeckTooltipHint,
+  TooltipManager
+} from '@/ui/tooltip';
 import {
   WEAPONS,
   UNLOCKABLE_IDS,
@@ -1523,6 +1531,120 @@ describe('Tooltip: formatHubNpcTooltip', () => {
       });
       expect(alreadyActive.map(s => s.id)).not.toContain('thermal_shock');
       expect(alreadyActive.map(s => s.id)).toContain('superconductor');
+    });
+  });
+
+  describe('formatModDeckTooltipHint (M122: Tooltip Duo Synergy & Mod Stack Evolution Readiness Formatter)', () => {
+    it('returns empty string for invalid or missing modId', () => {
+      expect(formatModDeckTooltipHint('')).toBe('');
+      expect(formatModDeckTooltipHint('invalid_mod_id_xyz')).toBe('');
+      expect(formatModDeckTooltipHint(null as any)).toBe('');
+      expect(formatModDeckTooltipHint(undefined as any)).toBe('');
+    });
+
+    it('formats 0/3 stack evolution state when player has 0 stacks or no modStacks', () => {
+      const hint = formatModDeckTooltipHint('hollow_point');
+      expect(hint).toBe('<span class="tip-mod-evo-hint">[📦 STACKS: 0/3 FOR OVERCLOCK EVO]</span>');
+
+      const hintEmptyPlayer = formatModDeckTooltipHint('hollow_point', {});
+      expect(hintEmptyPlayer).toBe('<span class="tip-mod-evo-hint">[📦 STACKS: 0/3 FOR OVERCLOCK EVO]</span>');
+    });
+
+    it('formats 1/3 stack evolution state correctly', () => {
+      const player = { modStacks: { hollow_point: 1 } };
+      const hint = formatModDeckTooltipHint('hollow_point', player);
+      expect(hint).toBe('<span class="tip-mod-evo-hint">[📦 STACKS: 1/3 FOR OVERCLOCK EVO]</span>');
+    });
+
+    it('formats 2/3 near-overclock stack state with +1 STACK FOR OVERCLOCK EVO banner', () => {
+      const player = { modStacks: { hollow_point: 2 } };
+      const hint = formatModDeckTooltipHint('hollow_point', player);
+      expect(hint).toBe('<span class="tip-mod-evo-hint">[🔥 2/3 STACKS: +1 STACK FOR OVERCLOCK EVO]</span>');
+    });
+
+    it('formats 3+ stack state with GENERIC OVERCLOCK READY banner', () => {
+      const player3 = { modStacks: { hollow_point: 3 } };
+      const hint3 = formatModDeckTooltipHint('hollow_point', player3);
+      expect(hint3).toBe('<span class="tip-mod-evo-hint">[⚡ 3+ STACKS: GENERIC OVERCLOCK READY]</span>');
+
+      const player5 = { modStacks: { hollow_point: 5 } };
+      const hint5 = formatModDeckTooltipHint('hollow_point', player5);
+      expect(hint5).toBe('<span class="tip-mod-evo-hint">[⚡ 3+ STACKS: GENERIC OVERCLOCK READY]</span>');
+    });
+
+    it('gracefully handles null, undefined, negative, float, and NaN player.modStacks', () => {
+      expect(formatModDeckTooltipHint('hollow_point', { modStacks: null })).toContain('0/3');
+      expect(formatModDeckTooltipHint('hollow_point', { modStacks: undefined })).toContain('0/3');
+      expect(formatModDeckTooltipHint('hollow_point', { modStacks: { hollow_point: NaN } })).toContain('0/3');
+      expect(formatModDeckTooltipHint('hollow_point', { modStacks: { hollow_point: -3 } })).toContain('0/3');
+      expect(formatModDeckTooltipHint('hollow_point', { modStacks: { hollow_point: '2' as any } })).toContain('0/3');
+      // Float stacks floored
+      expect(formatModDeckTooltipHint('hollow_point', { modStacks: { hollow_point: 2.9 } })).toContain(
+        '2/3 STACKS: +1 STACK FOR OVERCLOCK EVO'
+      );
+    });
+
+    it('formats uncompleted Duo Synergy recipe hints when requirements are not yet active', () => {
+      // cryo_rounds is required for THERMAL SHOCK (with fire/explosive) and SUPERCONDUCTOR (with volt)
+      const player = { modStacks: { cryo_rounds: 1 } };
+      const hint = formatModDeckTooltipHint('cryo_rounds', player);
+      expect(hint).toContain('📦 STACKS: 1/3 FOR OVERCLOCK EVO');
+      expect(hint).toContain('⚡ DUO RECIPE: THERMAL SHOCK (cryo_rounds + high_explosive)');
+      expect(hint).toContain('⚡ DUO RECIPE: SUPERCONDUCTOR (cryo_rounds + tesla_capacitor)');
+      expect(hint).not.toContain('✓ DUO ACTIVE:');
+    });
+
+    it('formats active Duo Synergy when player meets synergy conditions (cryo_rounds + high_explosive -> THERMAL SHOCK)', () => {
+      // Both cryo_rounds and high_explosive present -> THERMAL SHOCK becomes active
+      const player = {
+        modStacks: {
+          cryo_rounds: 2,
+          high_explosive: 1
+        }
+      };
+
+      const hintCryo = formatModDeckTooltipHint('cryo_rounds', player);
+      expect(hintCryo).toContain('🔥 2/3 STACKS: +1 STACK FOR OVERCLOCK EVO');
+      expect(hintCryo).toContain('✓ DUO ACTIVE: THERMAL SHOCK');
+      expect(hintCryo).toContain('⚡ DUO RECIPE: SUPERCONDUCTOR (cryo_rounds + tesla_capacitor)');
+
+      const hintFire = formatModDeckTooltipHint('high_explosive', player);
+      expect(hintFire).toContain('📦 STACKS: 1/3 FOR OVERCLOCK EVO');
+      expect(hintFire).toContain('✓ DUO ACTIVE: THERMAL SHOCK');
+      expect(hintFire).toContain('⚡ DUO RECIPE: VOID VORTEX (magnet_coil + high_explosive)');
+    });
+
+    it('exposes formatModDeckTooltipHint on TooltipManager class and instance with playerProvider support', () => {
+      expect(typeof TooltipManager.formatModDeckTooltipHint).toBe('function');
+      const mgr = new TooltipManager('custom-tip');
+      expect(typeof mgr.formatModDeckTooltipHint).toBe('function');
+
+      mgr.setPlayerProvider(() => ({
+        modStacks: {
+          cryo_rounds: 3,
+          high_explosive: 1
+        }
+      }));
+
+      const pickup = {
+        x: 0,
+        y: 0,
+        radius: 10,
+        type: 'mod_pedestal' as const,
+        cost: 0,
+        mod: {
+          id: 'cryo_rounds',
+          name: 'Cryo-Jacketed Shells',
+          desc: 'Bullets chill enemies',
+          cost: 19,
+          apply: () => {}
+        }
+      };
+
+      const html = mgr.formatPickupTooltip(pickup as any);
+      expect(html).toContain('tip-mod-evo-hint');
+      expect(html).toContain('⚡ 3+ STACKS: GENERIC OVERCLOCK READY');
+      expect(html).toContain('✓ DUO ACTIVE: THERMAL SHOCK');
     });
   });
 });

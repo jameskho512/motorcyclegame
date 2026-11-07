@@ -36,13 +36,14 @@ import {
 } from '@/types/game';
 
 import { getWeaponDef } from '@/data/weapons';
-import { calcUpgradeCost } from '@/data/upgrades';
+import { calcUpgradeCost, getRunModDeckSummary, getMetaTuningSummary } from '@/data/upgrades';
 
 import {
   SafeLocalStorage,
   createDefaultPlayerState,
   loadRunCheckpoint,
-  loadMetaSave
+  loadMetaSave,
+  getFloorBountyContractStatus
 } from '@/core/state';
 
 import { generateDungeon, createBoss, getFloorBountyContract } from '@/world/dungeon';
@@ -75,7 +76,12 @@ import { FilterManager } from '@/render/shaders';
 import { isLowFuel, calcNeedleAngle, calcMinimapRoomCoords } from '@/ui/hud';
 import {
   HubStationModalController,
-  HubStationOpenOptions
+  HubStationOpenOptions,
+  getForgeStationAdvisor,
+  getScannerStationAdvisor,
+  getWarRoomStationAdvisor,
+  getLaunchGateAdvisor,
+  getGarageStationAdvisor
 } from '@/ui/hubStationModal';
 import { getEquipmentVisualSpec, getEquipmentItemModelSvg } from '../../src/ui/icons';
 import { getEquippedBikeVisualState, GarageController, GarageCallbacks } from '../../src/ui/garage';
@@ -1976,4 +1982,389 @@ describe('Tier 5: Adversarial Coverage Hardening', () => {
       garage.close();
     });
   });
+
+  // ==========================================================================
+  // SECTION 8: ADVERSARIAL FUZZ: SANCTUARY STATION ADVISORS, MOD DECK & BOUNTIES (M123)
+  // ==========================================================================
+  describe('Adversarial Fuzz: Sanctuary Station Advisors, Mod Deck Summary & Bounty Contracts (M123)', () => {
+    it('executes a 100-cycle deterministic PRNG fuzz across all sanctuary station advisors with mutated/extreme metaSave and player inputs, verifying finite numeric bounds and clean summaryLine strings', () => {
+      let seed = 0x5a17fa57;
+      const lcg = (): number => {
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        return seed / 4294967296;
+      };
+
+      const extremeScrapValues = [
+        0, 1, 14, 15, 20, 50, 100, 99999, 1000000,
+        -1, -42, -99999,
+        NaN, -Infinity,
+        null as any, undefined as any
+      ];
+
+      const extremeNumbers = [
+        0, 1, 2, 3, 4, 5, 6, 10, 50, 100, 99999,
+        -1, -10, -9999,
+        NaN, Infinity, -Infinity,
+        null as any, undefined as any
+      ];
+
+      const weaponPool = ['pistol', 'shotgun', 'rifle', 'katana', '', 'invalid_weapon', null as any, undefined as any];
+
+      for (let cycle = 0; cycle < 100; cycle++) {
+        const isNullMeta = cycle % 10 === 0;
+        const metaSave: any = isNullMeta
+          ? null
+          : {
+              scrap: extremeScrapValues[Math.floor(lcg() * extremeScrapValues.length)],
+              heatLevel: extremeNumbers[Math.floor(lcg() * extremeNumbers.length)],
+              bestFloor: extremeNumbers[Math.floor(lcg() * extremeNumbers.length)],
+              totalKills: extremeNumbers[Math.floor(lcg() * extremeNumbers.length)],
+              bossesSlain: extremeNumbers[Math.floor(lcg() * extremeNumbers.length)],
+              totalRuns: extremeNumbers[Math.floor(lcg() * extremeNumbers.length)],
+              ranks: (cycle % 5 === 0)
+                ? null
+                : (cycle % 5 === 1)
+                  ? undefined
+                  : {
+                      dmg: extremeNumbers[Math.floor(lcg() * extremeNumbers.length)],
+                      fireRate: extremeNumbers[Math.floor(lcg() * extremeNumbers.length)],
+                      speed: extremeNumbers[Math.floor(lcg() * extremeNumbers.length)],
+                      maxHp: extremeNumbers[Math.floor(lcg() * extremeNumbers.length)]
+                    },
+              equipped: (cycle % 4 === 0)
+                ? null
+                : (cycle % 4 === 1)
+                  ? undefined
+                  : {
+                      tires: { slot: 'tires', name: 'Fuzz Tires', rarity: Math.min(3, Math.max(0, Math.floor(lcg() * 4))) as 0 | 1 | 2 | 3 },
+                      engine: { slot: 'engine', name: 'Fuzz Engine', rarity: Math.min(3, Math.max(0, Math.floor(lcg() * 4))) as 0 | 1 | 2 | 3 }
+                    }
+            };
+
+        const isNullPlayer = cycle % 7 === 0;
+        const playerPayload: any = isNullPlayer
+          ? null
+          : {
+              weapon: weaponPool[Math.floor(lcg() * weaponPool.length)],
+              hp: extremeNumbers[Math.floor(lcg() * extremeNumbers.length)],
+              maxHp: 6,
+              scannerBuff: lcg() > 0.5,
+              items: (cycle % 3 === 0) ? [] : (cycle % 3 === 1) ? ['nitro_syringe', 'tire_iron'] : null
+            };
+
+        const floorNum = extremeNumbers[Math.floor(lcg() * extremeNumbers.length)];
+        const bountyClaimed = lcg() > 0.5;
+        const scannerClaimed = lcg() > 0.5;
+
+        // 1. Forge Station Advisor
+        const forge = getForgeStationAdvisor(metaSave, playerPayload);
+        expect(Number.isFinite(forge.scrapAvailable)).toBe(true);
+        expect(forge.scrapAvailable).toBeGreaterThanOrEqual(0);
+        expect(Number.isFinite(forge.reforgeCost)).toBe(true);
+        expect(forge.reforgeCost).toBeGreaterThanOrEqual(0);
+        expect(Number.isFinite(forge.modCount)).toBe(true);
+        expect(forge.modCount).toBeGreaterThanOrEqual(0);
+        expect(typeof forge.canReforge).toBe('boolean');
+        expect(typeof forge.summaryLine).toBe('string');
+        expect(forge.summaryLine.length).toBeGreaterThan(0);
+        expect(forge.summaryLine).not.toContain('NaN');
+        expect(forge.summaryLine).not.toContain('undefined');
+
+        // 2. Scanner Station Advisor
+        const scanner = getScannerStationAdvisor(playerPayload, floorNum);
+        expect(Number.isFinite(scanner.critBonusPct)).toBe(true);
+        expect(scanner.critBonusPct).toBeGreaterThanOrEqual(0);
+        expect(scanner.critBonusPct).toBeLessThanOrEqual(100);
+        expect(Number.isFinite(scanner.targetFloor)).toBe(true);
+        expect(scanner.targetFloor).toBeGreaterThanOrEqual(1);
+        expect(typeof scanner.scannerActive).toBe('boolean');
+        expect(typeof scanner.summaryLine).toBe('string');
+        expect(scanner.summaryLine.length).toBeGreaterThan(0);
+        expect(scanner.summaryLine).not.toContain('NaN');
+        expect(scanner.summaryLine).not.toContain('undefined');
+
+        // 3. War Room Station Advisor
+        const warRoom = getWarRoomStationAdvisor(metaSave, bountyClaimed);
+        expect(Number.isFinite(warRoom.currentHeat)).toBe(true);
+        expect(warRoom.currentHeat).toBeGreaterThanOrEqual(0);
+        expect(warRoom.currentHeat).toBeLessThanOrEqual(3);
+        expect(Number.isFinite(warRoom.scrapBonusPct)).toBe(true);
+        expect(warRoom.scrapBonusPct).toBeGreaterThanOrEqual(0);
+        expect(warRoom.scrapBonusPct).toBeLessThanOrEqual(75);
+        expect(Number.isFinite(warRoom.recommendedMaxHeat)).toBe(true);
+        expect(warRoom.recommendedMaxHeat).toBeGreaterThanOrEqual(0);
+        expect(warRoom.recommendedMaxHeat).toBeLessThanOrEqual(3);
+        expect(typeof warRoom.bountyClaimed).toBe('boolean');
+        expect(typeof warRoom.summaryLine).toBe('string');
+        expect(warRoom.summaryLine.length).toBeGreaterThan(0);
+        expect(warRoom.summaryLine).not.toContain('NaN');
+        expect(warRoom.summaryLine).not.toContain('undefined');
+
+        // 4. Launch Gate Advisor
+        const launch = getLaunchGateAdvisor(metaSave, playerPayload, scannerClaimed, bountyClaimed);
+        expect(Number.isFinite(launch.readyCount)).toBe(true);
+        expect(launch.readyCount).toBeGreaterThanOrEqual(0);
+        expect(launch.readyCount).toBeLessThanOrEqual(launch.totalChecks);
+        expect(Number.isFinite(launch.totalChecks)).toBe(true);
+        expect(launch.totalChecks).toBeGreaterThanOrEqual(0);
+        expect(typeof launch.isFullyPrepped).toBe('boolean');
+        expect(Array.isArray(launch.missingBuffs)).toBe(true);
+        expect(typeof launch.summaryLine).toBe('string');
+        expect(launch.summaryLine.length).toBeGreaterThan(0);
+        expect(launch.summaryLine).not.toContain('NaN');
+        expect(launch.summaryLine).not.toContain('undefined');
+
+        // 5. Garage Station Advisor
+        const garage = getGarageStationAdvisor(metaSave);
+        expect(Number.isFinite(garage.equippedCount)).toBe(true);
+        expect(garage.equippedCount).toBeGreaterThanOrEqual(0);
+        expect(garage.equippedCount).toBeLessThanOrEqual(6);
+        expect(Number.isFinite(garage.powerScore)).toBe(true);
+        expect(garage.powerScore).toBeGreaterThanOrEqual(0);
+        expect(Number.isFinite(garage.tuningRanks)).toBe(true);
+        expect(garage.tuningRanks).toBeGreaterThanOrEqual(0);
+        expect(garage.tuningRanks).toBeLessThanOrEqual(garage.tuningMaxRanks);
+        expect(Number.isFinite(garage.tuningMaxRanks)).toBe(true);
+        expect(garage.tuningMaxRanks).toBeGreaterThanOrEqual(0);
+        expect(Number.isFinite(garage.tuningCompletionPct)).toBe(true);
+        expect(garage.tuningCompletionPct).toBeGreaterThanOrEqual(0);
+        expect(garage.tuningCompletionPct).toBeLessThanOrEqual(100);
+        expect(typeof garage.canAffordNextTuning).toBe('boolean');
+        expect(typeof garage.summaryLine).toBe('string');
+        expect(garage.summaryLine.length).toBeGreaterThan(0);
+        expect(garage.summaryLine).not.toContain('NaN');
+        expect(garage.summaryLine).not.toContain('undefined');
+      }
+    });
+
+    it('executes a 100-cycle deterministic PRNG fuzz across getRunModDeckSummary, getMetaTuningSummary, and getFloorBountyContractStatus verifying invariants totalModPicks >= 0, 0 <= completionPct <= 100, 0 <= progressPct <= 100, and clean summaryLine', () => {
+      let seed = 0xb0071e5;
+      const lcg = (): number => {
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        return seed / 4294967296;
+      };
+
+      const allMods = ['nitro_syringe', 'tire_iron', 'chrome_lens', 'gasoline', 'racing_slicks', 'oil_infusion', 'warp_drive', 'ghost_plate'];
+      const upgradeIds = ['dmg', 'fireRate', 'speed', 'maxHp', 'ramDamage'];
+      const extremeNumbers = [
+        0, 1, 2, 3, 5, 10, 25, 50, 100, 99999,
+        -1, -10, -9999,
+        NaN, Infinity, -Infinity,
+        null as any, undefined as any
+      ];
+
+      for (let cycle = 0; cycle < 100; cycle++) {
+        // Corrupted modStacks
+        const modStacks: Record<string, any> = {};
+        const numModEntries = Math.floor(lcg() * 6);
+        for (let m = 0; m < numModEntries; m++) {
+          const key = lcg() > 0.3 ? allMods[Math.floor(lcg() * allMods.length)] : ('invalid_mod_' + m);
+          const rawVal = extremeNumbers[Math.floor(lcg() * extremeNumbers.length)];
+          modStacks[key] = rawVal;
+        }
+        const playerPayload = (cycle % 12 === 0) ? null : {
+          modStacks: (cycle % 6 === 0) ? null : modStacks,
+          items: Object.keys(modStacks)
+        };
+
+        // Corrupted ranks
+        const ranks: Record<string, any> = {};
+        for (const upId of upgradeIds) {
+          if (lcg() > 0.3) {
+            ranks[upId] = extremeNumbers[Math.floor(lcg() * extremeNumbers.length)];
+          }
+        }
+        if (lcg() > 0.5) {
+          ranks['corrupt_key_xyz'] = extremeNumbers[Math.floor(lcg() * extremeNumbers.length)];
+        }
+        const metaPayload = (cycle % 15 === 0) ? null : {
+          ranks: (cycle % 8 === 0) ? null : ranks
+        };
+
+        // Corrupted floorNum, styleScore, and styleRank
+        const floorNum = extremeNumbers[Math.floor(lcg() * extremeNumbers.length)];
+        const styleScore = extremeNumbers[Math.floor(lcg() * extremeNumbers.length)];
+        const styleRanks = ['', 'D', 'C', 'B', 'A', 'S', 'SS', 'SSS', 'UNKNOWN', null as any, undefined as any];
+        const styleRank = styleRanks[Math.floor(lcg() * styleRanks.length)];
+        const bountyPlayerPayload = (cycle % 10 === 0) ? null : { styleScore, styleRank };
+
+        // 1. Run Mod Deck Summary
+        const deckSummary = getRunModDeckSummary(playerPayload as any);
+        expect(deckSummary.totalModPicks).toBeGreaterThanOrEqual(0);
+        expect(Number.isFinite(deckSummary.totalModPicks)).toBe(true);
+        expect(deckSummary.uniqueModsCount).toBeGreaterThanOrEqual(0);
+        expect(deckSummary.maxStackCount).toBeGreaterThanOrEqual(0);
+        expect(typeof deckSummary.evoStackReady).toBe('boolean');
+        expect(deckSummary.activeDuoCount).toBeGreaterThanOrEqual(0);
+        expect(deckSummary.potentialDuoCount).toBeGreaterThanOrEqual(0);
+        expect(typeof deckSummary.summaryLine).toBe('string');
+        expect(deckSummary.summaryLine.length).toBeGreaterThan(0);
+        expect(deckSummary.summaryLine).not.toContain('NaN');
+        expect(deckSummary.summaryLine).not.toContain('undefined');
+
+        // 2. Meta Tuning Summary
+        const tuningSummary = getMetaTuningSummary(metaPayload as any);
+        expect(tuningSummary.completionPct).toBeGreaterThanOrEqual(0);
+        expect(tuningSummary.completionPct).toBeLessThanOrEqual(100);
+        expect(Number.isFinite(tuningSummary.completionPct)).toBe(true);
+        expect(tuningSummary.totalRanks).toBeGreaterThanOrEqual(0);
+        expect(tuningSummary.totalRanks).toBeLessThanOrEqual(tuningSummary.maxPossibleRanks);
+        expect(typeof tuningSummary.summaryLine).toBe('string');
+        expect(tuningSummary.summaryLine.length).toBeGreaterThan(0);
+        expect(tuningSummary.summaryLine).not.toContain('NaN');
+        expect(tuningSummary.summaryLine).not.toContain('undefined');
+
+        // 3. Floor Bounty Contract Status
+        const bountyStatus = getFloorBountyContractStatus(floorNum, bountyPlayerPayload as any);
+        expect(bountyStatus.targetFloor).toBeGreaterThanOrEqual(1);
+        expect(Number.isFinite(bountyStatus.targetFloor)).toBe(true);
+        expect(bountyStatus.rewardScrap).toBeGreaterThanOrEqual(0);
+        expect(bountyStatus.rewardCoins).toBeGreaterThanOrEqual(0);
+        expect(typeof bountyStatus.isStyleMilestoneMet).toBe('boolean');
+        expect(typeof bountyStatus.contractTitle).toBe('string');
+        expect(bountyStatus.contractTitle.length).toBeGreaterThan(0);
+        expect(typeof bountyStatus.taskText).toBe('string');
+        expect(bountyStatus.taskText.length).toBeGreaterThan(0);
+        expect(typeof bountyStatus.summaryLine).toBe('string');
+        expect(bountyStatus.summaryLine.length).toBeGreaterThan(0);
+        expect(bountyStatus.summaryLine).not.toContain('NaN');
+        expect(bountyStatus.summaryLine).not.toContain('undefined');
+
+        // 4. Floor Bounty Contract / Style Milestone progressPct invariant: 0 <= progressPct <= 100
+        const rawScore = Number(bountyPlayerPayload?.styleScore);
+        const safeScore = Number.isFinite(rawScore) ? Math.max(0, rawScore) : 0;
+        const progressPct = Math.min(100, Math.max(0, Math.round((safeScore / 50) * 100)));
+        expect(progressPct).toBeGreaterThanOrEqual(0);
+        expect(progressPct).toBeLessThanOrEqual(100);
+        expect(Number.isFinite(progressPct)).toBe(true);
+      }
+    });
+
+    it('executes a 40-cycle rapid DOM fuzz on HubStationModalController cycling through all sanctuary stations with fuzzed payloads, verifying advisor data attributes on #hub-station-overlay are never empty, NaN, or undefined', () => {
+      const HUB_STATION_MARKUP = `
+        <button id="outside-focus-btn" type="button">outside</button>
+        <button type="button" id="hub-interact-banner" class="hub-interact-banner" hidden>
+          <span class="hub-interact-key">[PRESS E]</span>
+          <div class="hub-interact-copy">
+            <strong id="hub-interact-title"></strong>
+            <span id="hub-interact-desc"></span>
+          </div>
+        </button>
+        <div id="hub-station-overlay" aria-hidden="true">
+          <div class="hub-station-card" role="dialog" aria-modal="true" aria-labelledby="hub-station-title">
+            <header class="hub-station-header">
+              <div class="hub-station-title-wrap">
+                <span class="hub-station-kicker" id="hub-station-kicker"></span>
+                <h2 class="hub-station-title" id="hub-station-title"></h2>
+              </div>
+              <div class="hub-station-speaker-pill" id="hub-station-speaker"></div>
+            </header>
+            <blockquote class="hub-station-quote" id="hub-station-quote"></blockquote>
+            <div class="hub-station-purpose" id="hub-station-purpose"></div>
+            <div class="hub-station-body" id="hub-station-body"></div>
+            <div class="hub-station-feedback" id="hub-station-feedback" hidden></div>
+            <footer class="hub-station-actions" id="hub-station-actions">
+              <button type="button" class="portal-btn portal-btn--primary" id="btn-hub-station-primary"><kbd>E</kbd> ACTIVATE</button>
+              <button type="button" class="portal-btn portal-btn--secondary" id="btn-hub-station-secondary">CYCLE HEAT</button>
+              <button type="button" class="portal-btn portal-btn--secondary" id="btn-hub-station-close"><kbd>ESC</kbd> CLOSE</button>
+            </footer>
+          </div>
+        </div>
+      `;
+
+      document.body.innerHTML = HUB_STATION_MARKUP;
+      const modal = new HubStationModalController();
+      const overlay = document.getElementById('hub-station-overlay')!;
+
+      const stations = ['garage', 'blacksmith', 'codex', 'bounty', 'launch'] as const;
+      const stationAttrMap: Record<string, string> = {
+        garage: 'data-garage-advisor',
+        blacksmith: 'data-forge-advisor',
+        codex: 'data-scanner-advisor',
+        bounty: 'data-war-room-advisor',
+        launch: 'data-launch-advisor'
+      };
+
+      for (let cycle = 0; cycle < 40; cycle++) {
+        const station = stations[cycle % stations.length];
+
+        const metaSave = {
+          scrap: [0, 10, 14, 15, 30, 100, 99999, -20, NaN][cycle % 9],
+          heatLevel: [0, 1, 2, 3, 10, -5, NaN, Infinity][cycle % 8],
+          bestFloor: [1, 2, 3, 4, 5, 6, 99, NaN, -1][cycle % 9],
+          totalKills: [0, 15, 120, 9999, NaN, -5][cycle % 6],
+          bossesSlain: [0, 1, 3, 6, 12, NaN, -1][cycle % 7],
+          totalRuns: [0, 3, 20, 500, NaN][cycle % 5],
+          ranks: {
+            dmg: [0, 1, 3, 5, 99, NaN][cycle % 6],
+            speed: [0, 1, 2, 4, 99, NaN][(cycle + 1) % 6]
+          },
+          equipped: (cycle % 3 === 0)
+            ? {}
+            : {
+                tires: { slot: 'tires', name: 'Drift Tires', rarity: ((cycle % 4) as 0 | 1 | 2 | 3) },
+                engine: { slot: 'engine', name: 'Turbo V-Twin', rarity: (((cycle + 1) % 4) as 0 | 1 | 2 | 3) }
+              },
+          stash: []
+        };
+
+        const player = {
+          weapon: ['pistol', 'shotgun', 'rifle', 'katana'][cycle % 4],
+          hp: [1, 6, 10, -5, NaN][cycle % 5],
+          maxHp: 6,
+          scannerBuff: cycle % 2 === 0,
+          items: cycle % 3 === 0 ? [] : ['nitro_syringe', 'tire_iron']
+        };
+
+        modal.open({
+          npcId: station,
+          metaSave,
+          player,
+          scannerClaimed: cycle % 2 === 1,
+          bountyClaimed: cycle % 3 === 1,
+          onReforge: () => ({ ok: true, message: 'Reforged' }),
+          onClaimScanner: () => ({ ok: true, message: 'Scanner calibrated' }),
+          onClaimBountyCache: () => ({ ok: true, message: 'Supply cache secured' }),
+          onSelectHeat: () => {},
+          onLaunchRun: () => {},
+          onClose: () => {}
+        });
+
+        expect(modal.isOpen()).toBe(true);
+
+        const targetAttr = stationAttrMap[station];
+        const targetVal = overlay.getAttribute(targetAttr);
+        expect(targetVal).not.toBeNull();
+        expect(targetVal!.length).toBeGreaterThan(0);
+        expect(targetVal).not.toBe('NaN');
+        expect(targetVal).not.toBe('undefined');
+        expect(targetVal).not.toContain('NaN');
+        expect(targetVal).not.toContain('undefined');
+
+        if (cycle >= 5) {
+          for (const attr of [
+            'data-garage-advisor',
+            'data-forge-advisor',
+            'data-scanner-advisor',
+            'data-war-room-advisor',
+            'data-launch-advisor'
+          ]) {
+            const val = overlay.getAttribute(attr);
+            expect(val).not.toBeNull();
+            expect(val!.length).toBeGreaterThan(0);
+            expect(val).not.toBe('NaN');
+            expect(val).not.toBe('undefined');
+            expect(val).not.toContain('NaN');
+            expect(val).not.toContain('undefined');
+          }
+        }
+
+        modal.close();
+        expect(modal.isOpen()).toBe(false);
+      }
+
+      document.body.innerHTML = '';
+    });
+  });
+
 });

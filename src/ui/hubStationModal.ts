@@ -15,7 +15,13 @@
 import { RARITY, getEquipmentLoadoutSummary } from '../data/equipment';
 import { META_UPGRADES, getMetaTuningSummary } from '../data/upgrades';
 import { getCareerOutlawRank } from '@/core/state';
-import { WEAPONS, WeaponId, getWeaponTacticalProfile } from '@/data/weapons';
+import {
+  WEAPONS,
+  UNLOCKABLE_IDS,
+  WeaponId,
+  getWeaponArsenalSummary,
+  getWeaponTacticalProfile
+} from '../data/weapons';
 import type { MetaSaveState, PlayerState } from '@/types/game';
 
 export type HubStationId = 'garage' | 'blacksmith' | 'codex' | 'bounty' | 'launch' | 'armory' | 'forge' | 'scanner';
@@ -290,6 +296,53 @@ export function getGarageStationAdvisor(metaSave?: any): GarageStationAdvisor {
   };
 }
 
+export interface ArmoryStationAdvisor {
+  unlockedCount: number;
+  totalWeapons: number;
+  totalKills: number;
+  equippedWeaponId: WeaponId;
+  equippedRoleLabel: string;
+  equippedBaseDps: number;
+  summaryLine: string;
+}
+
+/**
+ * Computes sanctuary armory station collection mastery, career kill count, and equipped weapon advisor telemetry.
+ */
+export function getArmoryStationAdvisor(metaSave?: any, player?: any): ArmoryStationAdvisor {
+  const arsenal = getWeaponArsenalSummary(metaSave);
+  const rawWeapon = String(player?.weapon || 'pistol');
+  const profile: any = getWeaponTacticalProfile(rawWeapon as WeaponId);
+  const roleLabel = String(profile?.roleLabel || profile?.roleTag || 'PRECISION SIDEARM');
+  const baseDps = typeof profile?.baseDps === 'number' ? profile.baseDps : 48;
+  const equippedWeaponId: WeaponId = profile?.weaponId || 'pistol';
+
+  const summaryLine =
+    'ARSENAL: ' +
+    arsenal.unlockedCount +
+    '/' +
+    arsenal.totalWeapons +
+    ' UNLOCKED (' +
+    arsenal.totalKills +
+    ' KILLS) // EQUIPPED: ' +
+    equippedWeaponId.toUpperCase() +
+    ' (' +
+    roleLabel +
+    ', ' +
+    baseDps +
+    ' DPS)';
+
+  return {
+    unlockedCount: arsenal.unlockedCount,
+    totalWeapons: arsenal.totalWeapons,
+    totalKills: arsenal.totalKills,
+    equippedWeaponId,
+    equippedRoleLabel: roleLabel,
+    equippedBaseDps: baseDps,
+    summaryLine
+  };
+}
+
 export interface HubStationPromptInfo {
   title: string;
   summary: string;
@@ -314,6 +367,8 @@ export interface HubStationOpenOptions {
   onSelectHeat: (heat: number) => void;
   onLaunchRun: () => void;
   onClose?: () => void;
+  onUnlockWeapon?: (weaponId: WeaponId) => { ok: boolean; message: string } | void;
+  onEquipWeapon?: (weaponId: WeaponId) => { ok: boolean; message: string } | void;
 }
 
 /**
@@ -427,6 +482,8 @@ export class HubStationModalController {
   public getLaunchGateAdvisor = getLaunchGateAdvisor;
   public static getGarageStationAdvisor = getGarageStationAdvisor;
   public getGarageStationAdvisor = getGarageStationAdvisor;
+  public static getArmoryStationAdvisor = getArmoryStationAdvisor;
+  public getArmoryStationAdvisor = getArmoryStationAdvisor;
 
   constructor() {
     if (typeof document !== 'undefined') {
@@ -557,6 +614,8 @@ export class HubStationModalController {
         onSelectHeat: extraOptions?.onSelectHeat ?? (() => {}),
         onLaunchRun: extraOptions?.onLaunchRun ?? (() => {}),
         onClose: extraOptions?.onClose,
+        onUnlockWeapon: extraOptions?.onUnlockWeapon,
+        onEquipWeapon: extraOptions?.onEquipWeapon,
         ...extraOptions
       };
     } else {
@@ -617,6 +676,13 @@ export class HubStationModalController {
         this.overlay.setAttribute('data-garage-tuning-pct', String(advisor.tuningCompletionPct));
         this.overlay.setAttribute('data-garage-advisor', advisor.summaryLine);
       }
+
+      if (options.npcId === 'armory') {
+        const advisor = getArmoryStationAdvisor(options.metaSave, options.player);
+        this.overlay.setAttribute('data-armory-unlocked-count', String(advisor.unlockedCount));
+        this.overlay.setAttribute('data-armory-equipped-role', advisor.equippedRoleLabel);
+        this.overlay.setAttribute('data-armory-advisor', advisor.summaryLine);
+      }
     }
 
     this.renderHeaderAndPurpose(options.npcId);
@@ -675,6 +741,13 @@ export class HubStationModalController {
         this.overlay.setAttribute('data-garage-tuning-pct', String(advisor.tuningCompletionPct));
         this.overlay.setAttribute('data-garage-advisor', advisor.summaryLine);
       }
+
+      if (this.currentOptions.npcId === 'armory') {
+        const advisor = getArmoryStationAdvisor(this.currentOptions.metaSave, this.currentOptions.player);
+        this.overlay.setAttribute('data-armory-unlocked-count', String(advisor.unlockedCount));
+        this.overlay.setAttribute('data-armory-equipped-role', advisor.equippedRoleLabel);
+        this.overlay.setAttribute('data-armory-advisor', advisor.summaryLine);
+      }
     }
     this.renderHeaderAndPurpose(this.currentOptions.npcId);
     this.renderBody();
@@ -720,6 +793,12 @@ export class HubStationModalController {
   public renderArmory(options?: HubStationOpenOptions): void {
     const opts = options || this.currentOptions;
     if (opts) {
+      if (options?.metaSave && this.currentOptions) {
+        this.currentOptions.metaSave = options.metaSave;
+      }
+      if (options?.player && this.currentOptions) {
+        this.currentOptions.player = options.player;
+      }
       this.renderArmoryBody(opts.metaSave, opts.player);
     }
   }
@@ -911,6 +990,15 @@ export class HubStationModalController {
         this.overlayEl.setAttribute('data-launch-ready-count', String(advisor.readyCount));
         this.overlayEl.setAttribute('data-launch-fully-prepped', advisor.isFullyPrepped ? 'true' : 'false');
         this.overlayEl.setAttribute('data-launch-advisor', advisor.summaryLine);
+      }
+    }
+
+    if (npcId === 'armory') {
+      const advisor = getArmoryStationAdvisor(metaSave, player);
+      if (this.overlayEl) {
+        this.overlayEl.setAttribute('data-armory-unlocked-count', String(advisor.unlockedCount));
+        this.overlayEl.setAttribute('data-armory-equipped-role', advisor.equippedRoleLabel);
+        this.overlayEl.setAttribute('data-armory-advisor', advisor.summaryLine);
       }
     }
 
@@ -1344,11 +1432,19 @@ export class HubStationModalController {
     }
   }
 
-  private renderArmoryBody(metaSave: any, player: any): void {
+  public renderArmoryBody(metaSave: any, player?: any): void {
+    const effectivePlayer = player !== undefined ? player : this.currentOptions?.player;
+    const advisor = getArmoryStationAdvisor(metaSave, effectivePlayer);
+    if (this.overlay) {
+      this.overlay.setAttribute('data-armory-unlocked-count', String(advisor.unlockedCount));
+      this.overlay.setAttribute('data-armory-equipped-role', advisor.equippedRoleLabel);
+      this.overlay.setAttribute('data-armory-advisor', advisor.summaryLine);
+    }
+
     if (!this.bodyEl) return;
     const scrap = metaSave?.scrap || 0;
     const unlocked = metaSave?.unlocked || {};
-    const equippedWeaponId = player?.weapon || 'pistol';
+    const equippedWeaponId = effectivePlayer?.weapon || 'pistol';
 
     const weaponCardsHtml = (Object.keys(WEAPONS) as WeaponId[])
       .map((weaponId) => {
@@ -1386,16 +1482,84 @@ export class HubStationModalController {
           <span class="hub-stat-val hub-cyan">${(WEAPONS[equippedWeaponId as WeaponId] || WEAPONS.pistol).name.toUpperCase()}</span>
         </div>
       </div>
+      <div class="hub-armory-advisor-banner" data-unlocked-count="${advisor.unlockedCount}" data-equipped-role="${advisor.equippedRoleLabel}">
+        <span class="hub-armory-advisor-text">${advisor.summaryLine}</span>
+      </div>
       <div class="hub-armory-list">
         ${weaponCardsHtml}
       </div>
     `;
+
+    const cards = this.bodyEl.querySelectorAll<HTMLElement>('.hub-weapon-card');
+    cards.forEach((card) => {
+      const wId = card.getAttribute('data-weapon-id') as WeaponId;
+      if (!wId) return;
+      card.onclick = () => {
+        const isUnlocked = wId === 'pistol' || !!(this.currentOptions?.metaSave?.unlocked?.[wId]);
+        if (isUnlocked) {
+          this.equipWeapon(wId);
+        } else {
+          this.unlockWeapon(wId);
+        }
+      };
+    });
 
     if (this.primaryBtn) {
       this.primaryBtn.hidden = false;
       this.primaryBtn.innerHTML = '<kbd>E</kbd> ✓ CONFIRM ARMORY LOADOUT';
       this.primaryBtn.onclick = () => this.close();
     }
+  }
+
+  public equipWeapon(weaponId: WeaponId): boolean {
+    if (!this.currentOptions) return false;
+    const metaSave = this.currentOptions.metaSave;
+    const unlocked = metaSave?.unlocked || {};
+    const isUnlocked = weaponId === 'pistol' || !!unlocked[weaponId];
+    if (!isUnlocked) {
+      this.showFeedback(`Cannot equip ${WEAPONS[weaponId]?.name || weaponId}: Weapon is locked!`, false);
+      return false;
+    }
+    if (!this.currentOptions.player) {
+      this.currentOptions.player = {};
+    }
+    this.currentOptions.player.weapon = weaponId;
+    if (this.currentOptions.onEquipWeapon) {
+      this.currentOptions.onEquipWeapon(weaponId);
+    }
+    this.showFeedback(`Equipped ${WEAPONS[weaponId]?.name || weaponId}!`, true);
+    this.renderBody();
+    return true;
+  }
+
+  public unlockWeapon(weaponId: WeaponId): boolean {
+    if (!this.currentOptions) return false;
+    const metaSave = this.currentOptions.metaSave;
+    if (!metaSave) return false;
+    const unlocked = metaSave.unlocked || (metaSave.unlocked = {});
+    if (weaponId === 'pistol' || unlocked[weaponId]) {
+      this.showFeedback(`${WEAPONS[weaponId]?.name || weaponId} is already unlocked!`, true);
+      return true;
+    }
+    const isUnlockable = (UNLOCKABLE_IDS as readonly string[]).includes(weaponId);
+    if (!isUnlockable) {
+      this.showFeedback(`Cannot unlock invalid weapon ${weaponId}!`, false);
+      return false;
+    }
+    const w = WEAPONS[weaponId] || WEAPONS.pistol;
+    const scrap = Number(metaSave.scrap || 0);
+    if (scrap < w.cost) {
+      this.showFeedback(`Need ${w.cost - scrap} more Scrap to unlock ${w.name}!`, false);
+      return false;
+    }
+    metaSave.scrap = scrap - w.cost;
+    unlocked[weaponId] = true;
+    if (this.currentOptions.onUnlockWeapon) {
+      this.currentOptions.onUnlockWeapon(weaponId);
+    }
+    this.showFeedback(`Unlocked ${w.name} for ${w.cost} Scrap!`, true);
+    this.renderBody();
+    return true;
   }
 
   private showFeedback(message: string, ok: boolean): void {

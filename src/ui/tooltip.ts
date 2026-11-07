@@ -13,7 +13,13 @@ import {
   getWeaponEvolutionProgress,
   WeaponId
 } from '../data/weapons';
-import { DROP_ITEMS } from '../data/upgrades';
+import {
+  DROP_ITEMS,
+  RUN_MOD_POOL,
+  ALL_RUN_MOD_POOL,
+  DUO_SYNERGIES,
+  getActiveDuoSynergies
+} from '../data/upgrades';
 import { RARITY, fmtStat } from '../data/equipment';
 import { getHubNpcGreeting } from '../world/dungeon';
 
@@ -171,11 +177,110 @@ export function formatHubNpcTooltip(
   };
 }
 
+interface DuoRecipeInfo {
+  reqA: string;
+  reqB: string;
+  recipeLabel: string;
+}
+
+const DUO_RECIPE_MAP: Record<string, DuoRecipeInfo> = {
+  thermal_shock: {
+    reqA: 'cryo_rounds',
+    reqB: 'high_explosive',
+    recipeLabel: 'cryo_rounds + high_explosive'
+  },
+  superconductor: {
+    reqA: 'cryo_rounds',
+    reqB: 'tesla_capacitor',
+    recipeLabel: 'cryo_rounds + tesla_capacitor'
+  },
+  void_vortex: {
+    reqA: 'magnet_coil',
+    reqB: 'high_explosive',
+    recipeLabel: 'magnet_coil + high_explosive'
+  },
+  juggernaut_overdrive: {
+    reqA: 'titanium_spikes',
+    reqB: 'turbo_charger',
+    recipeLabel: 'titanium_spikes + turbo_charger'
+  },
+  voltaic_wake: {
+    reqA: 'exhaust_afterburner',
+    reqB: 'gasoline',
+    recipeLabel: 'exhaust_afterburner + gasoline'
+  }
+};
+
+/**
+ * Pure function formatting in-run Mod Deck evolution readiness and Duo Synergy recipes/activity for UI tooltips.
+ */
+export function formatModDeckTooltipHint(modId: string, player?: any): string {
+  const modDef =
+    RUN_MOD_POOL.find(m => m.id === modId) ||
+    (ALL_RUN_MOD_POOL as readonly any[]).find(m => m.id === modId);
+  if (!modDef) return '';
+
+  const rawStack = player?.modStacks?.[modId];
+  const stack =
+    typeof rawStack === 'number' && Number.isFinite(rawStack) && rawStack > 0
+      ? Math.floor(rawStack)
+      : 0;
+
+  let stackStatus: string;
+  if (stack >= 3) {
+    stackStatus = '⚡ 3+ STACKS: GENERIC OVERCLOCK READY';
+  } else if (stack === 2) {
+    stackStatus = '🔥 2/3 STACKS: +1 STACK FOR OVERCLOCK EVO';
+  } else {
+    stackStatus = '📦 STACKS: ' + stack + '/3 FOR OVERCLOCK EVO';
+  }
+
+  const activeIds = new Set(getActiveDuoSynergies(player || {}).map(d => d.id));
+  const duoParts: string[] = [];
+
+  for (const syn of DUO_SYNERGIES) {
+    const s = syn as any;
+    const reqA = s.reqA ?? DUO_RECIPE_MAP[syn.id]?.reqA;
+    const reqB = s.reqB ?? DUO_RECIPE_MAP[syn.id]?.reqB;
+    const recipeLabel = s.recipeLabel ?? DUO_RECIPE_MAP[syn.id]?.recipeLabel ?? syn.name;
+
+    const isMatch =
+      s.reqA === modId ||
+      s.reqB === modId ||
+      reqA === modId ||
+      reqB === modId ||
+      (Array.isArray(syn.components) && syn.components.includes(modId));
+
+    if (isMatch) {
+      if (activeIds.has(syn.id)) {
+        duoParts.push('✓ DUO ACTIVE: ' + syn.name);
+      } else {
+        duoParts.push('⚡ DUO RECIPE: ' + syn.name + ' (' + recipeLabel + ')');
+      }
+    }
+  }
+
+  return (
+    '<span class="tip-mod-evo-hint">[' +
+    stackStatus +
+    (duoParts.length > 0 ? ' // ' + duoParts.join(' · ') : '') +
+    ']</span>'
+  );
+}
+
 export class TooltipManager {
   private tipEl: HTMLElement | null = null;
   private isVisible: boolean = false;
   private hoveringMouse: boolean = false;
   private autoInspectActive: boolean = false;
+  public playerProvider?: () => any;
+
+  public static formatModDeckTooltipHint = formatModDeckTooltipHint;
+  public formatModDeckTooltipHint = formatModDeckTooltipHint;
+
+  public setPlayerProvider(provider?: () => any): void {
+    this.playerProvider = provider;
+  }
 
   constructor(elementId: string = 'tooltip') {
     if (typeof document !== 'undefined') {
@@ -255,16 +360,21 @@ export class TooltipManager {
       ? '<div style="color:#ffd60a;font-weight:800;margin-top:3px">⚖️ CHOICE PEDESTAL — OTHER DESPAWNS</div>'
       : '';
 
-    if (p.type === 'mod_pedestal') {
-      const costHtml = p.cost > 0
-        ? tipCost(`Cost: ${p.cost} coins`)
+    if (p.type === 'mod_pedestal' || ((p as any).kind === 'mod' && (p as any).mod)) {
+      const mod = (p as any).mod;
+      const rawCost = typeof (p as any).cost === 'number' ? (p as any).cost : 0;
+      const costHtml = rawCost > 0
+        ? tipCost(`Cost: ${rawCost} coins`)
         : '<span class="tip-free">Free</span>';
-      const deltasHtml = formatModStatDeltas((p.mod as any).statDeltas);
-      const evoTarget = getModEvolutionTarget(p.mod as any);
+      const deltasHtml = formatModStatDeltas(mod?.statDeltas);
+      const evoTarget = getModEvolutionTarget(mod);
       const evoBadge = evoTarget
         ? '<div style="color:#00f5d4;font-weight:800;margin-top:3px">⚡ OVERCLOCK EVOLUTION MOD</div>'
         : '';
-      return `${tipTitle(p.mod.name, '#ffd166', 'Mod')}<br/>${p.mod.desc}${deltasHtml}${evoBadge}${choiceBadge}<br/>${costHtml}`;
+      const player = this.playerProvider ? this.playerProvider() : undefined;
+      const hint = mod?.id ? formatModDeckTooltipHint(mod.id, player) : '';
+      const hintHtml = hint ? `<div style="margin-top:3px">${hint}</div>` : '';
+      return `${tipTitle(mod?.name || 'Mod', '#ffd166', 'Mod')}<br/>${mod?.desc || ''}${deltasHtml}${evoBadge}${hintHtml}${choiceBadge}<br/>${costHtml}`;
     }
 
     if (p.type === 'loot') {
