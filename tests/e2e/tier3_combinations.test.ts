@@ -66,10 +66,15 @@ import {
   updateGrenades,
   updateEnemyCollisions,
   handleEnemyDeath,
-  getCombatOffenseSummary
+  getCombatOffenseSummary,
+  getCombatSurvivabilitySummary
 } from '@/systems/combat';
 
-import { createEnemy } from '@/systems/enemyAI';
+import {
+  createEnemy,
+  getRoomThreatAssessment,
+  getRoomVisualClutterAudit
+} from '@/systems/enemyAI';
 import { getRiderMobilitySummary } from '@/systems/physics';
 import { getShopBuildSynergyHint } from '@/ui/shopModal';
 import { getPortalHeatBriefing } from '@/ui/portalModal';
@@ -78,7 +83,9 @@ import {
   getLaunchGateAdvisor,
   getWarRoomStationAdvisor
 } from '@/ui/hubStationModal';
-import { getHubNpcGreeting, getFloorBountyContract } from '@/world/dungeon';
+import { getHubNpcGreeting, getFloorBountyContract, getRoomHazardSummary } from '@/world/dungeon';
+import { getDuoSynergyAdvisor } from '@/data/items';
+import { getDropItemStackSummary } from '@/ui/dropModal';
 
 import { getBossEncounterBriefing } from '../../src/systems/enemyAI';
 import { getForgeStationAdvisor } from '../../src/ui/hubStationModal';
@@ -1911,6 +1918,425 @@ describe('Tier 3: Cross-Feature Combinations & Synergies', () => {
       expect(rank5.title).toBe('👑 LEGEND OF VALHALLA');
       expect(rank5.careerScore).toBe(200 + 150 + 200); // 550
       expect(rank5.nextMilestoneText).toBe('MAX CAREER RANK ACHIEVED');
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Combination 10: Duo Synergy Advisor, Arena Clutter Audit & Drop Stack Telemetry (M148)
+  // --------------------------------------------------------------------------
+  describe('Combination 10: Duo Synergy Advisor, Arena Clutter Audit & Drop Stack Telemetry (M148)', () => {
+    // Test 1: Verifies zero Outlaw Style mechanics and zero pre-run buffs across fresh run states while validating getDuoSynergyAdvisor, getRunModDeckSummary, and getDropItemStackSummary baseline consistency
+    it('verifies zero Outlaw Style mechanics and zero pre-run buffs across fresh run states while validating getDuoSynergyAdvisor, getRunModDeckSummary, and getDropItemStackSummary baseline consistency', () => {
+      const runner = createDefaultPlayerState();
+      const metaSave = createDefaultMetaSave();
+      resetPlayerStatsForRun(runner, metaSave);
+      runner.weapon = 'pistol';
+
+      // Strict user design constraint verification: zero Outlaw Style mechanics or pre-run buffs
+      expect((runner as any).outlawStyle).toBeUndefined();
+      expect((runner as any).preRunBuffs).toBeUndefined();
+      expect((runner as any).activeBuffs).toBeUndefined();
+      expect(runner.speedMult).toBe(1);
+      expect(runner.dmgMult).toBe(1);
+      expect(runner.fireRateMult).toBe(1);
+      expect(runner.items).toHaveLength(0);
+      expect(Object.keys(runner.itemStacks ?? {})).toHaveLength(0);
+
+      // Baseline Duo Synergy Advisor evaluation
+      const duoAdvisor = getDuoSynergyAdvisor(runner);
+      expect(duoAdvisor.unlockedCount).toBe(0);
+      expect(duoAdvisor.nearMissCount).toBe(0);
+      expect(duoAdvisor.unlockedDuos).toEqual([]);
+      expect(duoAdvisor.partialDuos).toEqual([]);
+      expect(duoAdvisor.summaryLine).toBe('DUOS: 0 ACTIVE · COLLECT PAIRED MODS TO UNLOCK');
+
+      // Baseline Run Mod Deck evaluation
+      const deckSummary = getRunModDeckSummary(runner);
+      expect(deckSummary.totalModPicks).toBe(0);
+      expect(deckSummary.uniqueModsCount).toBe(0);
+      expect(deckSummary.maxStackCount).toBe(0);
+      expect(deckSummary.evoStackReady).toBe(false);
+      expect(deckSummary.activeDuoCount).toBe(0);
+      expect(deckSummary.potentialDuoCount).toBe(0);
+      expect(deckSummary.summaryLine).toBe('MODS: 0 PICKS (0 UNIQUE) // 0/3 MAX STACK // DUOS: 0 ACTIVE, 0 NEAR');
+
+      // Baseline Drop Item Stack evaluation on 3 candidate choices
+      const dropChoices = ['cryo_rounds', 'magnet_coil', 'turbo_charger'];
+      const dropSummary = getDropItemStackSummary(dropChoices, runner);
+      expect(dropSummary.totalChoices).toBe(3);
+      expect(dropSummary.newItemsCount).toBe(3);
+      expect(dropSummary.stackUpgradeCount).toBe(0);
+      expect(dropSummary.evoReadyCount).toBe(0);
+      expect(dropSummary.summaryLine).toBe('DROPS: 3 CHOICES // 3 NEW · 0 UPGRADE · 0 EVO-READY');
+      expect(dropSummary.choiceBreakdown).toHaveLength(3);
+      for (const item of dropSummary.choiceBreakdown) {
+        expect(item.currentStacks).toBe(0);
+        expect(item.nextStacks).toBe(1);
+        expect(item.nextTier).toBe('NEW');
+      }
+    });
+
+    // Test 2: Verifies getDuoSynergyAdvisor, getRunModDeckSummary, and getDropItemStackSummary consistency across all 5 canonical Duo Synergies
+    it('verifies getDuoSynergyAdvisor, getRunModDeckSummary, and getDropItemStackSummary consistency across all 5 canonical Duo Synergies (thermal_shock, superconductor, void_vortex, juggernaut_overdrive, voltaic_wake)', () => {
+      const runner = createDefaultPlayerState();
+      runner.weapon = 'pistol';
+
+      const canonicalDuos = [
+        { id: 'thermal_shock', name: 'THERMAL SHOCK', itemA: 'cryo_rounds', itemB: 'high_explosive' },
+        { id: 'superconductor', name: 'SUPERCONDUCTOR', itemA: 'cryo_rounds', itemB: 'tesla_capacitor' },
+        { id: 'void_vortex', name: 'VOID VORTEX', itemA: 'magnet_coil', itemB: 'high_explosive' },
+        { id: 'juggernaut_overdrive', name: 'JUGGERNAUT OVERDRIVE', itemA: 'titanium_spikes', itemB: 'turbo_charger' },
+        { id: 'voltaic_wake', name: 'VOLTAIC WAKE', itemA: 'exhaust_afterburner', itemB: 'gasoline' }
+      ] as const;
+
+      // 1. Verify each canonical duo individually through near-miss and unlocked phases
+      for (const duo of canonicalDuos) {
+        const isolatedRunner = createDefaultPlayerState();
+        isolatedRunner.weapon = 'pistol';
+        isolatedRunner.items = [duo.itemA];
+        isolatedRunner.itemStacks = { [duo.itemA]: 1 };
+        // Near-miss verification
+        (isolatedRunner as any).modStacks = { [duo.itemA]: 1 };
+        const nearAdvisor = getDuoSynergyAdvisor(isolatedRunner);
+        expect(nearAdvisor.unlockedCount).toBe(0);
+        expect(nearAdvisor.nearMissCount).toBeGreaterThanOrEqual(1);
+        const partial = nearAdvisor.partialDuos.find(p => p.id === duo.id);
+        expect(partial).toBeDefined();
+        expect(partial!.ownedItem).toBe(duo.itemA);
+        expect(partial!.missingItem).toBe(duo.itemB);
+
+        // Drop crate offering the missing item
+        const dropChoices = [duo.itemB, duo.itemA];
+        const dropSum = getDropItemStackSummary(dropChoices, isolatedRunner);
+        expect(dropSum.choiceBreakdown.find(c => c.id === duo.itemB)?.nextTier).toBe('NEW');
+        expect(dropSum.choiceBreakdown.find(c => c.id === duo.itemA)?.nextTier).toBe('STACK_2');
+
+        // Unlock the duo by collecting itemB
+        isolatedRunner.items.push(duo.itemB);
+        isolatedRunner.itemStacks[duo.itemB] = 1;
+        (isolatedRunner as any).modStacks[duo.itemB] = 1;
+
+        const unlockedAdvisor = getDuoSynergyAdvisor(isolatedRunner);
+        expect(unlockedAdvisor.unlockedDuos).toContain(duo.name);
+        expect(unlockedAdvisor.unlockedCount).toBeGreaterThanOrEqual(1);
+
+        const deckSum = getRunModDeckSummary(isolatedRunner);
+        expect(deckSum.activeDuoCount).toBeGreaterThanOrEqual(1);
+      }
+
+      // 2. Fully equip all 8 distinct components across all 5 canonical synergies simultaneously
+      runner.items = [
+        'cryo_rounds',
+        'high_explosive',
+        'tesla_capacitor',
+        'magnet_coil',
+        'titanium_spikes',
+        'turbo_charger',
+        'exhaust_afterburner',
+        'gasoline'
+      ];
+      runner.itemStacks = {
+        cryo_rounds: 1,
+        high_explosive: 1,
+        tesla_capacitor: 1,
+        magnet_coil: 1,
+        titanium_spikes: 1,
+        turbo_charger: 1,
+        exhaust_afterburner: 1,
+        gasoline: 1
+      };
+      (runner as any).modStacks = { ...runner.itemStacks };
+
+      const fullAdvisor = getDuoSynergyAdvisor(runner);
+      expect(fullAdvisor.unlockedCount).toBe(5);
+      expect(fullAdvisor.nearMissCount).toBe(0);
+      expect(fullAdvisor.unlockedDuos).toEqual([
+        'THERMAL SHOCK',
+        'SUPERCONDUCTOR',
+        'VOID VORTEX',
+        'JUGGERNAUT OVERDRIVE',
+        'VOLTAIC WAKE'
+      ]);
+      expect(fullAdvisor.summaryLine).toBe(
+        'DUOS: 5 ACTIVE (THERMAL SHOCK, SUPERCONDUCTOR, VOID VORTEX, JUGGERNAUT OVERDRIVE, VOLTAIC WAKE)'
+      );
+
+      const fullDeck = getRunModDeckSummary(runner);
+      expect(fullDeck.activeDuoCount).toBe(5);
+      expect(fullDeck.potentialDuoCount).toBe(0);
+
+      // Verify drop stack progression for crate drop offerings
+      // If player already has 1 stack of turbo_charger, next is STACK_2
+      const dropCheck1 = getDropItemStackSummary(['turbo_charger'], runner);
+      expect(dropCheck1.choiceBreakdown[0].nextTier).toBe('STACK_2');
+
+      // If turbo_charger has 2 stacks, next is EVO_READY
+      runner.itemStacks.turbo_charger = 2;
+      const dropCheck2 = getDropItemStackSummary(['turbo_charger'], runner);
+      expect(dropCheck2.choiceBreakdown[0].nextTier).toBe('EVO_READY');
+      expect(dropCheck2.evoReadyCount).toBe(1);
+
+      // If turbo_charger has 3 stacks, next is OVERSTACK
+      runner.itemStacks.turbo_charger = 3;
+      const dropCheck3 = getDropItemStackSummary(['turbo_charger'], runner);
+      expect(dropCheck3.choiceBreakdown[0].nextTier).toBe('OVERSTACK');
+    });
+
+    // Test 3: Verifies getRoomVisualClutterAudit(room, floor) + getRoomThreatAssessment(room, floor) + getRoomHazardSummary(room) cross-system agreement across Floors 1–6
+    it('verifies getRoomVisualClutterAudit(room, floor) + getRoomThreatAssessment(room, floor) + getRoomHazardSummary(room) cross-system agreement across Floors 1–6', () => {
+      for (let floor = 1; floor <= 6; floor++) {
+        // A. Clean Empty Sector on Floor
+        const cleanRoom: Room = {
+          id: `room-clean-f${floor}`,
+          x: 0,
+          y: 0,
+          width: 800,
+          height: 600,
+          doorDirections: ['north', 'south'],
+          cleared: true,
+          visited: true,
+          enemies: [],
+          obstacles: [],
+          biomeZones: [],
+          pickups: [],
+          skids: [],
+          type: 'combat'
+        } as unknown as Room;
+
+        const cleanClutter = getRoomVisualClutterAudit(cleanRoom, floor);
+        expect(cleanClutter.obstacleCount).toBe(0);
+        expect(cleanClutter.hazardObstacleCount).toBe(0);
+        expect(cleanClutter.biomeZoneCount).toBe(0);
+        expect(cleanClutter.activeEnemyCount).toBe(0);
+        expect(cleanClutter.clutterScore).toBe(0);
+        expect(cleanClutter.readabilityGrade).toBe('CLEAN');
+        expect(cleanClutter.isCleanLayout).toBe(true);
+        expect(cleanClutter.layoutSummary).toBe(`F${floor} CLEAN ARENA // 0 OBSTACLES · 0 ZONES · 0 HOSTILES`);
+
+        const cleanThreat = getRoomThreatAssessment(cleanRoom, floor);
+        expect(cleanThreat.threatScore).toBe(0);
+        expect(cleanThreat.threatTier).toBe('CLEAR');
+        expect(cleanThreat.livingCount).toBe(0);
+        expect(cleanThreat.eliteCount).toBe(0);
+        expect(cleanThreat.hasBoss).toBe(false);
+
+        const cleanHazard = getRoomHazardSummary(cleanRoom);
+        expect(cleanHazard.explosiveCount).toBe(0);
+        expect(cleanHazard.toxicCount).toBe(0);
+        expect(cleanHazard.cryoCount).toBe(0);
+        expect(cleanHazard.zoneTypes).toEqual([]);
+        expect(cleanHazard.tacticalHint).toBe('Clear asphalt sector — standard traction.');
+
+        // B. Tactical Hazard Combat Room on Floor
+        const combatRoom: Room = {
+          id: `room-combat-f${floor}`,
+          x: 1,
+          y: 1,
+          width: 800,
+          height: 600,
+          doorDirections: ['east', 'west'],
+          cleared: false,
+          visited: true,
+          obstacles: [
+            { x: 100, y: 100, size: 24, type: 'rock', hp: 20 },
+            { x: 200, y: 150, size: 20, type: 'explosive_barrel', hp: 10 },
+            { x: 300, y: 200, size: 20, type: 'cryo_barrel', hp: 10 },
+            { x: 400, y: 250, size: 24, type: 'spikes', hp: 30 }
+          ],
+          biomeZones: [
+            { x: 250, y: 250, radius: 50, type: 'oil_slick' },
+            { x: 350, y: 350, radius: 60, type: 'cryo_patch' }
+          ],
+          enemies: [
+            { id: 101, hp: 40, type: 'grunt', isElite: false },
+            { id: 102, hp: 50, type: 'shooter', isElite: false },
+            { id: 103, hp: 90, type: 'brute', isElite: true }
+          ],
+          pickups: [],
+          skids: [],
+          type: 'combat'
+        } as unknown as Room;
+
+        const combatClutter = getRoomVisualClutterAudit(combatRoom, floor);
+        expect(combatClutter.obstacleCount).toBe(4);
+        expect(combatClutter.hazardObstacleCount).toBe(3); // explosive_barrel, cryo_barrel, spikes
+        expect(combatClutter.biomeZoneCount).toBe(2);
+        expect(combatClutter.activeEnemyCount).toBe(3);
+        // clutterScore: 4*2 + 2*3 + 3 = 17 (<= 18 -> CLEAN)
+        expect(combatClutter.clutterScore).toBe(17);
+        expect(combatClutter.readabilityGrade).toBe('CLEAN');
+        expect(combatClutter.isCleanLayout).toBe(true);
+        expect(combatClutter.layoutSummary).toBe(`F${floor} CLEAN ARENA // 4 OBSTACLES · 2 ZONES · 3 HOSTILES`);
+
+        const combatHazard = getRoomHazardSummary(combatRoom);
+        expect(combatHazard.explosiveCount).toBe(1);
+        expect(combatHazard.cryoCount).toBe(1);
+        expect(combatHazard.toxicCount).toBe(0);
+        expect(combatHazard.zoneTypes).toContain('oil_slick');
+        expect(combatHazard.zoneTypes).toContain('cryo_patch');
+        expect(combatHazard.tacticalHint).toContain('Cryo barrels detected (1)');
+        expect(combatHazard.tacticalHint).toContain('Explosive barrels detected (1)');
+
+        const combatThreat = getRoomThreatAssessment(combatRoom, floor);
+        expect(combatThreat.livingCount).toBe(3);
+        expect(combatThreat.eliteCount).toBe(1);
+        expect(combatThreat.hasBoss).toBe(false);
+        // threatScore: 3 * (10 + floor * 2) + 1 * 25
+        const expectedThreatScore = 3 * (10 + floor * 2) + 25;
+        expect(combatThreat.threatScore).toBe(expectedThreatScore);
+        // Since eliteCount > 0, threatTier is at least HIGH (or APEX if score >= 90)
+        expect(['HIGH', 'APEX']).toContain(combatThreat.threatTier);
+
+        // C. Apex Boss Arena
+        const bossRoom: Room = {
+          id: `room-boss-f${floor}`,
+          x: 2,
+          y: 2,
+          width: 900,
+          height: 700,
+          doorDirections: ['north'],
+          cleared: false,
+          visited: true,
+          obstacles: [
+            { x: 150, y: 150, size: 30, type: 'rock', hp: 50 },
+            { x: 650, y: 550, size: 30, type: 'rock', hp: 50 }
+          ],
+          biomeZones: [
+            { x: 450, y: 350, radius: 70, type: 'emp_zone' }
+          ],
+          enemies: [
+            { id: 999, hp: 1200, maxHp: 1200, type: 'boss', isElite: false },
+            { id: 998, hp: 80, type: 'sniper', isElite: true }
+          ],
+          pickups: [],
+          skids: [],
+          type: 'boss'
+        } as unknown as Room;
+
+        const bossThreat = getRoomThreatAssessment(bossRoom, floor);
+        expect(bossThreat.hasBoss).toBe(true);
+        expect(bossThreat.threatTier).toBe('APEX');
+        expect(bossThreat.livingCount).toBe(2);
+        expect(bossThreat.eliteCount).toBe(1);
+        expect(bossThreat.advisory).toContain('Apex threat');
+        expect(bossThreat.advisory).toContain('Boss entity');
+
+        const bossClutter = getRoomVisualClutterAudit(bossRoom, floor);
+        expect(bossClutter.obstacleCount).toBe(2);
+        expect(bossClutter.biomeZoneCount).toBe(1);
+        expect(bossClutter.activeEnemyCount).toBe(2);
+        expect(bossClutter.isCleanLayout).toBe(true);
+        expect(bossClutter.readabilityGrade).toBe('CLEAN');
+      }
+    });
+
+    // Test 4: Verifies end-to-end combat telemetry convergence: drop item stacking, duo synergy empowerment, arena clutter ratings, and combat survivability under escalated combat pressure
+    it('verifies end-to-end combat telemetry convergence: drop item stacking, duo synergy empowerment, arena clutter ratings, and combat survivability under escalated combat pressure', () => {
+      const runner = createDefaultPlayerState();
+      runner.maxHp = 10;
+      runner.hp = 10;
+      runner.invuln = 0;
+
+      // Verify strict user design constraint
+      expect((runner as any).outlawStyle).toBeUndefined();
+      expect((runner as any).preRunBuffs).toBeUndefined();
+
+      // Stage 1: Full health, no mods
+      const survInitial = getCombatSurvivabilitySummary(runner);
+      expect(survInitial.hp).toBe(10);
+      expect(survInitial.maxHp).toBe(10);
+      expect(survInitial.hullPct).toBe(100);
+      expect(survInitial.hullStatus).toBe('OPTIMAL HULL');
+      expect(survInitial.chassisTier).toBe('JUGGERNAUT TANK');
+      expect(survInitial.isInvulnerable).toBe(false);
+      expect(survInitial.summaryLine).toBe('HULL: 10/10 (100% · OPTIMAL HULL) // JUGGERNAUT TANK');
+
+      // Stage 2: Player collects Juggernaut Overdrive duo components (titanium_spikes + turbo_charger)
+      runner.items.push('titanium_spikes', 'turbo_charger');
+      runner.itemStacks = { titanium_spikes: 1, turbo_charger: 1 };
+      (runner as any).modStacks = { titanium_spikes: 1, turbo_charger: 1 };
+
+      const advisorMid = getDuoSynergyAdvisor(runner);
+      expect(advisorMid.unlockedDuos).toContain('JUGGERNAUT OVERDRIVE');
+      expect(advisorMid.unlockedCount).toBe(1);
+
+      // Crate drop offers turbo_charger again -> STACK_2 progression
+      const crateDrop = getDropItemStackSummary(['turbo_charger', 'nanite_repair'], runner);
+      expect(crateDrop.choiceBreakdown.find(c => c.id === 'turbo_charger')?.nextTier).toBe('STACK_2');
+      expect(crateDrop.choiceBreakdown.find(c => c.id === 'nanite_repair')?.nextTier).toBe('NEW');
+
+      // Stage 3: Combat encounter causes critical hull damage & triggers invulnerability frames
+      runner.hp = 3;
+      runner.invuln = 1.25;
+
+      const survDamaged = getCombatSurvivabilitySummary(runner);
+      expect(survDamaged.hp).toBe(3);
+      expect(survDamaged.hullPct).toBe(30);
+      expect(survDamaged.hullStatus).toBe('CRITICAL HULL');
+      expect(survDamaged.isInvulnerable).toBe(true);
+      expect(survDamaged.summaryLine).toContain('CRITICAL HULL');
+      expect(survDamaged.summaryLine).toContain('SHIELD I-FRAMES ACTIVE');
+
+      // Stage 4: Enter a dense hostile arena
+      const denseRoom: Room = {
+        id: 'dense-arena',
+        x: 3,
+        y: 3,
+        width: 800,
+        height: 600,
+        doorDirections: ['north'],
+        cleared: false,
+        visited: true,
+        obstacles: Array.from({ length: 9 }, (_, i) => ({
+          x: 50 + i * 40,
+          y: 50 + i * 40,
+          size: 20,
+          type: i % 2 === 0 ? 'rock' : 'explosive_barrel',
+          hp: 20
+        })),
+        biomeZones: [
+          { x: 100, y: 100, radius: 50, type: 'oil_slick' },
+          { x: 200, y: 200, radius: 50, type: 'cryo_patch' },
+          { x: 300, y: 300, radius: 50, type: 'emp_zone' },
+          { x: 400, y: 400, radius: 50, type: 'toxic_pool' }
+        ],
+        enemies: Array.from({ length: 8 }, (_, i) => ({
+          id: 500 + i,
+          hp: 60,
+          type: 'brute',
+          isElite: i === 0
+        })),
+        pickups: [],
+        skids: [],
+        type: 'combat'
+      } as unknown as Room;
+
+      const clutterAudit = getRoomVisualClutterAudit(denseRoom, 4);
+      // obstacleCount = 9, biomeZoneCount = 4, activeEnemyCount = 8
+      // clutterScore = 9 * 2 + 4 * 3 + 8 = 18 + 12 + 8 = 38 (> 30 -> DENSE)
+      expect(clutterAudit.obstacleCount).toBe(9);
+      expect(clutterAudit.biomeZoneCount).toBe(4);
+      expect(clutterAudit.activeEnemyCount).toBe(8);
+      expect(clutterAudit.clutterScore).toBe(38);
+      expect(clutterAudit.readabilityGrade).toBe('DENSE');
+      expect(clutterAudit.isCleanLayout).toBe(false); // obstacleCount > 8 || biomeZoneCount > 3
+      expect(clutterAudit.layoutSummary).toBe('F4 DENSE ARENA // 9 OBSTACLES · 4 ZONES · 8 HOSTILES');
+
+      const threatAssessment = getRoomThreatAssessment(denseRoom, 4);
+      expect(threatAssessment.livingCount).toBe(8);
+      expect(threatAssessment.eliteCount).toBe(1);
+      // threatScore = 8 * (10 + 4 * 2) + 1 * 25 = 8 * 18 + 25 = 144 + 25 = 169 (>= 90 -> APEX)
+      expect(threatAssessment.threatScore).toBe(169);
+      expect(threatAssessment.threatTier).toBe('APEX');
+
+      const hazardSummary = getRoomHazardSummary(denseRoom);
+      expect(hazardSummary.explosiveCount).toBe(4);
+      expect(hazardSummary.zoneTypes).toHaveLength(4);
+
+      // Verify no Outlaw Style mechanics or pre-run buffs were leaked or applied
+      expect((runner as any).outlawStyle).toBeUndefined();
+      expect((runner as any).preRunBuffs).toBeUndefined();
+      expect((runner as any).activeBuffs).toBeUndefined();
     });
   });
 });

@@ -62,12 +62,14 @@ import {
   applyTireIronBonus,
   rollCrit,
   triggerExplosion,
-  calcOverkillBonus
+  calcOverkillBonus,
+  getCombatSurvivabilitySummary
 } from '@/systems/combat';
 
 import {
   createEnemy,
-  updateEnemyAI
+  updateEnemyAI,
+  getRoomVisualClutterAudit
 } from '@/systems/enemyAI';
 
 import { SoundSynthesizer, calculateEngineParams } from '@/audio/sfx';
@@ -88,6 +90,8 @@ import { getEquippedBikeVisualState, GarageController, GarageCallbacks } from '.
 import { getEquipmentLoadoutSummary } from '../../src/data/equipment';
 import { EquipSlot, EquipmentItem, MetaSaveState } from '@/types/game';
 import { createDefaultMetaSave } from '@/core/state';
+import { getDuoSynergyAdvisor } from '@/data/items';
+import { getDropItemStackSummary } from '@/ui/dropModal';
 
 describe('Tier 5: Adversarial Coverage Hardening', () => {
   let player: PlayerState;
@@ -2254,6 +2258,347 @@ describe('Tier 5: Adversarial Coverage Hardening', () => {
       }
 
       document.body.innerHTML = '';
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Adversarial Fuzz: Wave 38-41 Clean Arena, Drop Stack & Duo Advisor Stress (M148)
+  // --------------------------------------------------------------------------
+  describe('Adversarial Fuzz: Wave 38-41 Clean Arena, Drop Stack & Duo Advisor Stress (M148)', () => {
+    // Fuzz Test 1: getDuoSynergyAdvisor under 50 randomized corrupted player inventories
+    it('fuzzes getDuoSynergyAdvisor with 50 randomized corrupted player inventories and verifies zero exceptions, zero NaN, and defined string telemetry', () => {
+      const canonicalItemPool = [
+        'cryo_rounds',
+        'high_explosive',
+        'tesla_capacitor',
+        'magnet_coil',
+        'titanium_spikes',
+        'turbo_charger',
+        'exhaust_afterburner',
+        'gasoline'
+      ];
+      const corruptedPrimitives = [null, undefined, NaN, Infinity, -Infinity, '', ' ', 'unknown_item_xyz', 123, true, {}, []];
+
+      for (let iteration = 0; iteration < 50; iteration++) {
+        let fuzzedInput: any;
+
+        if (iteration % 6 === 0) {
+          // Direct non-object primitives
+          fuzzedInput = corruptedPrimitives[iteration % corruptedPrimitives.length];
+        } else if (iteration % 6 === 1) {
+          // Corrupted items array
+          fuzzedInput = {
+            items: Array.from({ length: iteration % 10 }, (_, idx) => {
+              return (idx + iteration) % 2 === 0
+                ? canonicalItemPool[(idx + iteration) % canonicalItemPool.length]
+                : corruptedPrimitives[(idx + iteration) % corruptedPrimitives.length];
+            }),
+            itemStacks: null
+          };
+        } else if (iteration % 6 === 2) {
+          // Corrupted itemStacks map with extreme values
+          const stacks: Record<string, any> = {};
+          for (let s = 0; s < (iteration % 8); s++) {
+            const key = s % 2 === 0 ? canonicalItemPool[s % canonicalItemPool.length] : `corrupt_key_${s}`;
+            stacks[key] = [NaN, Infinity, -Infinity, -500, 0, 0.45, 1, 2, 50, 99999, 'bad_stack', null, undefined][(s + iteration) % 13];
+          }
+          fuzzedInput = {
+            items: null,
+            itemStacks: stacks
+          };
+        } else if (iteration % 6 === 3) {
+          // Both items and itemStacks populated with mixed valid/invalid data
+          const items = canonicalItemPool.slice(0, (iteration % canonicalItemPool.length) + 1);
+          const itemStacks: Record<string, any> = {};
+          for (const item of items) {
+            itemStacks[item] = (iteration % 5) - 1; // -1, 0, 1, 2, 3
+          }
+          fuzzedInput = {
+            items,
+            itemStacks,
+            outlawStyle: iteration % 2 === 0 ? 'INVALID_STYLE' : undefined
+          };
+        } else if (iteration % 6 === 4) {
+          // Prototype pollution or symbol-keyed object
+          fuzzedInput = Object.create(null);
+          fuzzedInput.items = ['cryo_rounds', 'high_explosive'];
+          fuzzedInput.itemStacks = { cryo_rounds: 1, high_explosive: 1 };
+        } else {
+          // Empty or full inventory
+          fuzzedInput = {
+            items: iteration % 2 === 0 ? [] : [...canonicalItemPool],
+            itemStacks: iteration % 2 === 0 ? {} : Object.fromEntries(canonicalItemPool.map(k => [k, 3]))
+          };
+        }
+
+        const advisor = getDuoSynergyAdvisor(fuzzedInput);
+
+        expect(advisor).toBeDefined();
+        expect(Array.isArray(advisor.unlockedDuos)).toBe(true);
+        expect(Array.isArray(advisor.partialDuos)).toBe(true);
+        expect(typeof advisor.unlockedCount).toBe('number');
+        expect(Number.isFinite(advisor.unlockedCount)).toBe(true);
+        expect(advisor.unlockedCount).not.toBeNaN();
+        expect(advisor.unlockedCount).toBeGreaterThanOrEqual(0);
+        expect(advisor.unlockedCount).toBeLessThanOrEqual(5);
+
+        expect(typeof advisor.nearMissCount).toBe('number');
+        expect(Number.isFinite(advisor.nearMissCount)).toBe(true);
+        expect(advisor.nearMissCount).not.toBeNaN();
+        expect(advisor.nearMissCount).toBeGreaterThanOrEqual(0);
+
+        expect(typeof advisor.summaryLine).toBe('string');
+        expect(advisor.summaryLine.length).toBeGreaterThan(0);
+        expect(advisor.summaryLine).not.toContain('NaN');
+        expect(advisor.summaryLine).not.toContain('undefined');
+
+        for (const p of advisor.partialDuos) {
+          expect(typeof p.id).toBe('string');
+          expect(typeof p.name).toBe('string');
+          expect(typeof p.ownedItem).toBe('string');
+          expect(typeof p.missingItem).toBe('string');
+          expect(typeof p.effectDesc).toBe('string');
+        }
+      }
+    });
+
+    // Fuzz Test 2: getRoomVisualClutterAudit with 50 randomized room topologies and floorNum inputs
+    it('fuzzes getRoomVisualClutterAudit with 50 randomized room topologies and floorNum inputs and confirms zero crashes or NaN telemetry', () => {
+      const obstacleTypes = ['rock', 'explosive_barrel', 'cryo_barrel', 'spikes', 'wall', 'corrupt_type', null, undefined];
+      const zoneTypes = ['oil_slick', 'cryo_patch', 'emp_zone', 'toxic_pool', 'invalid_zone', null, undefined];
+
+      for (let iteration = 0; iteration < 50; iteration++) {
+        const floorInputs = [NaN, -999, -1, 0, 0.42, 1, 2, 3, 4, 5, 6, 10, 9999, Infinity, -Infinity, undefined, null];
+        const floorNum = floorInputs[iteration % floorInputs.length] as number;
+
+        let fuzzedRoom: any;
+        if (iteration % 5 === 0) {
+          // Direct null/undefined/primitive room inputs
+          fuzzedRoom = [null, undefined, 42, 'room_string', true, {}][iteration % 6];
+        } else if (iteration % 5 === 1) {
+          // Room with invalid or non-array fields
+          fuzzedRoom = {
+            obstacles: 'not_an_array',
+            biomeZones: null,
+            enemies: undefined
+          };
+        } else {
+          // Room with randomized arrays of obstacles, zones, and enemies
+          const numObs = iteration % 15;
+          const numZones = iteration % 8;
+          const numEnemies = iteration % 12;
+
+          const obstacles = Array.from({ length: numObs }, (_, i) => {
+            if (i % 3 === 0) return null;
+            return {
+              x: (i * 50) % 800,
+              y: (i * 40) % 600,
+              size: [NaN, -10, 0, 20, Infinity][i % 5],
+              type: obstacleTypes[(i + iteration) % obstacleTypes.length],
+              hp: [NaN, -5, 0, 10, 100, Infinity][(i + iteration) % 6]
+            };
+          });
+
+          const biomeZones = Array.from({ length: numZones }, (_, i) => {
+            if (i % 4 === 0) return null;
+            return {
+              x: (i * 60) % 800,
+              y: (i * 50) % 600,
+              radius: [NaN, -20, 0, 60, Infinity][i % 5],
+              type: zoneTypes[(i + iteration) % zoneTypes.length]
+            };
+          });
+
+          const enemies = Array.from({ length: numEnemies }, (_, i) => {
+            if (i % 5 === 0) return null;
+            return {
+              id: 1000 + i,
+              hp: [NaN, -10, 0, 0.5, 40, 500, Infinity][(i + iteration) % 7],
+              maxHp: 100,
+              type: i === 0 && iteration % 2 === 0 ? 'boss' : 'grunt',
+              isElite: i % 3 === 0
+            };
+          });
+
+          fuzzedRoom = { obstacles, biomeZones, enemies };
+        }
+
+        const audit = getRoomVisualClutterAudit(fuzzedRoom, floorNum);
+
+        expect(audit).toBeDefined();
+        expect(typeof audit.obstacleCount).toBe('number');
+        expect(Number.isFinite(audit.obstacleCount)).toBe(true);
+        expect(audit.obstacleCount).toBeGreaterThanOrEqual(0);
+
+        expect(typeof audit.hazardObstacleCount).toBe('number');
+        expect(Number.isFinite(audit.hazardObstacleCount)).toBe(true);
+        expect(audit.hazardObstacleCount).toBeGreaterThanOrEqual(0);
+
+        expect(typeof audit.biomeZoneCount).toBe('number');
+        expect(Number.isFinite(audit.biomeZoneCount)).toBe(true);
+        expect(audit.biomeZoneCount).toBeGreaterThanOrEqual(0);
+
+        expect(typeof audit.activeEnemyCount).toBe('number');
+        expect(Number.isFinite(audit.activeEnemyCount)).toBe(true);
+        expect(audit.activeEnemyCount).toBeGreaterThanOrEqual(0);
+
+        expect(typeof audit.clutterScore).toBe('number');
+        expect(Number.isFinite(audit.clutterScore)).toBe(true);
+        expect(audit.clutterScore).toBeGreaterThanOrEqual(0);
+
+        expect(['CLEAN', 'MODERATE', 'DENSE']).toContain(audit.readabilityGrade);
+        expect(typeof audit.isCleanLayout).toBe('boolean');
+
+        expect(typeof audit.layoutSummary).toBe('string');
+        expect(audit.layoutSummary.length).toBeGreaterThan(0);
+        expect(audit.layoutSummary).not.toContain('NaN');
+        expect(audit.layoutSummary).not.toContain('undefined');
+      }
+    });
+
+    // Fuzz Test 3: getDropItemStackSummary with 50 randomized drop choice lists and player item stacks
+    it('fuzzes getDropItemStackSummary with 50 randomized drop choice lists and validates zero crashes, valid tier classifications, and clean badges', () => {
+      const dropItemPool = [
+        'nitro_syringe',
+        'tire_iron',
+        'chrome_lens',
+        'gasoline',
+        'racing_slicks',
+        'oil_infusion',
+        'tesla_capacitor',
+        'exhaust_afterburner',
+        'reactive_plating',
+        'magnet_coil',
+        'adrenaline_injector',
+        'nanite_repair',
+        'cryo_rounds',
+        'high_explosive',
+        'titanium_spikes',
+        'turbo_charger'
+      ];
+
+      for (let iteration = 0; iteration < 50; iteration++) {
+        let fuzzedChoices: any;
+        if (iteration % 5 === 0) {
+          fuzzedChoices = [null, undefined, [], 'invalid_string', 42][iteration % 5];
+        } else {
+          const choiceCount = iteration % 8;
+          fuzzedChoices = Array.from({ length: choiceCount }, (_, i) => {
+            const pick = (i + iteration) % 4;
+            if (pick === 0) {
+              return dropItemPool[(i + iteration) % dropItemPool.length];
+            } else if (pick === 1) {
+              return { id: dropItemPool[(i + iteration) % dropItemPool.length], name: `Item ${i}` };
+            } else if (pick === 2) {
+              return { itemId: dropItemPool[(i + iteration) % dropItemPool.length] };
+            } else {
+              return [null, undefined, 123, '', { corrupted: true }][i % 5];
+            }
+          });
+        }
+
+        let fuzzedPlayer: any;
+        if (iteration % 4 === 0) {
+          fuzzedPlayer = [null, undefined, {}, { itemStacks: null }][iteration % 4];
+        } else {
+          const stacks: Record<string, any> = {};
+          for (let s = 0; s < (iteration % 6); s++) {
+            const key = dropItemPool[s % dropItemPool.length];
+            stacks[key] = [NaN, -5, 0, 0.9, 1, 2, 3, 5, 9999, Infinity, 'bad_val', null][(s + iteration) % 12];
+          }
+          fuzzedPlayer = { itemStacks: stacks };
+        }
+
+        const summary = getDropItemStackSummary(fuzzedChoices, fuzzedPlayer);
+
+        expect(summary).toBeDefined();
+        expect(typeof summary.totalChoices).toBe('number');
+        expect(Number.isFinite(summary.totalChoices)).toBe(true);
+        expect(summary.totalChoices).toBeGreaterThanOrEqual(0);
+
+        expect(typeof summary.newItemsCount).toBe('number');
+        expect(Number.isFinite(summary.newItemsCount)).toBe(true);
+        expect(summary.newItemsCount).toBeGreaterThanOrEqual(0);
+
+        expect(typeof summary.stackUpgradeCount).toBe('number');
+        expect(Number.isFinite(summary.stackUpgradeCount)).toBe(true);
+        expect(summary.stackUpgradeCount).toBeGreaterThanOrEqual(0);
+
+        expect(typeof summary.evoReadyCount).toBe('number');
+        expect(Number.isFinite(summary.evoReadyCount)).toBe(true);
+        expect(summary.evoReadyCount).toBeGreaterThanOrEqual(0);
+
+        expect(typeof summary.summaryLine).toBe('string');
+        expect(summary.summaryLine.length).toBeGreaterThan(0);
+        expect(summary.summaryLine).not.toContain('NaN');
+        expect(summary.summaryLine).not.toContain('undefined');
+
+        expect(Array.isArray(summary.choiceBreakdown)).toBe(true);
+        for (const breakdown of summary.choiceBreakdown) {
+          expect(['NEW', 'STACK_2', 'EVO_READY', 'OVERSTACK']).toContain(breakdown.nextTier);
+          expect(typeof breakdown.currentStacks).toBe('number');
+          expect(Number.isFinite(breakdown.currentStacks)).toBe(true);
+          expect(breakdown.currentStacks).toBeGreaterThanOrEqual(0);
+
+          expect(typeof breakdown.nextStacks).toBe('number');
+          expect(Number.isFinite(breakdown.nextStacks)).toBe(true);
+          expect(breakdown.nextStacks).toBeGreaterThanOrEqual(1);
+
+          expect(typeof breakdown.id).toBe('string');
+          expect(typeof breakdown.name).toBe('string');
+        }
+      }
+    });
+
+    // Fuzz Test 4: getCombatSurvivabilitySummary with 50 randomized player stat profiles
+    it('fuzzes getCombatSurvivabilitySummary with 50 randomized player stat profiles and confirms rock-solid hull math and defined status badges', () => {
+      const hpVariants = [NaN, -999, -5, 0, 0.45, 1, 2, 4.8, 6, 10, 15, 99999, Infinity, -Infinity, undefined, null, '6' as any];
+      const maxHpVariants = [NaN, -10, 0, 0.9, 1, 3, 5, 6, 8, 12, 100, 99999, Infinity, -Infinity, undefined, null, '10' as any];
+      const invulnVariants = [NaN, -5, 0, 0.1, 1.5, 3.0, 9999, Infinity, -Infinity, undefined, null];
+
+      for (let iteration = 0; iteration < 50; iteration++) {
+        let fuzzedPlayer: any;
+        if (iteration % 6 === 0) {
+          fuzzedPlayer = [null, undefined, 42, 'player_str', true, []][iteration % 6];
+        } else {
+          fuzzedPlayer = {
+            hp: hpVariants[(iteration * 3) % hpVariants.length],
+            maxHp: maxHpVariants[(iteration * 5) % maxHpVariants.length],
+            invuln: invulnVariants[(iteration * 7) % invulnVariants.length]
+          };
+        }
+
+        const surv = getCombatSurvivabilitySummary(fuzzedPlayer);
+
+        expect(surv).toBeDefined();
+        expect(typeof surv.hp).toBe('number');
+        expect(Number.isFinite(surv.hp)).toBe(true);
+        expect(surv.hp).not.toBeNaN();
+        expect(surv.hp).toBeGreaterThanOrEqual(0);
+
+        expect(typeof surv.maxHp).toBe('number');
+        expect(Number.isFinite(surv.maxHp)).toBe(true);
+        expect(surv.maxHp).not.toBeNaN();
+        expect(surv.maxHp).toBeGreaterThanOrEqual(1);
+
+        expect(surv.hp).toBeLessThanOrEqual(surv.maxHp);
+
+        expect(typeof surv.hullPct).toBe('number');
+        expect(Number.isFinite(surv.hullPct)).toBe(true);
+        expect(surv.hullPct).not.toBeNaN();
+        expect(surv.hullPct).toBeGreaterThanOrEqual(0);
+        expect(surv.hullPct).toBeLessThanOrEqual(100);
+
+        expect(['CRITICAL HULL', 'DAMAGED HULL', 'OPTIMAL HULL']).toContain(surv.hullStatus);
+        expect(['STANDARD CHASSIS', 'REINFORCED CHASSIS', 'JUGGERNAUT TANK']).toContain(surv.chassisTier);
+
+        expect(typeof surv.isInvulnerable).toBe('boolean');
+
+        expect(typeof surv.summaryLine).toBe('string');
+        expect(surv.summaryLine.length).toBeGreaterThan(0);
+        expect(surv.summaryLine).not.toContain('NaN');
+        expect(surv.summaryLine).not.toContain('undefined');
+      }
     });
   });
 

@@ -4764,4 +4764,134 @@ describe('Render & UI Subsystems', () => {
       expect(rightEl.getAttribute('data-room-layout-summary')).toBe('F5 CLEAN ARENA // 0 OBSTACLES · 0 ZONES · 0 HOSTILES');
     });
   });
+
+  describe('HUDController live duo synergy advisor telemetry (M147)', () => {
+    it('1. stamps zero active and zero near-miss advisor telemetry on empty mod deck via updateModDeckTelemetry', () => {
+      document.body.innerHTML = `
+        <div id="mod-bar"></div>
+        <div id="hud-synergy-list"></div>
+        <div id="synergy-tracker-card"></div>
+      `;
+
+      const hud = new HUDController();
+      const player = {
+        items: [],
+        itemStacks: {},
+        modStacks: {}
+      } as any;
+
+      hud.updateModDeckTelemetry(player);
+
+      const targets = [
+        document.getElementById('mod-bar')!,
+        document.getElementById('hud-synergy-list')!,
+        document.getElementById('synergy-tracker-card')!
+      ];
+
+      for (const el of targets) {
+        expect(el.getAttribute('data-duo-unlocked-count')).toBe('0');
+        expect(el.getAttribute('data-duo-near-miss-count')).toBe('0');
+        expect(el.getAttribute('data-duo-advisor-summary')).toBe('DUOS: 0 ACTIVE · COLLECT PAIRED MODS TO UNLOCK');
+      }
+    });
+
+    it('2. stamps near-miss duo advisor telemetry when player holds one component of a duo synergy recipe', () => {
+      document.body.innerHTML = `
+        <div id="mod-bar"></div>
+        <div id="hud-synergy-list"></div>
+        <div id="synergy-tracker-card"></div>
+      `;
+
+      const hud = new HUDController();
+      // magnet_coil is 1 of 2 required for VOID VORTEX (magnet_coil + high_explosive)
+      const player = {
+        items: ['magnet_coil'],
+        itemStacks: { magnet_coil: 1 }
+      } as any;
+
+      hud.updateModDeckTelemetry(player);
+
+      const targets = [
+        document.getElementById('mod-bar')!,
+        document.getElementById('hud-synergy-list')!,
+        document.getElementById('synergy-tracker-card')!
+      ];
+
+      for (const el of targets) {
+        expect(el.getAttribute('data-duo-unlocked-count')).toBe('0');
+        expect(el.getAttribute('data-duo-near-miss-count')).toBe('1');
+        expect(el.getAttribute('data-duo-advisor-summary')).toBe('DUOS: 0 ACTIVE · 1 NEAR-MISS (NEED HIGH_EXPLOSIVE)');
+      }
+    });
+
+    it('3. stamps unlocked duo advisor telemetry when player holds both components of a duo synergy recipe', () => {
+      document.body.innerHTML = `
+        <div id="mod-bar"></div>
+        <div id="hud-synergy-list"></div>
+        <div id="synergy-tracker-card"></div>
+      `;
+
+      const hud = new HUDController();
+      // JUGGERNAUT OVERDRIVE: titanium_spikes + turbo_charger
+      const player = {
+        items: ['titanium_spikes', 'turbo_charger'],
+        itemStacks: { titanium_spikes: 1, turbo_charger: 1 }
+      } as any;
+
+      hud.updateModDeckTelemetry(player);
+
+      const targets = [
+        document.getElementById('mod-bar')!,
+        document.getElementById('hud-synergy-list')!,
+        document.getElementById('synergy-tracker-card')!
+      ];
+
+      for (const el of targets) {
+        expect(el.getAttribute('data-duo-unlocked-count')).toBe('1');
+        expect(el.getAttribute('data-duo-near-miss-count')).toBe('0');
+        expect(el.getAttribute('data-duo-advisor-summary')).toBe('DUOS: 1 ACTIVE (JUGGERNAUT OVERDRIVE)');
+      }
+    });
+
+    it('4. updates duo advisor telemetry across active, near-miss, and empty states via hud.updateMods(player)', () => {
+      document.body.innerHTML = `
+        <div id="mod-bar"></div>
+        <div id="hud-synergy-list"></div>
+        <div id="synergy-tracker-card"></div>
+      `;
+
+      const hud = new HUDController();
+      // JUGGERNAUT OVERDRIVE (titanium_spikes + turbo_charger) active, plus magnet_coil (near-miss for VOID VORTEX)
+      const mixedPlayer = {
+        items: ['titanium_spikes', 'turbo_charger', 'magnet_coil'],
+        itemStacks: { titanium_spikes: 1, turbo_charger: 1, magnet_coil: 1 }
+      } as any;
+
+      hud.updateMods(mixedPlayer);
+
+      const modBar = document.getElementById('mod-bar')!;
+      const synergyList = document.getElementById('hud-synergy-list')!;
+      const trackerCard = document.getElementById('synergy-tracker-card')!;
+
+      for (const el of [modBar, synergyList, trackerCard]) {
+        expect(el.getAttribute('data-duo-unlocked-count')).toBe('1');
+        expect(el.getAttribute('data-duo-near-miss-count')).toBe('1');
+        expect(el.getAttribute('data-duo-advisor-summary')).toBe('DUOS: 1 ACTIVE (JUGGERNAUT OVERDRIVE) · 1 NEAR-MISS');
+      }
+
+      // Reset to empty state via hud.updateMods
+      const emptyPlayer = {
+        items: [],
+        itemStacks: {}
+      } as any;
+
+      hud.updateMods(emptyPlayer);
+
+      for (const el of [modBar, synergyList, trackerCard]) {
+        expect(el.getAttribute('data-duo-unlocked-count')).toBe('0');
+        expect(el.getAttribute('data-duo-near-miss-count')).toBe('0');
+        expect(el.getAttribute('data-duo-advisor-summary')).toBe('DUOS: 0 ACTIVE · COLLECT PAIRED MODS TO UNLOCK');
+      }
+    });
+  });
 });

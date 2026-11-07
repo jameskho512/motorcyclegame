@@ -24,6 +24,7 @@ import {
 
 import { WEAPONS, WEAPON_EVOLUTIONS, isWeaponEvolved } from '../data/weapons';
 import { DROP_ITEMS, RUN_MOD_POOL, ALL_RUN_MOD_POOL, getActiveDuoSynergies, getRunModDeckSummary } from '../data/upgrades';
+import { getDuoSynergyAdvisor } from '../data/items';
 import {
   WEAPON_HI_FI_SVG,
   DROP_ITEM_HI_FI_SVG,
@@ -1416,7 +1417,12 @@ export class HUDController {
       typeof document !== 'undefined' ? document.getElementById('mod-bar') : null
     ].filter((el, idx, arr) => Boolean(el) && arr.indexOf(el) === idx) as HTMLElement[];
 
-    if (containers.length === 0) return;
+    if (containers.length === 0) {
+      if (player) {
+        this.updateModDeckTelemetry(player);
+      }
+      return;
+    }
 
     if (!player) {
       for (const container of containers) {
@@ -1575,6 +1581,10 @@ export class HUDController {
         });
       }
     }
+
+    if (player) {
+      this.updateModDeckTelemetry(player);
+    }
   }
 
   /**
@@ -1606,6 +1616,27 @@ export class HUDController {
       : (player?.itemStacks ? { ...player, modStacks: { ...player.itemStacks } } : player);
     const pModStacks = (player as any)?.modStacks;
     const targetPlayer = (pModStacks && typeof pModStacks === 'object' && Object.keys(pModStacks).length > 0) ? player : effectivePlayer;
+
+    const duoPlayer = player && (player as any).modStacks
+      ? { ...player, itemStacks: { ...(player.itemStacks || {}), ...(player as any).modStacks } }
+      : player;
+    const duoAdvisor = getDuoSynergyAdvisor(duoPlayer);
+    const duoAdvisorTargets = (typeof document !== 'undefined'
+      ? [
+          this.modBarEl,
+          document.getElementById('mod-bar'),
+          document.getElementById('hud-synergy-list'),
+          document.getElementById('synergy-list'),
+          document.getElementById('synergy-tracker-card')
+        ]
+      : [this.modBarEl]
+    ).filter((el, idx, arr) => Boolean(el) && arr.indexOf(el) === idx) as HTMLElement[];
+
+    for (const el of duoAdvisorTargets) {
+      el.setAttribute('data-duo-unlocked-count', String(duoAdvisor.unlockedCount));
+      el.setAttribute('data-duo-near-miss-count', String(duoAdvisor.nearMissCount));
+      el.setAttribute('data-duo-advisor-summary', duoAdvisor.summaryLine);
+    }
 
     if (modsBar) {
       const badges = modsBar.querySelectorAll('.mod-badge');
