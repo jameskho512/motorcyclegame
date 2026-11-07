@@ -30,7 +30,11 @@ import { InputManager } from './core/input';
 import { SoundSynthesizer } from './audio/sfx';
 import { generateDungeon, createHomeBaseRoom, enableChoicePedestalsInTreasureRooms, getFloorBountyContract, getHubNpcGreeting } from './world/dungeon';
 import { genLoot, upgradeEquipmentTier, MAX_FORGE_TIER } from './data/equipment';
-import { KISS_CURSE_MOD_POOL, getActiveDuoSynergies } from './data/upgrades';
+import {
+  KISS_CURSE_MOD_POOL,
+  DuoSynergyDef,
+  getEligibleDuoSynergiesForPickup
+} from './data/upgrades';
 import {
   updateBikeKinematics,
   updateNos,
@@ -44,7 +48,7 @@ import {
   triggerExplosion,
   updateCombatVfx
 } from './systems/combat';
-import { updateEnemyAI, calcEnemyProjSpeedScale } from './systems/enemyAI';
+import { updateEnemyAI, calcEnemyProjSpeedScale, calcEnemyDamage } from './systems/enemyAI';
 import { StageManager } from './render/stage';
 import { HUDController } from './ui/hud';
 import { GarageController } from './ui/garage';
@@ -78,6 +82,8 @@ export class MotoRogueApp {
   public codexBuffClaimedInHub: boolean = false;
   public floorBountyProgress: number = 0;
   public floorBountyCompleted: boolean = false;
+  public duoChoiceModalOpen: boolean = false;
+  public pendingDuoChoices: DuoSynergyDef[] = [];
 
   public hitStopTimer: number = 0;
   public hitStopCooldown: number = 0;
@@ -419,8 +425,11 @@ export class MotoRogueApp {
     if (!restored && this.stateManager.floorNum <= 1) {
       player.items = [];
       player.itemStacks = {};
+      player.chosenDuoSynergies = [];
       (player as any).modStacks = {};
     }
+    this.duoChoiceModalOpen = false;
+    this.pendingDuoChoices = [];
     this.hitStopTimer = 0;
     this.hitStopCooldown = 0;
     this.killStreakCount = 0;
@@ -587,6 +596,7 @@ export class MotoRogueApp {
       this.portalModal.isOpen() ||
       this.settings.isOpen() ||
       this.hubStationModal.isOpen() ||
+      this.duoChoiceModalOpen ||
       this.hud.isBossIntroActive() ||
       this.stateManager.gameOver;
     const player = this.stateManager.player;
@@ -943,7 +953,11 @@ export class MotoRogueApp {
       this.audio,
       (dmg: number) => {
         if (player.invuln <= 0) {
-          player.hp = Math.max(0, player.hp - dmg);
+          const scaledDmg =
+            dmg === 1
+              ? calcEnemyDamage(1, this.stateManager.floorNum)
+              : Math.max(1, Math.floor(dmg + 1e-9));
+          player.hp = Math.max(0, player.hp - scaledDmg);
           player.invuln = 0.25; // 0.25s post-hit invincibility frames
           this.combatState.screenShake = 6;
           this.audio.playerHurt();
@@ -1082,18 +1096,10 @@ export class MotoRogueApp {
             continue;
           }
           const wasEvo = isWeaponEvolved(player.weapon, player);
-          const prevDuos = new Set(getActiveDuoSynergies(player).map(d => d.id));
           player.itemStacks[p.itemId] = (player.itemStacks[p.itemId] || 0) + 1;
           this.audio.pickupItem();
           room.pickups.splice(i, 1);
-          if (!wasEvo && isWeaponEvolved(player.weapon, player)) {
-            this.hud.showToast('OVERCLOCK EVOLUTION', `⚡ ${WEAPON_EVOLUTIONS[player.weapon].evolvedName} ONLINE!`, '#ffd60a', 2600);
-          } else {
-            const newDuo = getActiveDuoSynergies(player).find(d => !prevDuos.has(d.id));
-            if (newDuo) {
-              this.hud.showToast('✦ DUO SYNERGY ONLINE', `${newDuo.name.toUpperCase()} ACTIVATED!`, newDuo.color, 2500);
-            }
-          }
+          this.resolveDuoSynergyOnPickup(p.itemId, !wasEvo && isWeaponEvolved(player.weapon, player));
           this.updateHUD();
         } else if (p.type === 'shop_heart' || p.type === 'mod_pedestal' || p.type === 'run_weapon') {
           // Do not re-prompt if the player explicitly cancelled this choice/purchase until they step away
@@ -1111,7 +1117,6 @@ export class MotoRogueApp {
                 this.dismissedPickup = null;
                 if (player.coins >= p.cost) {
                   const wasEvo = isWeaponEvolved(player.weapon, player);
-                  const prevDuos = new Set(getActiveDuoSynergies(player).map(d => d.id));
                   if (p.cost > 0) {
                     player.coins -= p.cost;
                     this.audio.shopBuy();
@@ -1119,14 +1124,17 @@ export class MotoRogueApp {
                     this.audio.pickupItem();
                   }
                   const choiceGroup = p.type === 'mod_pedestal' ? p.choiceGroup : undefined;
+                  let pickedItemKey: string | undefined;
                   if (p.type === 'shop_heart') {
                     player.hp = Math.min(player.maxHp, player.hp + 2);
                   } else if (p.type === 'mod_pedestal') {
                     p.mod.apply(player);
                     player.items.push(p.mod.name);
+                    pickedItemKey = p.mod.id || p.mod.name;
                   } else if (p.type === 'run_weapon') {
                     player.runWeapons[p.weaponId] = true;
                     player.weapon = p.weaponId;
+                    pickedItemKey = p.weaponId;
                   }
                   const pIdx = room.pickups.indexOf(p);
                   if (pIdx >= 0) room.pickups.splice(pIdx, 1);
@@ -1146,13 +1154,11 @@ export class MotoRogueApp {
                       maxLife: 1.1
                     });
                   }
-                  if (!wasEvo && isWeaponEvolved(player.weapon, player)) {
+                  const evoTriggered = !wasEvo && isWeaponEvolved(player.weapon, player);
+                  if (pickedItemKey) {
+                    this.resolveDuoSynergyOnPickup(pickedItemKey, evoTriggered);
+                  } else if (evoTriggered) {
                     this.hud.showToast('OVERCLOCK EVOLUTION', `⚡ ${WEAPON_EVOLUTIONS[player.weapon].evolvedName} ONLINE!`, '#ffd60a', 2600);
-                  } else {
-                    const newDuo = getActiveDuoSynergies(player).find(d => !prevDuos.has(d.id));
-                    if (newDuo) {
-                      this.hud.showToast('✦ DUO SYNERGY ONLINE', `${newDuo.name.toUpperCase()} ACTIVATED!`, newDuo.color, 2500);
-                    }
                   }
                   this.updateHUD();
                 } else {
@@ -1545,6 +1551,127 @@ export class MotoRogueApp {
         container.appendChild(card);
       });
     }
+  }
+
+  /**
+   * Resolves Duo Synergy activation when an item or mod is picked up.
+   * Each pickup of an item can enable at most 1 Duo Buff.
+   * If 2+ Duo Buffs become eligible from this pickup, prompts the user to choose 1.
+   * If the same item is picked up again later, another eligible Duo Buff can be chosen.
+   */
+  public resolveDuoSynergyOnPickup(pickedItemKey: string, evoTriggered: boolean = false): void {
+    const player = this.stateManager.player;
+    if (!Array.isArray(player.chosenDuoSynergies)) {
+      player.chosenDuoSynergies = [];
+    }
+
+    const eligible = getEligibleDuoSynergiesForPickup(player, pickedItemKey);
+    if (eligible.length >= 2) {
+      this.openDuoChoiceModal(eligible);
+      return;
+    }
+
+    if (eligible.length === 1) {
+      const chosen = eligible[0];
+      if (!player.chosenDuoSynergies.includes(chosen.id)) {
+        player.chosenDuoSynergies.push(chosen.id);
+      }
+      if (evoTriggered) {
+        this.hud.showToast('OVERCLOCK EVOLUTION', `⚡ ${WEAPON_EVOLUTIONS[player.weapon].evolvedName} ONLINE!`, '#ffd60a', 2600);
+      } else {
+        this.hud.showToast('✦ DUO SYNERGY ONLINE', `${chosen.name.toUpperCase()} ACTIVATED!`, chosen.color, 2500);
+      }
+      return;
+    }
+
+    if (evoTriggered) {
+      this.hud.showToast('OVERCLOCK EVOLUTION', `⚡ ${WEAPON_EVOLUTIONS[player.weapon].evolvedName} ONLINE!`, '#ffd60a', 2600);
+    }
+  }
+
+  public openDuoChoiceModal(choices: DuoSynergyDef[]): void {
+    this.pendingDuoChoices = [...choices];
+    this.duoChoiceModalOpen = true;
+    this.inputManager?.reset?.();
+
+    if (typeof document === 'undefined') return;
+
+    let overlay = document.getElementById('duo-choice-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'duo-choice-overlay';
+      overlay.style.cssText =
+        'position:fixed;inset:0;background:rgba(10,10,18,0.88);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;padding:24px;';
+      document.body.appendChild(overlay);
+    }
+    overlay.classList.remove('hidden');
+    overlay.style.display = 'flex';
+    overlay.setAttribute('data-duo-choice-count', String(choices.length));
+    overlay.innerHTML = '';
+
+    const title = document.createElement('div');
+    title.style.cssText =
+      'color:#00f5d4;font-size:20px;letter-spacing:1.5px;margin-bottom:6px;text-align:center;';
+    title.textContent = '✦ SELECT ONE DUO SYNERGY BUFF ✦';
+    overlay.appendChild(title);
+
+    const subtitle = document.createElement('div');
+    subtitle.style.cssText =
+      'color:#cbd5e1;font-size:13px;margin-bottom:18px;text-align:center;';
+    subtitle.textContent =
+      'Each item pickup can activate 1 Duo Buff. Pick up another copy later to unlock additional Duo Buffs.';
+    overlay.appendChild(subtitle);
+
+    const cardRow = document.createElement('div');
+    cardRow.id = 'duo-choice-cards';
+    cardRow.style.cssText =
+      'display:flex;gap:16px;flex-wrap:wrap;justify-content:center;max-width:720px;';
+    overlay.appendChild(cardRow);
+
+    for (const syn of choices) {
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'duo-choice-card';
+      card.setAttribute('data-duo-id', syn.id);
+      card.style.cssText = `background:#121324;border:2px solid ${syn.color};border-radius:10px;padding:16px 20px;min-width:240px;max-width:310px;color:#f8fafc;cursor:pointer;text-align:left;`;
+      card.innerHTML = `
+        <div style="color:${syn.color};font-size:15px;margin-bottom:6px;">✦ ${syn.name}</div>
+        <div style="color:#e2e8f0;font-size:12px;line-height:1.45;">${syn.desc}</div>
+      `;
+      card.addEventListener('click', () => {
+        this.chooseDuoSynergy(syn.id);
+      });
+      cardRow.appendChild(card);
+    }
+  }
+
+  public chooseDuoSynergy(duoId: string): void {
+    const player = this.stateManager.player;
+    if (!Array.isArray(player.chosenDuoSynergies)) {
+      player.chosenDuoSynergies = [];
+    }
+    const chosen = this.pendingDuoChoices.find(c => c.id === duoId);
+    if (chosen && !player.chosenDuoSynergies.includes(chosen.id)) {
+      player.chosenDuoSynergies.push(chosen.id);
+    } else if (!chosen && !player.chosenDuoSynergies.includes(duoId)) {
+      player.chosenDuoSynergies.push(duoId);
+    }
+
+    this.duoChoiceModalOpen = false;
+    this.pendingDuoChoices = [];
+
+    if (typeof document !== 'undefined') {
+      const overlay = document.getElementById('duo-choice-overlay');
+      if (overlay) {
+        overlay.classList.add('hidden');
+        overlay.style.display = 'none';
+      }
+    }
+
+    if (chosen) {
+      this.hud.showToast('✦ DUO SYNERGY ONLINE', `${chosen.name.toUpperCase()} ACTIVATED!`, chosen.color, 2500);
+    }
+    this.updateHUD();
   }
 }
 

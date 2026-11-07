@@ -176,6 +176,7 @@ export function createDefaultPlayerState(): PlayerState {
     vampChance: 0,
     items: [],
     itemStacks: {},
+    chosenDuoSynergies: [],
     killCount: 0,
     // NOS booster system
     nos: 100,
@@ -623,6 +624,7 @@ export function resetPlayerStatsForRun(
   player.runWeapons = {};
   player.items = [];
   player.itemStacks = {};
+  player.chosenDuoSynergies = [];
   (player as any).modStacks = {};
   player.killCount = 0;
   player.nos = player.nosMax;

@@ -425,7 +425,6 @@ export type DropItemId =
   | 'tesla_capacitor'
   | 'exhaust_afterburner'
   | 'reactive_plating'
-  | 'magnet_coil'
   | 'adrenaline_injector'
   | 'titanium_spikes';
 
@@ -531,15 +530,6 @@ export const DROP_ITEMS: Record<DropItemId, DropItemDef> = {
     icon: 'P',
     ror2Inspiration: 'Razorwire'
   },
-  magnet_coil: {
-    id: 'magnet_coil',
-    name: 'Magnet Coil',
-    desc: 'Pulls nearby pickups toward bike (+95px range/stack)',
-    description: 'Pulls nearby pickups toward bike (+95px range/stack)',
-    color: '#00bbf9',
-    icon: 'M',
-    ror2Inspiration: 'Magnet'
-  },
   adrenaline_injector: {
     id: 'adrenaline_injector',
     name: 'Adrenaline Injector',
@@ -573,7 +563,6 @@ export const DROP_ITEM_IDS: readonly DropItemId[] = [
   'tesla_capacitor',
   'exhaust_afterburner',
   'reactive_plating',
-  'magnet_coil',
   'adrenaline_injector',
   'titanium_spikes'
 ] as const;
@@ -585,7 +574,6 @@ export const DROP_ITEM_IDS: readonly DropItemId[] = [
 export type DuoSynergyId =
   | 'thermal_shock'
   | 'superconductor'
-  | 'void_vortex'
   | 'juggernaut_overdrive'
   | 'voltaic_wake';
 
@@ -594,6 +582,7 @@ export interface DuoSynergyPlayerSnapshot {
   items?: string[];
   itemStacks?: Record<string, number>;
   modStacks?: Partial<Record<string, number>> | null;
+  chosenDuoSynergies?: string[];
 }
 
 export interface DuoSynergyDef {
@@ -602,11 +591,122 @@ export interface DuoSynergyDef {
   color: string;
   desc: string;
   components: readonly string[];
+  slotA: readonly string[];
+  slotB: readonly string[];
   isActive: (p: DuoSynergyPlayerSnapshot) => boolean;
+}
+
+const CANONICAL_DUO_KEY_MAP: Record<string, string> = {
+  cryo_rounds: 'cryo_rounds',
+  'cryo rounds': 'cryo_rounds',
+  'cryo-jacketed shells': 'cryo_rounds',
+  'cryo jacketed shells': 'cryo_rounds',
+  cryojacketedshells: 'cryo_rounds',
+  high_explosive: 'high_explosive',
+  'high explosive': 'high_explosive',
+  highexplosive: 'high_explosive',
+  'thermobaric mix': 'high_explosive',
+  thermobaric_mix: 'high_explosive',
+  thermobaricmix: 'high_explosive',
+  tesla_capacitor: 'tesla_capacitor',
+  'tesla capacitor': 'tesla_capacitor',
+  teslacapacitor: 'tesla_capacitor',
+  titanium_spikes: 'titanium_spikes',
+  'titanium spikes': 'titanium_spikes',
+  'titanium ram spikes': 'titanium_spikes',
+  titanium_ram_spikes: 'titanium_spikes',
+  titaniumramspikes: 'titanium_spikes',
+  turbo_charger: 'turbo_charger',
+  'turbo charger': 'turbo_charger',
+  turbocharger: 'turbo_charger',
+  'nitrous injector': 'turbo_charger',
+  nitrous_injector: 'turbo_charger',
+  nitrousinjector: 'turbo_charger',
+  adrenaline_injector: 'adrenaline_injector',
+  'adrenaline injector': 'adrenaline_injector',
+  adrenalineinjector: 'adrenaline_injector',
+  exhaust_afterburner: 'exhaust_afterburner',
+  'exhaust afterburner': 'exhaust_afterburner',
+  exhaustafterburner: 'exhaust_afterburner',
+  gasoline: 'gasoline',
+  'spilled gasoline': 'gasoline',
+  spilled_gasoline: 'gasoline',
+  spilledgasoline: 'gasoline',
+  oil_infusion: 'oil_infusion',
+  'oil infusion': 'oil_infusion',
+  oilinfusion: 'oil_infusion',
+  flamethrower: 'flamethrower',
+  arc_coil: 'arc_coil',
+  'arc coil': 'arc_coil',
+  arccoil: 'arc_coil'
+};
+
+export function toCanonicalDuoKey(raw: string): string | null {
+  if (!raw || typeof raw !== 'string') return null;
+  const lower = raw.trim().toLowerCase();
+  if (CANONICAL_DUO_KEY_MAP[lower]) return CANONICAL_DUO_KEY_MAP[lower];
+  const stripped = lower.replace(/[-_\s]+/g, '');
+  return CANONICAL_DUO_KEY_MAP[stripped] ?? null;
+}
+
+export function getCanonicalDuoItemCounts(p: DuoSynergyPlayerSnapshot): Record<string, number> {
+  const counts: Record<string, number> = {};
+  if (!p) return counts;
+
+  const fromItems: Record<string, number> = {};
+  if (Array.isArray(p.items)) {
+    for (const item of p.items) {
+      const k = toCanonicalDuoKey(item);
+      if (k) fromItems[k] = (fromItems[k] ?? 0) + 1;
+    }
+  }
+
+  const fromItemStacks: Record<string, number> = {};
+  if (p.itemStacks && typeof p.itemStacks === 'object') {
+    for (const [rawKey, val] of Object.entries(p.itemStacks)) {
+      if (typeof val === 'number' && Number.isFinite(val) && val > 0) {
+        const k = toCanonicalDuoKey(rawKey);
+        if (k) fromItemStacks[k] = (fromItemStacks[k] ?? 0) + Math.floor(val);
+      }
+    }
+  }
+
+  const fromModStacks: Record<string, number> = {};
+  if (p.modStacks && typeof p.modStacks === 'object') {
+    for (const [rawKey, val] of Object.entries(p.modStacks as Record<string, unknown>)) {
+      if (typeof val === 'number' && Number.isFinite(val) && val > 0) {
+        const k = toCanonicalDuoKey(rawKey);
+        if (k) fromModStacks[k] = (fromModStacks[k] ?? 0) + Math.floor(val);
+      }
+    }
+  }
+
+  const allKeys = new Set([
+    ...Object.keys(fromItems),
+    ...Object.keys(fromItemStacks),
+    ...Object.keys(fromModStacks)
+  ]);
+  for (const k of allKeys) {
+    counts[k] = Math.max(fromItems[k] ?? 0, fromItemStacks[k] ?? 0, fromModStacks[k] ?? 0);
+  }
+
+  if (typeof p.weapon === 'string') {
+    const wk = toCanonicalDuoKey(p.weapon);
+    if (wk) {
+      counts[wk] = Math.max(counts[wk] ?? 0, 1);
+    }
+  }
+
+  return counts;
 }
 
 function hasItemOrMod(p: DuoSynergyPlayerSnapshot, key: string): boolean {
   if (!p) return false;
+  const canon = toCanonicalDuoKey(key);
+  if (canon) {
+    const counts = getCanonicalDuoItemCounts(p);
+    return (counts[canon] ?? 0) > 0;
+  }
   if (p.weapon === key) return true;
   if (p.items?.includes(key)) return true;
   const itemVal = p.itemStacks?.[key];
@@ -623,6 +723,8 @@ export const DUO_SYNERGIES: readonly DuoSynergyDef[] = [
     color: '#00f5d4',
     desc: 'Chilled enemies hit by Fire/Blast trigger a Cyan-Gold Shatter Nova',
     components: ['Cryo-Jacketed Shells', 'cryo_rounds', 'flamethrower', 'Thermobaric Mix', 'high_explosive', 'gasoline', 'Spilled Gasoline', 'exhaust_afterburner', 'Exhaust Afterburner'],
+    slotA: ['cryo_rounds'],
+    slotB: ['high_explosive', 'flamethrower', 'gasoline', 'exhaust_afterburner'],
     isActive: (p) => {
       const hasCryo = hasItemOrMod(p, 'Cryo-Jacketed Shells') || hasItemOrMod(p, 'cryo_rounds');
       const hasFire =
@@ -642,6 +744,8 @@ export const DUO_SYNERGIES: readonly DuoSynergyDef[] = [
     color: '#c77dff',
     desc: 'Chilled enemies double Lightning chain range (220px) & +40% Arc Dmg',
     components: ['Cryo-Jacketed Shells', 'cryo_rounds', 'tesla_capacitor', 'Tesla Capacitor', 'arc_coil'],
+    slotA: ['cryo_rounds'],
+    slotB: ['arc_coil', 'tesla_capacitor'],
     isActive: (p) => {
       const hasCryo = hasItemOrMod(p, 'Cryo-Jacketed Shells') || hasItemOrMod(p, 'cryo_rounds');
       const hasVolt =
@@ -652,28 +756,13 @@ export const DUO_SYNERGIES: readonly DuoSynergyDef[] = [
     }
   },
   {
-    id: 'void_vortex',
-    name: 'VOID VORTEX',
-    color: '#4cc9f0',
-    desc: 'Explosions pull nearby enemies inward with a magnetic implosion',
-    components: ['magnet_coil', 'Magnet Coil', 'grenade_launcher', 'Thermobaric Mix', 'high_explosive', 'gasoline', 'Spilled Gasoline'],
-    isActive: (p) => {
-      const hasMagnet = hasItemOrMod(p, 'magnet_coil') || hasItemOrMod(p, 'Magnet Coil');
-      const hasBlast =
-        p.weapon === 'grenade_launcher' ||
-        hasItemOrMod(p, 'Thermobaric Mix') ||
-        hasItemOrMod(p, 'high_explosive') ||
-        hasItemOrMod(p, 'gasoline') ||
-        hasItemOrMod(p, 'Spilled Gasoline');
-      return hasMagnet && hasBlast;
-    }
-  },
-  {
     id: 'juggernaut_overdrive',
     name: 'JUGGERNAUT OVERDRIVE',
     color: '#ffd60a',
     desc: 'NOS Ram kills refund +35 NOS & unleash a 75px Golden Shockwave',
     components: ['titanium_spikes', 'Titanium Ram Spikes', 'adrenaline_injector', 'Adrenaline Injector', 'Nitrous Injector', 'turbo_charger'],
+    slotA: ['titanium_spikes'],
+    slotB: ['turbo_charger', 'adrenaline_injector'],
     isActive: (p) => {
       const hasSpikes = hasItemOrMod(p, 'titanium_spikes') || hasItemOrMod(p, 'Titanium Ram Spikes');
       const hasNos =
@@ -689,24 +778,104 @@ export const DUO_SYNERGIES: readonly DuoSynergyDef[] = [
     name: 'VOLTAIC WAKE',
     color: '#00bbf9',
     desc: 'NOS Boost leaves Blue-Gold Plasma Pools that ignite & shock enemies',
-    components: ['exhaust_afterburner', 'Exhaust Afterburner', 'gasoline', 'Spilled Gasoline', 'tesla_capacitor', 'Tesla Capacitor'],
+    components: ['exhaust_afterburner', 'Exhaust Afterburner', 'gasoline', 'Spilled Gasoline', 'tesla_capacitor', 'Tesla Capacitor', 'oil_infusion', 'Oil Infusion'],
+    slotA: ['exhaust_afterburner'],
+    slotB: ['oil_infusion', 'gasoline', 'tesla_capacitor'],
     isActive: (p) => {
       const hasAfterburner = hasItemOrMod(p, 'exhaust_afterburner') || hasItemOrMod(p, 'Exhaust Afterburner');
       const hasSecondary =
         hasItemOrMod(p, 'gasoline') ||
         hasItemOrMod(p, 'Spilled Gasoline') ||
         hasItemOrMod(p, 'tesla_capacitor') ||
-        hasItemOrMod(p, 'Tesla Capacitor');
+        hasItemOrMod(p, 'Tesla Capacitor') ||
+        hasItemOrMod(p, 'oil_infusion') ||
+        hasItemOrMod(p, 'Oil Infusion');
       return hasAfterburner && hasSecondary;
     }
   }
 ] as const;
 
+function tryConsumeDuoSlots(
+  syn: DuoSynergyDef,
+  counts: Record<string, number>
+): boolean {
+  for (const keyA of syn.slotA) {
+    if ((counts[keyA] ?? 0) <= 0) continue;
+    for (const keyB of syn.slotB) {
+      const neededB = keyA === keyB ? 2 : 1;
+      if ((counts[keyB] ?? 0) >= neededB) {
+        counts[keyA] -= 1;
+        counts[keyB] -= 1;
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 export function getActiveDuoSynergies(
   player: DuoSynergyPlayerSnapshot
 ): DuoSynergyDef[] {
   if (!player) return [];
-  return DUO_SYNERGIES.filter(syn => syn.isActive(player));
+  const counts = getCanonicalDuoItemCounts(player);
+  const activeIds = new Set<DuoSynergyId>();
+
+  // 1. Prioritize explicitly chosen duo synergies first (1 duo buff per item copy)
+  if (Array.isArray(player.chosenDuoSynergies)) {
+    for (const chosenId of player.chosenDuoSynergies) {
+      const syn = DUO_SYNERGIES.find(s => s.id === chosenId);
+      if (syn && !activeIds.has(syn.id)) {
+        if (tryConsumeDuoSlots(syn, counts)) {
+          activeIds.add(syn.id);
+        }
+      }
+    }
+  }
+
+  // 2. Allocate remaining unconsumed copies in canonical order
+  for (const syn of DUO_SYNERGIES) {
+    if (activeIds.has(syn.id)) continue;
+    if (tryConsumeDuoSlots(syn, counts)) {
+      activeIds.add(syn.id);
+    }
+  }
+
+  return DUO_SYNERGIES.filter(syn => activeIds.has(syn.id));
+}
+
+/**
+ * Computes which unclaimed Duo Synergies can be newly activated by picking up `pickedItemKey`
+ * given the player's current inventory and already-chosen `chosenDuoSynergies`.
+ * Each already-chosen duo consumes 1 copy of its Slot A and Slot B items first.
+ */
+export function getEligibleDuoSynergiesForPickup(
+  player: DuoSynergyPlayerSnapshot,
+  pickedItemKey?: string
+): DuoSynergyDef[] {
+  if (!player) return [];
+  const counts = getCanonicalDuoItemCounts(player);
+  const chosenSet = new Set<string>(
+    Array.isArray(player.chosenDuoSynergies) ? player.chosenDuoSynergies : []
+  );
+
+  // Consume copies for already-chosen duos
+  for (const chosenId of chosenSet) {
+    const syn = DUO_SYNERGIES.find(s => s.id === chosenId);
+    if (syn) {
+      tryConsumeDuoSlots(syn, counts);
+    }
+  }
+
+  const pickedCanon = pickedItemKey ? toCanonicalDuoKey(pickedItemKey) : null;
+
+  return DUO_SYNERGIES.filter(syn => {
+    if (chosenSet.has(syn.id)) return false;
+    if (pickedCanon && !syn.slotA.includes(pickedCanon) && !syn.slotB.includes(pickedCanon)) {
+      return false;
+    }
+    const simCounts = { ...counts };
+    return tryConsumeDuoSlots(syn, simCounts);
+  });
 }
 
 export function getPotentialDuoSynergies(

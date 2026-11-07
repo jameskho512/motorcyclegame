@@ -98,6 +98,17 @@ export function getFloorScale(floor: number): number {
 }
 
 /**
+ * Calculates scaled enemy damage per floor (+25% exponential per floor, rounded down in favor of the player).
+ * Formula: Math.floor(baseDmg * 1.25^(floor - 1))
+ */
+export function calcEnemyDamage(baseDmg: number = 1, floor: number = 1): number {
+  const safeBase = typeof baseDmg === 'number' && Number.isFinite(baseDmg) && baseDmg > 0 ? baseDmg : 1;
+  const f = typeof floor === 'number' && Number.isFinite(floor) ? Math.max(1, Math.floor(floor)) : 1;
+  const raw = safeBase * Math.pow(1.25, f - 1);
+  return Math.max(1, Math.floor(raw + 1e-9));
+}
+
+/**
  * Pick a random in-run modification from the pool.
  */
 export function pickRandomMod(random: () => number = Math.random): RunModDef {
@@ -145,6 +156,7 @@ export function createBoss(floor: number, x: number, y: number): Boss {
     radius: radii[bossVariant] ?? 36,
     hp: baseHp,
     maxHp: baseHp,
+    dmg: calcEnemyDamage(1, f),
     speed: Math.round(105 * Math.pow(1.06, f - 1)),
     burnTimer: 0,
     burnTick: 0,
@@ -182,6 +194,7 @@ export function createEnemy(
     y,
     vx: 0,
     vy: 0,
+    dmg: calcEnemyDamage(1, f),
     burnTimer: 0,
     burnTick: 0,
     aiTimer: 0.6 + random() * 0.8,

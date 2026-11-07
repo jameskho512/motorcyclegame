@@ -44,12 +44,6 @@ export const DUO_SYNERGIES: readonly DuoSynergyRecipe[] = [
     desc: 'Chilled enemies double Lightning chain range (220px) & +40% Arc Dmg'
   },
   {
-    id: 'void_vortex',
-    name: 'VOID VORTEX',
-    items: ['magnet_coil', 'high_explosive'],
-    desc: 'Explosions pull nearby enemies inward with a magnetic implosion'
-  },
-  {
     id: 'juggernaut_overdrive',
     name: 'JUGGERNAUT OVERDRIVE',
     items: ['titanium_spikes', 'turbo_charger'],
@@ -67,9 +61,8 @@ const ITEM_SYNONYMS: Record<string, string[]> = {
   cryo_rounds: ['cryo_rounds', 'cryo rounds', 'cryo-jacketed shells', 'cryo jacketed shells'],
   high_explosive: ['high_explosive', 'high explosive', 'thermobaric mix', 'thermobaric_mix'],
   tesla_capacitor: ['tesla_capacitor', 'tesla capacitor'],
-  magnet_coil: ['magnet_coil', 'magnet coil'],
   titanium_spikes: ['titanium_spikes', 'titanium spikes', 'titanium ram spikes', 'titanium_ram_spikes'],
-  turbo_charger: ['turbo_charger', 'turbo charger'],
+  turbo_charger: ['turbo_charger', 'turbo charger', 'nitrous injector', 'nitrous_injector'],
   exhaust_afterburner: ['exhaust_afterburner', 'exhaust afterburner'],
   gasoline: ['gasoline', 'spilled gasoline', 'spilled_gasoline']
 };
@@ -108,36 +101,84 @@ export function getDuoSynergyAdvisor(
     player?.itemStacks && typeof player.itemStacks === 'object'
       ? (player.itemStacks as Record<string, unknown>)
       : {};
+  const modStacks =
+    (player as any)?.modStacks && typeof (player as any).modStacks === 'object'
+      ? ((player as any).modStacks as Record<string, unknown>)
+      : {};
 
-  const isOwned = (targetItem: string): boolean => {
-    // 1. Check in items array
+  const countOwnedCopies = (targetItem: string): number => {
+    let fromArray = 0;
     for (const item of rawItems) {
       if (typeof item === 'string' && matchesItem(item, targetItem)) {
-        return true;
+        fromArray += 1;
       }
     }
-    // 2. Check in itemStacks
+    let fromItemStacks = 0;
     for (const [key, count] of Object.entries(itemStacks)) {
       if (typeof count === 'number' && Number.isFinite(count) && count > 0) {
         if (matchesItem(key, targetItem)) {
-          return true;
+          fromItemStacks += Math.floor(count);
         }
       }
     }
-    return false;
+    let fromModStacks = 0;
+    for (const [key, count] of Object.entries(modStacks)) {
+      if (typeof count === 'number' && Number.isFinite(count) && count > 0) {
+        if (matchesItem(key, targetItem)) {
+          fromModStacks += Math.floor(count);
+        }
+      }
+    }
+    return Math.max(fromArray, fromItemStacks, fromModStacks);
   };
+
+  const targetKeys = Object.keys(ITEM_SYNONYMS);
+  const availableCopies: Record<string, number> = {};
+  for (const tk of targetKeys) {
+    availableCopies[tk] = countOwnedCopies(tk);
+  }
+
+  const unlockedSet = new Set<string>();
+  const chosenList = Array.isArray((player as any)?.chosenDuoSynergies)
+    ? ((player as any).chosenDuoSynergies as string[])
+    : [];
+
+  // 1. Prioritize explicitly chosen duo synergies (each consumes 1 copy of itemA and itemB)
+  for (const chosenId of chosenList) {
+    const syn = DUO_SYNERGIES.find(s => s.id === chosenId);
+    if (syn && !unlockedSet.has(syn.id)) {
+      const [itemA, itemB] = syn.items;
+      if ((availableCopies[itemA] ?? 0) >= 1 && (availableCopies[itemB] ?? 0) >= 1) {
+        availableCopies[itemA] -= 1;
+        availableCopies[itemB] -= 1;
+        unlockedSet.add(syn.id);
+      }
+    }
+  }
+
+  // 2. Allocate remaining copies in canonical order (1 duo per item copy)
+  for (const synergy of DUO_SYNERGIES) {
+    if (unlockedSet.has(synergy.id)) continue;
+    const [itemA, itemB] = synergy.items;
+    if ((availableCopies[itemA] ?? 0) >= 1 && (availableCopies[itemB] ?? 0) >= 1) {
+      availableCopies[itemA] -= 1;
+      availableCopies[itemB] -= 1;
+      unlockedSet.add(synergy.id);
+    }
+  }
 
   const unlockedDuos: string[] = [];
   const partialDuos: PartialDuoSynergyInfo[] = [];
 
   for (const synergy of DUO_SYNERGIES) {
-    const [itemA, itemB] = synergy.items;
-    const hasA = isOwned(itemA);
-    const hasB = isOwned(itemB);
-
-    if (hasA && hasB) {
+    if (unlockedSet.has(synergy.id)) {
       unlockedDuos.push(synergy.name);
-    } else if (hasA !== hasB) {
+      continue;
+    }
+    const [itemA, itemB] = synergy.items;
+    const hasA = (availableCopies[itemA] ?? 0) >= 1;
+    const hasB = (availableCopies[itemB] ?? 0) >= 1;
+    if (hasA !== hasB) {
       partialDuos.push({
         id: synergy.id,
         name: synergy.name,

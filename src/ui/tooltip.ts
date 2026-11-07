@@ -194,11 +194,6 @@ const DUO_RECIPE_MAP: Record<string, DuoRecipeInfo> = {
     reqB: 'tesla_capacitor',
     recipeLabel: 'cryo_rounds + tesla_capacitor'
   },
-  void_vortex: {
-    reqA: 'magnet_coil',
-    reqB: 'high_explosive',
-    recipeLabel: 'magnet_coil + high_explosive'
-  },
   juggernaut_overdrive: {
     reqA: 'titanium_spikes',
     reqB: 'turbo_charger',

@@ -4803,10 +4803,10 @@ describe('Render & UI Subsystems', () => {
       `;
 
       const hud = new HUDController();
-      // magnet_coil is 1 of 2 required for VOID VORTEX (magnet_coil + high_explosive)
+      // titanium_spikes is 1 of 2 required for JUGGERNAUT OVERDRIVE (titanium_spikes + turbo_charger)
       const player = {
-        items: ['magnet_coil'],
-        itemStacks: { magnet_coil: 1 }
+        items: ['titanium_spikes'],
+        itemStacks: { titanium_spikes: 1 }
       } as any;
 
       hud.updateModDeckTelemetry(player);
@@ -4820,7 +4820,7 @@ describe('Render & UI Subsystems', () => {
       for (const el of targets) {
         expect(el.getAttribute('data-duo-unlocked-count')).toBe('0');
         expect(el.getAttribute('data-duo-near-miss-count')).toBe('1');
-        expect(el.getAttribute('data-duo-advisor-summary')).toBe('DUOS: 0 ACTIVE · 1 NEAR-MISS (NEED HIGH_EXPLOSIVE)');
+        expect(el.getAttribute('data-duo-advisor-summary')).toBe('DUOS: 0 ACTIVE · 1 NEAR-MISS (NEED TURBO_CHARGER)');
       }
     });
 
@@ -4861,10 +4861,10 @@ describe('Render & UI Subsystems', () => {
       `;
 
       const hud = new HUDController();
-      // JUGGERNAUT OVERDRIVE (titanium_spikes + turbo_charger) active, plus magnet_coil (near-miss for VOID VORTEX)
+      // JUGGERNAUT OVERDRIVE (titanium_spikes + turbo_charger) active, plus high_explosive (near-miss for THERMAL SHOCK)
       const mixedPlayer = {
-        items: ['titanium_spikes', 'turbo_charger', 'magnet_coil'],
-        itemStacks: { titanium_spikes: 1, turbo_charger: 1, magnet_coil: 1 }
+        items: ['titanium_spikes', 'turbo_charger', 'high_explosive'],
+        itemStacks: { titanium_spikes: 1, turbo_charger: 1, high_explosive: 1 }
       } as any;
 
       hud.updateMods(mixedPlayer);

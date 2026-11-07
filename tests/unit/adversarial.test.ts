@@ -18,9 +18,16 @@ import {
 } from '@/data/weapons';
 import {
   RUN_MOD_POOL,
+  DROP_ITEMS,
+  DROP_ITEM_IDS,
+  DUO_SYNERGIES,
+  getActiveDuoSynergies,
+  getEligibleDuoSynergiesForPickup,
   calcUpgradeCost,
   ModPlayerTarget
 } from '@/data/upgrades';
+import { calcEnemyDamage, createEnemy, createBoss } from '@/systems/enemyAI';
+import { createCombatState, updateCombatPipeline } from '@/systems/combat';
 import {
   MAX_STASH,
   MAX_FORGE_TIER,
@@ -1682,4 +1689,112 @@ describe('Adversarial Challenge 14: Forge Tier System, Floor Rounding, Item Sele
     expect(app.stateManager.player.stunImmuneTimer).toBe(0);
   });
 });
+
+describe('Adversarial Challenge 15: Magnet Removal, 1 Duo Buff Per Pickup & 25% Exponential Enemy Damage Scaling', () => {
+  it('completely removes magnet_coil and void_vortex from drop items, duo synergies, and pickup physics', () => {
+    expect(DROP_ITEM_IDS).not.toContain('magnet_coil' as any);
+    expect((DROP_ITEMS as any).magnet_coil).toBeUndefined();
+    expect(DUO_SYNERGIES.map(d => d.id)).not.toContain('void_vortex' as any);
+
+    const app = new MotoRogueApp();
+    app.startNewRun(false);
+    const room = app.getCurrentRoom()!;
+    room.pickups = [
+      { type: 'heart', x: app.stateManager.player.x + 80, y: app.stateManager.player.y, radius: 10 } as any
+    ];
+    (app.stateManager.player.itemStacks as any).magnet_coil = 5;
+    updateCombatPipeline(0.1, room, app.stateManager.player, createCombatState());
+    expect(room.pickups[0].x).toBe(app.stateManager.player.x + 80);
+  });
+
+  it('enforces 1 duo buff per item pickup, requires user selection when 2+ duo buffs are eligible, and unlocks another when picked up again', () => {
+    const app = new MotoRogueApp();
+    app.startNewRun(false);
+    const player = app.stateManager.player;
+
+    // Player already holds high_explosive (1 copy) and tesla_capacitor (1 copy)
+    player.items = ['Thermobaric Mix'];
+    (player as any).modStacks = { high_explosive: 1 };
+    player.itemStacks = { tesla_capacitor: 1 };
+
+    // Picking up 1st copy of cryo_rounds makes BOTH thermal_shock and superconductor eligible
+    (player as any).modStacks.cryo_rounds = 1;
+    player.items.push('Cryo-Jacketed Shells');
+
+    const eligibleOnFirstPickup = getEligibleDuoSynergiesForPickup(player, 'cryo_rounds');
+    expect(eligibleOnFirstPickup.map(d => d.id)).toEqual(['thermal_shock', 'superconductor']);
+
+    // Resolving pickup opens the Duo Choice Modal because 2 duo buffs are eligible for this 1 pickup
+    app.resolveDuoSynergyOnPickup('cryo_rounds');
+    expect(app.duoChoiceModalOpen).toBe(true);
+    expect(app.pendingDuoChoices.map(d => d.id)).toEqual(['thermal_shock', 'superconductor']);
+
+    // User picks 'superconductor' for the 1st pickup -> ONLY superconductor is active (1 copy of cryo_rounds consumed)
+    app.chooseDuoSynergy('superconductor');
+    expect(app.duoChoiceModalOpen).toBe(false);
+    expect(player.chosenDuoSynergies).toEqual(['superconductor']);
+    expect(getActiveDuoSynergies(player).map(d => d.id)).toEqual(['superconductor']);
+
+    // Picking up a 2nd copy of cryo_rounds makes the remaining duo buff ('thermal_shock') eligible and active
+    (player as any).modStacks.cryo_rounds = 2;
+    player.items.push('Cryo-Jacketed Shells');
+    const eligibleOnSecondPickup = getEligibleDuoSynergiesForPickup(player, 'cryo_rounds');
+    expect(eligibleOnSecondPickup.map(d => d.id)).toEqual(['thermal_shock']);
+
+    app.resolveDuoSynergyOnPickup('cryo_rounds');
+    expect(player.chosenDuoSynergies).toEqual(['superconductor', 'thermal_shock']);
+    expect(getActiveDuoSynergies(player).map(d => d.id).sort()).toEqual(['superconductor', 'thermal_shock']);
+  });
+
+  it('scales enemy damage by +25% exponentially per floor and rounds down non-integer damage in favor of the player', () => {
+    // Base damage 1:
+    // Floor 1: floor(1 * 1.25^0) = 1
+    // Floor 2: floor(1 * 1.25^1) = floor(1.25) = 1
+    // Floor 3: floor(1 * 1.25^2) = floor(1.5625) = 1
+    // Floor 4: floor(1 * 1.25^3) = floor(1.953125) = 1
+    // Floor 5: floor(1 * 1.25^4) = floor(2.4414) = 2
+    // Floor 6: floor(1 * 1.25^5) = floor(3.0517) = 3
+    expect(calcEnemyDamage(1, 1)).toBe(1);
+    expect(calcEnemyDamage(1, 2)).toBe(1);
+    expect(calcEnemyDamage(1, 3)).toBe(1);
+    expect(calcEnemyDamage(1, 4)).toBe(1);
+    expect(calcEnemyDamage(1, 5)).toBe(2);
+    expect(calcEnemyDamage(1, 6)).toBe(3);
+
+    // Base damage 4:
+    // Floor 1: 4, Floor 2: 5, Floor 3: 6.25 -> 6, Floor 4: 7.8125 -> 7, Floor 5: 9.765 -> 9, Floor 6: 12.207 -> 12
+    expect(calcEnemyDamage(4, 1)).toBe(4);
+    expect(calcEnemyDamage(4, 2)).toBe(5);
+    expect(calcEnemyDamage(4, 3)).toBe(6);
+    expect(calcEnemyDamage(4, 4)).toBe(7);
+    expect(calcEnemyDamage(4, 5)).toBe(9);
+    expect(calcEnemyDamage(4, 6)).toBe(12);
+
+    // Enemies and Bosses created on Floor 5 & 6 carry the scaled integer damage
+    expect(createEnemy('swarmer', 100, 100, 4).dmg).toBe(1);
+    expect(createEnemy('swarmer', 100, 100, 5).dmg).toBe(2);
+    expect(createBoss(6, 200, 200).dmg).toBe(3);
+
+    // Verify in MotoRogueApp on Floor 5 that getting hit by an enemy bullet deducts 2 HP (2.4414 rounded down to 2)
+    const app = new MotoRogueApp();
+    app.startNewRun(false);
+    app.stateManager.floorNum = 5;
+    app.stateManager.player.hp = 6;
+    app.stateManager.player.invuln = 0;
+    app.roomEnemiesFrozen = false;
+    const room = app.getCurrentRoom()!;
+    room.cleared = false;
+    app.combatState.enemyBullets.push({
+      x: app.stateManager.player.x,
+      y: app.stateManager.player.y,
+      vx: 0,
+      vy: 0,
+      radius: 10,
+      color: '#ff0000'
+    } as any);
+    app.update(0.001);
+    expect(app.stateManager.player.hp).toBe(4);
+  });
+});
+
 

@@ -37,7 +37,7 @@ import {
   WeaponId
 } from '../types/game';
 import { WEAPONS, WeaponDef, isWeaponEvolved } from '../data/weapons';
-import { DROP_ITEM_IDS } from '../data/upgrades';
+import { DROP_ITEM_IDS, getActiveDuoSynergies } from '../data/upgrades';
 import { genLoot } from '../data/equipment';
 
 // ============================================================================
@@ -652,15 +652,11 @@ export function triggerExplosion(
     });
   }
 
-  // Damage enemies in range with falloff (and Void Vortex magnetic implosion if active)
-  const hasVoidVortex = !!(room as any)._voidVortexActive;
+  // Damage enemies in range with falloff
+  const hasThermalShock = (room as any)._thermalShockActive !== false;
   for (const en of room.enemies) {
     const d = Math.hypot(en.x - x, en.y - y);
     const maxDist = radius + en.radius;
-    if (hasVoidVortex && d > 8 && d <= maxDist * 1.35 && !en.isDummy) {
-      en.x += (x - en.x) * 0.35;
-      en.y += (y - en.y) * 0.35;
-    }
     if (d <= maxDist) {
       const falloff = 1 - (d / maxDist) * 0.45;
       let hitDmg = dmg * falloff;
@@ -668,7 +664,7 @@ export function triggerExplosion(
       if (isChilled) {
         hitDmg *= 1.15;
       }
-      if (isChilled && !isCryo && ((en as any).thermalShockIcd || 0) <= 0) {
+      if (hasThermalShock && isChilled && !isCryo && ((en as any).thermalShockIcd || 0) <= 0) {
         (en as any).thermalShockIcd = 0.4;
         hitDmg *= 1.35;
         state.particles.push({
@@ -1350,11 +1346,15 @@ export function updateEnemyBombs(
         y: eb.targetY,
         radius: 42,
         life: 3.5,
-        maxLife: 3.5
-      });
+        maxLife: 3.5,
+        dmg: (eb as any).dmg
+      } as FloorHazard);
       spawnMuzzleParticles(state, eb.targetX, eb.targetY, 0, '#ff9f1c', 10);
       if (Math.hypot(player.x - eb.targetX, player.y - eb.targetY) < player.radius + 42) {
-        if (onPlayerHurt) onPlayerHurt(1);
+        if (onPlayerHurt) {
+          const hitDmg = Math.max(1, Math.floor((((eb as any).dmg ?? 1) as number) + 1e-9));
+          onPlayerHurt(hitDmg);
+        }
       }
       enemyBombs.splice(i, 1);
     } else {
@@ -1381,7 +1381,10 @@ export function updateHazards(
       continue;
     }
     if (Math.hypot(player.x - hz.x, player.y - hz.y) < player.radius + hz.radius - 6) {
-      if (onPlayerHurt) onPlayerHurt(1);
+      if (onPlayerHurt) {
+        const hitDmg = Math.max(1, Math.floor((((hz as any).dmg ?? 1) as number) + 1e-9));
+        onPlayerHurt(hitDmg);
+      }
     }
   }
 }
@@ -1409,7 +1412,10 @@ export function updateEnemyBullets(
       continue;
     }
     if (Math.hypot(eb.x - player.x, eb.y - player.y) < eb.radius + player.radius) {
-      if (onPlayerHurt) onPlayerHurt(1);
+      if (onPlayerHurt) {
+        const hitDmg = Math.max(1, Math.floor((((eb as any).dmg ?? 1) as number) + 1e-9));
+        onPlayerHurt(hitDmg);
+      }
       enemyBullets.splice(i, 1);
     }
   }
@@ -1506,7 +1512,8 @@ export function updateEnemyCollisions(
       player.y = Math.max(WALL_THICKNESS + player.radius, Math.min(ARENA_HEIGHT - WALL_THICKNESS - player.radius, player.y));
 
       if (!en.isDummy && onPlayerHurt) {
-        onPlayerHurt(1);
+        const hitDmg = Math.max(1, Math.floor((((en as any).dmg ?? 1) as number) + 1e-9));
+        onPlayerHurt(hitDmg);
       }
     }
   }
@@ -1620,16 +1627,17 @@ export function updateCombatPipeline(
     onPlayerHurt?.(dmg);
   };
 
-  // Exhaust Afterburner (+ Voltaic Wake Duo Synergy with Oil Infusion): leave scorching/plasma trail when NOS boosting
-  (room as any)._voidVortexActive =
-    (player.itemStacks?.magnet_coil ?? 0) > 0 &&
-    (player.items?.includes('High-Explosive Payload') ||
-      player.items?.includes('high_explosive') ||
-      player.items?.includes('Thermobaric Mix') ||
-      player.blastMult > 1.15);
+  // Compute active Duo Synergies (respecting 1 duo buff per item copy & user selection)
+  const activeDuoIds = new Set(getActiveDuoSynergies(player).map(d => d.id));
+  (room as any)._thermalShockActive = activeDuoIds.has('thermal_shock');
+  (room as any)._superconductorActive = activeDuoIds.has('superconductor');
+  (room as any)._juggernautOverdriveActive = activeDuoIds.has('juggernaut_overdrive');
 
+  // Exhaust Afterburner (+ Voltaic Wake Duo Synergy): leave scorching/plasma trail when NOS boosting
   const afterburnerStacks = player.itemStacks?.exhaust_afterburner ?? 0;
-  const hasVoltaicWake = afterburnerStacks > 0 && (player.itemStacks?.oil_infusion ?? 0) > 0;
+  const hasVoltaicWake =
+    activeDuoIds.has('voltaic_wake') ||
+    (afterburnerStacks > 0 && (player.itemStacks?.oil_infusion ?? 0) > 0 && activeDuoIds.size === 0);
   if (afterburnerStacks > 0 && (player as any).isBoosting && player.nos > 0 && !player.nosLock && rng() < 0.35) {
     const bikeAngle = (player as any).angle ?? player.aimAngle ?? 0;
     state.bullets.push({
@@ -1649,21 +1657,6 @@ export function updateCombatPipeline(
       life: hasVoltaicWake ? 0.65 : 0.42,
       maxLife: hasVoltaicWake ? 0.65 : 0.42
     });
-  }
-
-  // Magnet Coil: pull nearby pickups toward player
-  const magnetStacks = player.itemStacks?.magnet_coil ?? 0;
-  if (magnetStacks > 0 && Array.isArray(room.pickups)) {
-    const pullRange = 95 * magnetStacks;
-    for (const pk of room.pickups) {
-      const dx = player.x - pk.x;
-      const dy = player.y - pk.y;
-      const d = Math.hypot(dx, dy);
-      if (d > 8 && d <= pullRange) {
-        pk.x += (dx / d) * 210 * dt;
-        pk.y += (dy / d) * 210 * dt;
-      }
-    }
   }
 
   // Slow timer, hit-flash, thermal shock ICD & enemy displacement damping

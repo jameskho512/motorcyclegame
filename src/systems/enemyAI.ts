@@ -67,6 +67,17 @@ export function calcEnemyHp(baseHp: number, floor: number, isElite: boolean = fa
 }
 
 /**
+ * Calculates scaled enemy damage per floor (+25% exponential per floor, rounded down in favor of the player).
+ * Formula: Math.floor(baseDmg * 1.25^(floor - 1))
+ */
+export function calcEnemyDamage(baseDmg: number = 1, floor: number = 1): number {
+  const safeBase = typeof baseDmg === 'number' && Number.isFinite(baseDmg) && baseDmg > 0 ? baseDmg : 1;
+  const f = typeof floor === 'number' && Number.isFinite(floor) ? Math.max(1, Math.floor(floor)) : 1;
+  const raw = safeBase * Math.pow(1.25, f - 1);
+  return Math.max(1, Math.floor(raw + 1e-9));
+}
+
+/**
  * Calculates scaled enemy movement speed (exponential per floor).
  * Formula: baseSpeed * 1.06^(floor - 1) * (isElite ? 1.15 : 1)
  */
@@ -159,6 +170,7 @@ export function createEnemy(
     radius: cfg.radius,
     hp,
     maxHp: hp,
+    dmg: calcEnemyDamage(1, floor),
     speed,
     burnTimer: 0,
     burnTick: 0,
@@ -248,6 +260,7 @@ export function createBoss(
     radius: BOSS_RADII[bossVariant],
     hp: baseHp,
     maxHp: baseHp,
+    dmg: calcEnemyDamage(1, floor),
     speed: Math.round(105 * Math.pow(1.06, Math.max(1, floor) - 1)),
     burnTimer: 0,
     burnTick: 0,
@@ -666,6 +679,19 @@ export function updateBossAI(ctx: AIContext): void {
   // Clamping for direct updateBossAI invocations
   en.x = Math.max(WALL_THICKNESS + en.radius, Math.min(ARENA_WIDTH - WALL_THICKNESS - en.radius, en.x));
   en.y = Math.max(WALL_THICKNESS + en.radius, Math.min(ARENA_HEIGHT - WALL_THICKNESS - en.radius, en.y));
+
+  const entityDmg = typeof en.dmg === 'number' && en.dmg > 0 ? en.dmg : calcEnemyDamage(1, floorNum || 1);
+  for (const b of enemyBullets) {
+    if ((b as any).dmg === undefined) (b as any).dmg = entityDmg;
+  }
+  for (const bm of enemyBombs) {
+    if ((bm as any).dmg === undefined) (bm as any).dmg = entityDmg;
+  }
+  if (room?.hazards) {
+    for (const h of room.hazards) {
+      if ((h as any).dmg === undefined) (h as any).dmg = entityDmg;
+    }
+  }
 }
 
 /**
@@ -681,7 +707,8 @@ export function updateEnemyAI(ctx: AIContext): void {
     projScale,
     enemyBullets,
     enemyBombs,
-    rng = Math.random
+    rng = Math.random,
+    floorNum = 1
   } = ctx;
   const dx = player.x - en.x;
   const dy = player.y - en.y;
@@ -902,6 +929,19 @@ export function updateEnemyAI(ctx: AIContext): void {
     case 'boss': {
       updateBossAI(ctx);
       break;
+    }
+  }
+
+  const entityDmg = typeof en.dmg === 'number' && en.dmg > 0 ? en.dmg : calcEnemyDamage(1, floorNum || 1);
+  for (const b of enemyBullets) {
+    if ((b as any).dmg === undefined) (b as any).dmg = entityDmg;
+  }
+  for (const bm of enemyBombs) {
+    if ((bm as any).dmg === undefined) (bm as any).dmg = entityDmg;
+  }
+  if (room?.hazards) {
+    for (const h of room.hazards) {
+      if ((h as any).dmg === undefined) (h as any).dmg = entityDmg;
     }
   }
 

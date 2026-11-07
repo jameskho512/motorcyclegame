@@ -578,8 +578,8 @@ describe('Tier 3: Cross-Feature Combinations & Synergies', () => {
     it('activates Thermal Shock, Superconductor, and Juggernaut Overdrive duo synergies and applies Kiss-Curse mods', () => {
       const state = createCombatState();
 
-      // 1. Verify getActiveDuoSynergies detection
-      player.items.push('Cryo-Jacketed Shells', 'Thermobaric Mix');
+      // 1. Verify getActiveDuoSynergies detection (2 copies of Cryo-Jacketed Shells enable both Thermal Shock & Superconductor)
+      player.items.push('Cryo-Jacketed Shells', 'Cryo-Jacketed Shells', 'Thermobaric Mix');
       player.itemStacks = { tesla_capacitor: 1, titanium_spikes: 1, adrenaline_injector: 1 };
       const activeIds = getActiveDuoSynergies(player).map(d => d.id);
       expect(activeIds).toContain('thermal_shock');
@@ -750,8 +750,8 @@ describe('Tier 3: Cross-Feature Combinations & Synergies', () => {
       // 1.0 (base) + 0.18 (6pc set) + 0.15 (tires) = 1.33
       expect(player.speedMult).toBeCloseTo(1.33, 2);
 
-      // 5. Active Duo Synergies activation
-      player.items.push('Cryo-Jacketed Shells', 'Thermobaric Mix');
+      // 5. Active Duo Synergies activation (2 copies of Cryo-Jacketed Shells enable both Thermal Shock & Superconductor)
+      player.items.push('Cryo-Jacketed Shells', 'Cryo-Jacketed Shells', 'Thermobaric Mix');
       player.itemStacks = {
         tesla_capacitor: 1,
         titanium_spikes: 1,
@@ -1170,34 +1170,32 @@ describe('Tier 3: Cross-Feature Combinations & Synergies', () => {
       expect(baselineOffense.siphonStatus).toBe('NONE');
       expect(baselineOffense.effectiveDpsMult).toBeCloseTo(1.0, 2);
 
-      // Now activate all 5 Duo Synergies:
-      // 1. thermal_shock: Cryo ('Cryo-Jacketed Shells') + Fire ('Thermobaric Mix')
-      // 2. superconductor: Cryo ('Cryo-Jacketed Shells') + Volt ('tesla_capacitor')
-      // 3. void_vortex: Magnet ('magnet_coil') + Blast ('Thermobaric Mix')
-      // 4. juggernaut_overdrive: Spikes ('titanium_spikes') + NOS ('adrenaline_injector')
-      // 5. voltaic_wake: Afterburner ('exhaust_afterburner') + Secondary ('tesla_capacitor')
+      // Now activate all 4 Duo Synergies:
+      // 1. thermal_shock: Cryo ('Cryo-Jacketed Shells' #1) + Fire ('Thermobaric Mix')
+      // 2. superconductor: Cryo ('Cryo-Jacketed Shells' #2) + Volt ('tesla_capacitor' #1)
+      // 3. juggernaut_overdrive: Spikes ('titanium_spikes') + NOS ('adrenaline_injector')
+      // 4. voltaic_wake: Afterburner ('exhaust_afterburner') + Secondary ('tesla_capacitor' #2)
       p.weapon = 'pistol';
       p.items.push(
+        'Cryo-Jacketed Shells',
         'Cryo-Jacketed Shells',
         'Thermobaric Mix',
         'Rubberized Casings' // Evolved Ricochet Revolver
       );
       p.itemStacks = {
-        tesla_capacitor: 1,
-        magnet_coil: 1,
+        tesla_capacitor: 2,
         titanium_spikes: 1,
         adrenaline_injector: 1,
         exhaust_afterburner: 1
       };
 
       const activeDuos = getActiveDuoSynergies(p);
-      expect(activeDuos).toHaveLength(5);
+      expect(activeDuos).toHaveLength(4);
       const activeIds = activeDuos.map(d => d.id).sort();
       expect(activeIds).toEqual([
         'juggernaut_overdrive',
         'superconductor',
         'thermal_shock',
-        'void_vortex',
         'voltaic_wake'
       ]);
 
@@ -1682,7 +1680,7 @@ describe('Tier 3: Cross-Feature Combinations & Synergies', () => {
       expect(deck2.evoStackReady).toBe(false);
       expect(deck2.activeDuoCount).toBe(1);
       expect(deck2.summaryLine).toBe(
-        'MODS: 3 PICKS (2 UNIQUE) // 2/3 STACK NEAR EVO // DUOS: 1 ACTIVE, 2 NEAR'
+        'MODS: 3 PICKS (2 UNIQUE) // 2/3 STACK NEAR EVO // DUOS: 1 ACTIVE, 1 NEAR'
       );
 
       const duos2 = getActiveDuoSynergies(p);
@@ -1697,7 +1695,7 @@ describe('Tier 3: Cross-Feature Combinations & Synergies', () => {
       expect(evoProg2.statusText).toBe('[✗ Ricochet Rounds] + [2/3 Mod Stack]');
 
       // Step 3: Pick 3rd stack of cryo_rounds (3+ STACK EVO READY) + turbo_charger + nanite_repair
-      // Also equips drop items tesla_capacitor + exhaust_afterburner to unlock SUPERCONDUCTOR and VOLTAIC WAKE
+      // Also equips drop items tesla_capacitor (x2) + exhaust_afterburner to unlock SUPERCONDUCTOR and VOLTAIC WAKE
       (p as any).modStacks = {
         cryo_rounds: 3,
         high_explosive: 1,
@@ -1709,7 +1707,7 @@ describe('Tier 3: Cross-Feature Combinations & Synergies', () => {
         high_explosive: 1,
         turbo_charger: 1,
         nanite_repair: 1,
-        tesla_capacitor: 1,
+        tesla_capacitor: 2,
         exhaust_afterburner: 1
       };
       p.items = [
@@ -1727,9 +1725,9 @@ describe('Tier 3: Cross-Feature Combinations & Synergies', () => {
       expect(deck3.maxStackCount).toBe(3);
       expect(deck3.evoStackReady).toBe(true);
       expect(deck3.activeDuoCount).toBe(3);
-      expect(deck3.potentialDuoCount).toBe(2);
+      expect(deck3.potentialDuoCount).toBe(1);
       expect(deck3.summaryLine).toBe(
-        'MODS: 6 PICKS (4 UNIQUE) // 3+ STACK EVO READY // DUOS: 3 ACTIVE, 2 NEAR'
+        'MODS: 6 PICKS (4 UNIQUE) // 3+ STACK EVO READY // DUOS: 3 ACTIVE, 1 NEAR'
       );
 
       const duos3 = getActiveDuoSynergies(p);
@@ -1984,7 +1982,6 @@ describe('Tier 3: Cross-Feature Combinations & Synergies', () => {
       const canonicalDuos = [
         { id: 'thermal_shock', name: 'THERMAL SHOCK', itemA: 'cryo_rounds', itemB: 'high_explosive' },
         { id: 'superconductor', name: 'SUPERCONDUCTOR', itemA: 'cryo_rounds', itemB: 'tesla_capacitor' },
-        { id: 'void_vortex', name: 'VOID VORTEX', itemA: 'magnet_coil', itemB: 'high_explosive' },
         { id: 'juggernaut_overdrive', name: 'JUGGERNAUT OVERDRIVE', itemA: 'titanium_spikes', itemB: 'turbo_charger' },
         { id: 'voltaic_wake', name: 'VOLTAIC WAKE', itemA: 'exhaust_afterburner', itemB: 'gasoline' }
       ] as const;
@@ -2024,22 +2021,21 @@ describe('Tier 3: Cross-Feature Combinations & Synergies', () => {
         expect(deckSum.activeDuoCount).toBeGreaterThanOrEqual(1);
       }
 
-      // 2. Fully equip all 8 distinct components across all 5 canonical synergies simultaneously
+      // 2. Equip all components across all 4 canonical synergies simultaneously (2 copies of cryo_rounds for thermal_shock + superconductor)
       runner.items = [
+        'cryo_rounds',
         'cryo_rounds',
         'high_explosive',
         'tesla_capacitor',
-        'magnet_coil',
         'titanium_spikes',
         'turbo_charger',
         'exhaust_afterburner',
         'gasoline'
       ];
       runner.itemStacks = {
-        cryo_rounds: 1,
+        cryo_rounds: 2,
         high_explosive: 1,
         tesla_capacitor: 1,
-        magnet_coil: 1,
         titanium_spikes: 1,
         turbo_charger: 1,
         exhaust_afterburner: 1,
@@ -2048,21 +2044,20 @@ describe('Tier 3: Cross-Feature Combinations & Synergies', () => {
       (runner as any).modStacks = { ...runner.itemStacks };
 
       const fullAdvisor = getDuoSynergyAdvisor(runner);
-      expect(fullAdvisor.unlockedCount).toBe(5);
+      expect(fullAdvisor.unlockedCount).toBe(4);
       expect(fullAdvisor.nearMissCount).toBe(0);
       expect(fullAdvisor.unlockedDuos).toEqual([
         'THERMAL SHOCK',
         'SUPERCONDUCTOR',
-        'VOID VORTEX',
         'JUGGERNAUT OVERDRIVE',
         'VOLTAIC WAKE'
       ]);
       expect(fullAdvisor.summaryLine).toBe(
-        'DUOS: 5 ACTIVE (THERMAL SHOCK, SUPERCONDUCTOR, VOID VORTEX, JUGGERNAUT OVERDRIVE, VOLTAIC WAKE)'
+        'DUOS: 4 ACTIVE (THERMAL SHOCK, SUPERCONDUCTOR, JUGGERNAUT OVERDRIVE, VOLTAIC WAKE)'
       );
 
       const fullDeck = getRunModDeckSummary(runner);
-      expect(fullDeck.activeDuoCount).toBe(5);
+      expect(fullDeck.activeDuoCount).toBe(4);
       expect(fullDeck.potentialDuoCount).toBe(0);
 
       // Verify drop stack progression for crate drop offerings

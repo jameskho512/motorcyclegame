@@ -306,8 +306,8 @@ describe('Data Module: upgrades.ts', () => {
     expect(p.vampChance).toBe(0.6);
   });
 
-  it('defines 12 RoR2 stacking drop items with badges and icons', () => {
-    expect(DROP_ITEM_IDS.length).toBe(12);
+  it('defines 11 RoR2 stacking drop items with badges and icons (magnet_coil removed)', () => {
+    expect(DROP_ITEM_IDS.length).toBe(11);
     for (const id of DROP_ITEM_IDS) {
       const it = DROP_ITEMS[id];
       expect(it).toBeDefined();
@@ -360,7 +360,7 @@ describe('Data Module: upgrades.ts', () => {
   });
 
   it('evaluates DUO_SYNERGIES, getActiveDuoSynergies, and getPotentialDuoSynergiesForItem accurately', () => {
-    expect(DUO_SYNERGIES.length).toBe(5);
+    expect(DUO_SYNERGIES.length).toBe(4);
 
     const active1 = getActiveDuoSynergies({
       weapon: 'flamethrower',
@@ -373,13 +373,6 @@ describe('Data Module: upgrades.ts', () => {
       items: ['cryo_rounds']
     });
     expect(active2.map(s => s.id)).toContain('superconductor');
-
-    const active3 = getActiveDuoSynergies({
-      weapon: 'pistol',
-      items: ['Thermobaric Mix'],
-      itemStacks: { magnet_coil: 1 }
-    });
-    expect(active3.map(s => s.id)).toContain('void_vortex');
 
     const active4 = getActiveDuoSynergies({
       items: ['Nitrous Injector'],
@@ -1451,7 +1444,7 @@ describe('Tooltip: formatHubNpcTooltip', () => {
         'MODS: 1 PICKS (1 UNIQUE) // 1/3 MAX STACK // DUOS: 0 ACTIVE, 2 NEAR'
       );
 
-      // 2 matching components in modStacks -> 1 active (thermal_shock), 2 potential (superconductor, void_vortex)
+      // 2 matching components in modStacks -> 1 active (thermal_shock), 1 potential (superconductor)
       const activeAndPotential = getRunModDeckSummary({
         modStacks: {
           cryo_rounds: 2,
@@ -1463,9 +1456,9 @@ describe('Tooltip: formatHubNpcTooltip', () => {
       expect(activeAndPotential.maxStackCount).toBe(2);
       expect(activeAndPotential.evoStackReady).toBe(false);
       expect(activeAndPotential.activeDuoCount).toBe(1);
-      expect(activeAndPotential.potentialDuoCount).toBe(2);
+      expect(activeAndPotential.potentialDuoCount).toBe(1);
       expect(activeAndPotential.summaryLine).toBe(
-        'MODS: 4 PICKS (2 UNIQUE) // 2/3 STACK NEAR EVO // DUOS: 1 ACTIVE, 2 NEAR'
+        'MODS: 4 PICKS (2 UNIQUE) // 2/3 STACK NEAR EVO // DUOS: 1 ACTIVE, 1 NEAR'
       );
 
       // Weapon + Mod synergy: Flamethrower + 3 stacks Cryo Rounds -> 1 active, 1 potential
@@ -1547,11 +1540,11 @@ describe('Tooltip: formatHubNpcTooltip', () => {
       const expectedEmpty: DropItemStackSummary = {
         totalItemDrops: 0,
         uniqueItemTypes: 0,
-        totalPoolSize: 12,
+        totalPoolSize: 11,
         topItemId: null,
         topItemName: null,
         topItemCount: 0,
-        summaryLine: 'CRATES: 0 STACKS (0/12 TYPES) // TOP: NONE'
+        summaryLine: 'CRATES: 0 STACKS (0/11 TYPES) // TOP: NONE'
       };
 
       expect(getDropItemStackSummary(null)).toEqual(expectedEmpty);
@@ -1570,11 +1563,11 @@ describe('Tooltip: formatHubNpcTooltip', () => {
 
       expect(summary.totalItemDrops).toBe(3);
       expect(summary.uniqueItemTypes).toBe(1);
-      expect(summary.totalPoolSize).toBe(12);
+      expect(summary.totalPoolSize).toBe(11);
       expect(summary.topItemId).toBe('nitro_syringe');
       expect(summary.topItemName).toBe('Nitro Syringe');
       expect(summary.topItemCount).toBe(3);
-      expect(summary.summaryLine).toBe('CRATES: 3 STACKS (1/12 TYPES) // TOP: NITRO SYRINGE x3');
+      expect(summary.summaryLine).toBe('CRATES: 3 STACKS (1/11 TYPES) // TOP: NITRO SYRINGE x3');
     });
 
     it('correctly tracks top item when multiple items are stacked with distinct counts', () => {
@@ -1588,11 +1581,11 @@ describe('Tooltip: formatHubNpcTooltip', () => {
 
       expect(summary.totalItemDrops).toBe(7);
       expect(summary.uniqueItemTypes).toBe(3);
-      expect(summary.totalPoolSize).toBe(12);
+      expect(summary.totalPoolSize).toBe(11);
       expect(summary.topItemId).toBe('chrome_lens');
       expect(summary.topItemName).toBe('Chrome Lens');
       expect(summary.topItemCount).toBe(4);
-      expect(summary.summaryLine).toBe('CRATES: 7 STACKS (3/12 TYPES) // TOP: CHROME LENS x4');
+      expect(summary.summaryLine).toBe('CRATES: 7 STACKS (3/11 TYPES) // TOP: CHROME LENS x4');
     });
 
     it('enforces first-in-DROP_ITEM_IDS order tie-breaking when two items have identical highest stack', () => {
@@ -1609,11 +1602,11 @@ describe('Tooltip: formatHubNpcTooltip', () => {
       expect(summary.topItemId).toBe('nitro_syringe');
       expect(summary.topItemName).toBe('Nitro Syringe');
       expect(summary.topItemCount).toBe(5);
-      expect(summary.summaryLine).toBe('CRATES: 10 STACKS (2/12 TYPES) // TOP: NITRO SYRINGE x5');
+      expect(summary.summaryLine).toBe('CRATES: 10 STACKS (2/11 TYPES) // TOP: NITRO SYRINGE x5');
     });
 
     it('enforces first-in-DROP_ITEM_IDS order tie-breaking across multiple tied items later in array', () => {
-      // tesla_capacitor (idx 6), exhaust_afterburner (idx 7), titanium_spikes (idx 11) all have count 2
+      // tesla_capacitor (idx 6), exhaust_afterburner (idx 7), titanium_spikes (idx 10) all have count 2
       const summary = getDropItemStackSummary({
         itemStacks: {
           exhaust_afterburner: 2,
@@ -1627,10 +1620,10 @@ describe('Tooltip: formatHubNpcTooltip', () => {
       expect(summary.topItemId).toBe('tesla_capacitor');
       expect(summary.topItemName).toBe('Tesla Capacitor');
       expect(summary.topItemCount).toBe(2);
-      expect(summary.summaryLine).toBe('CRATES: 6 STACKS (3/12 TYPES) // TOP: TESLA CAPACITOR x2');
+      expect(summary.summaryLine).toBe('CRATES: 6 STACKS (3/11 TYPES) // TOP: TESLA CAPACITOR x2');
     });
 
-    it('handles all 12 DROP_ITEM_IDS stacked simultaneously with distinct top item', () => {
+    it('handles all 11 DROP_ITEM_IDS stacked simultaneously with distinct top item', () => {
       const fullStacks: Record<string, number> = {};
       for (const id of DROP_ITEM_IDS) {
         fullStacks[id] = 1;
@@ -1639,16 +1632,16 @@ describe('Tooltip: formatHubNpcTooltip', () => {
 
       const summary = getDropItemStackSummary({ itemStacks: fullStacks });
 
-      expect(summary.totalItemDrops).toBe(21);
-      expect(summary.uniqueItemTypes).toBe(12);
-      expect(summary.totalPoolSize).toBe(12);
+      expect(summary.totalItemDrops).toBe(20);
+      expect(summary.uniqueItemTypes).toBe(11);
+      expect(summary.totalPoolSize).toBe(11);
       expect(summary.topItemId).toBe('titanium_spikes');
       expect(summary.topItemName).toBe('Titanium Ram Spikes');
       expect(summary.topItemCount).toBe(10);
-      expect(summary.summaryLine).toBe('CRATES: 21 STACKS (12/12 TYPES) // TOP: TITANIUM RAM SPIKES x10');
+      expect(summary.summaryLine).toBe('CRATES: 20 STACKS (11/11 TYPES) // TOP: TITANIUM RAM SPIKES x10');
     });
 
-    it('handles all 12 DROP_ITEM_IDS with uniform 1 stack where tie-break awards top to first item', () => {
+    it('handles all 11 DROP_ITEM_IDS with uniform 1 stack where tie-break awards top to first item', () => {
       const uniformStacks: Record<string, number> = {};
       for (const id of DROP_ITEM_IDS) {
         uniformStacks[id] = 1;
@@ -1656,20 +1649,20 @@ describe('Tooltip: formatHubNpcTooltip', () => {
 
       const summary = getDropItemStackSummary({ itemStacks: uniformStacks });
 
-      expect(summary.totalItemDrops).toBe(12);
-      expect(summary.uniqueItemTypes).toBe(12);
-      expect(summary.totalPoolSize).toBe(12);
+      expect(summary.totalItemDrops).toBe(11);
+      expect(summary.uniqueItemTypes).toBe(11);
+      expect(summary.totalPoolSize).toBe(11);
       expect(summary.topItemId).toBe('nitro_syringe');
       expect(summary.topItemName).toBe('Nitro Syringe');
       expect(summary.topItemCount).toBe(1);
-      expect(summary.summaryLine).toBe('CRATES: 12 STACKS (12/12 TYPES) // TOP: NITRO SYRINGE x1');
+      expect(summary.summaryLine).toBe('CRATES: 11 STACKS (11/11 TYPES) // TOP: NITRO SYRINGE x1');
     });
 
     it('floors floating-point fractional stack values', () => {
       const summary = getDropItemStackSummary({
         itemStacks: {
           oil_infusion: 3.8,
-          magnet_coil: 1.1
+          tire_iron: 1.1
         }
       });
 
@@ -1678,7 +1671,7 @@ describe('Tooltip: formatHubNpcTooltip', () => {
       expect(summary.topItemId).toBe('oil_infusion');
       expect(summary.topItemName).toBe('Oil Infusion');
       expect(summary.topItemCount).toBe(3);
-      expect(summary.summaryLine).toBe('CRATES: 4 STACKS (2/12 TYPES) // TOP: OIL INFUSION x3');
+      expect(summary.summaryLine).toBe('CRATES: 4 STACKS (2/11 TYPES) // TOP: OIL INFUSION x3');
     });
 
     it('ignores zero and negative counts', () => {
@@ -1695,7 +1688,7 @@ describe('Tooltip: formatHubNpcTooltip', () => {
       expect(summary.topItemId).toBe('chrome_lens');
       expect(summary.topItemName).toBe('Chrome Lens');
       expect(summary.topItemCount).toBe(2);
-      expect(summary.summaryLine).toBe('CRATES: 2 STACKS (1/12 TYPES) // TOP: CHROME LENS x2');
+      expect(summary.summaryLine).toBe('CRATES: 2 STACKS (1/11 TYPES) // TOP: CHROME LENS x2');
     });
 
     it('ignores non-finite numbers such as NaN, Infinity, and negative Infinity', () => {
@@ -1713,7 +1706,7 @@ describe('Tooltip: formatHubNpcTooltip', () => {
       expect(summary.topItemId).toBe('reactive_plating');
       expect(summary.topItemName).toBe('Reactive Plating');
       expect(summary.topItemCount).toBe(4);
-      expect(summary.summaryLine).toBe('CRATES: 4 STACKS (1/12 TYPES) // TOP: REACTIVE PLATING x4');
+      expect(summary.summaryLine).toBe('CRATES: 4 STACKS (1/11 TYPES) // TOP: REACTIVE PLATING x4');
     });
 
     it('ignores non-numeric types and malformed values', () => {
@@ -1721,7 +1714,6 @@ describe('Tooltip: formatHubNpcTooltip', () => {
         itemStacks: {
           tire_iron: '3' as any,
           gasoline: true as any,
-          magnet_coil: null as any,
           adrenaline_injector: {} as any,
           exhaust_afterburner: 2
         }
@@ -1732,7 +1724,7 @@ describe('Tooltip: formatHubNpcTooltip', () => {
       expect(summary.topItemId).toBe('exhaust_afterburner');
       expect(summary.topItemName).toBe('Exhaust Afterburner');
       expect(summary.topItemCount).toBe(2);
-      expect(summary.summaryLine).toBe('CRATES: 2 STACKS (1/12 TYPES) // TOP: EXHAUST AFTERBURNER x2');
+      expect(summary.summaryLine).toBe('CRATES: 2 STACKS (1/11 TYPES) // TOP: EXHAUST AFTERBURNER x2');
     });
 
     it('ignores extraneous or unrecognized keys not in DROP_ITEM_IDS', () => {
@@ -1749,7 +1741,7 @@ describe('Tooltip: formatHubNpcTooltip', () => {
       expect(summary.topItemId).toBe('adrenaline_injector');
       expect(summary.topItemName).toBe('Adrenaline Injector');
       expect(summary.topItemCount).toBe(3);
-      expect(summary.summaryLine).toBe('CRATES: 3 STACKS (1/12 TYPES) // TOP: ADRENALINE INJECTOR x3');
+      expect(summary.summaryLine).toBe('CRATES: 3 STACKS (1/11 TYPES) // TOP: ADRENALINE INJECTOR x3');
     });
   });
 
@@ -1830,7 +1822,6 @@ describe('Tooltip: formatHubNpcTooltip', () => {
       const hintFire = formatModDeckTooltipHint('high_explosive', player);
       expect(hintFire).toContain('📦 STACKS: 1/3 FOR OVERCLOCK EVO');
       expect(hintFire).toContain('✓ DUO ACTIVE: THERMAL SHOCK');
-      expect(hintFire).toContain('⚡ DUO RECIPE: VOID VORTEX (magnet_coil + high_explosive)');
     });
 
     it('exposes formatModDeckTooltipHint on TooltipManager class and instance with playerProvider support', () => {
@@ -1869,8 +1860,8 @@ describe('Tooltip: formatHubNpcTooltip', () => {
 });
 
 describe('getDuoSynergyAdvisor (M145)', () => {
-  it('0. defines 5 canonical paired recipes in ITEM_DUO_SYNERGIES', () => {
-    expect(ITEM_DUO_SYNERGIES).toHaveLength(5);
+  it('0. defines 4 canonical paired recipes in ITEM_DUO_SYNERGIES', () => {
+    expect(ITEM_DUO_SYNERGIES).toHaveLength(4);
     for (const syn of ITEM_DUO_SYNERGIES) {
       expect(syn.items).toHaveLength(2);
       expect(syn.id).toBeTruthy();
@@ -1900,8 +1891,8 @@ describe('getDuoSynergyAdvisor (M145)', () => {
   });
 
   it('2. detects single near-miss item with exactly one synergy requirement satisfied', () => {
-    // magnet_coil is only used in VOID VORTEX (magnet_coil + high_explosive)
-    const player = { items: ['magnet_coil'] };
+    // titanium_spikes is only used in JUGGERNAUT OVERDRIVE (titanium_spikes + turbo_charger)
+    const player = { items: ['titanium_spikes'] };
     const advisor = getDuoSynergyAdvisor(player);
 
     expect(advisor.unlockedCount).toBe(0);
@@ -1910,13 +1901,13 @@ describe('getDuoSynergyAdvisor (M145)', () => {
     expect(advisor.partialDuos).toHaveLength(1);
 
     const partial: PartialDuoSynergyInfo = advisor.partialDuos[0];
-    expect(partial.id).toBe('void_vortex');
-    expect(partial.name).toBe('VOID VORTEX');
-    expect(partial.ownedItem).toBe('magnet_coil');
-    expect(partial.missingItem).toBe('high_explosive');
+    expect(partial.id).toBe('juggernaut_overdrive');
+    expect(partial.name).toBe('JUGGERNAUT OVERDRIVE');
+    expect(partial.ownedItem).toBe('titanium_spikes');
+    expect(partial.missingItem).toBe('turbo_charger');
     expect(partial.effectDesc).toBeTruthy();
 
-    expect(advisor.summaryLine).toBe('DUOS: 0 ACTIVE · 1 NEAR-MISS (NEED HIGH_EXPLOSIVE)');
+    expect(advisor.summaryLine).toBe('DUOS: 0 ACTIVE · 1 NEAR-MISS (NEED TURBO_CHARGER)');
   });
 
   it('3. detects multiple near-misses when a single owned item is a component in multiple synergies', () => {
@@ -1942,7 +1933,6 @@ describe('getDuoSynergyAdvisor (M145)', () => {
 
   it('4. detects exactly 1 unlocked duo synergy with zero near-misses', () => {
     // titanium_spikes + turbo_charger unlocks JUGGERNAUT OVERDRIVE.
-    // Neither item participates in any of the other 4 synergies.
     const player = { items: ['titanium_spikes', 'turbo_charger'] };
     const advisor = getDuoSynergyAdvisor(player);
 
@@ -1955,9 +1945,9 @@ describe('getDuoSynergyAdvisor (M145)', () => {
 
   it('5. detects multiple unlocked duos alongside near-miss duos simultaneously', () => {
     // Unlocks: JUGGERNAUT OVERDRIVE (titanium_spikes + turbo_charger) and VOLTAIC WAKE (exhaust_afterburner + gasoline)
-    // Near-miss: VOID VORTEX (has magnet_coil, missing high_explosive)
+    // Near-miss: THERMAL SHOCK (has high_explosive, missing cryo_rounds)
     const player = {
-      items: ['titanium_spikes', 'turbo_charger', 'exhaust_afterburner', 'gasoline', 'magnet_coil']
+      items: ['titanium_spikes', 'turbo_charger', 'exhaust_afterburner', 'gasoline', 'high_explosive']
     };
     const advisor = getDuoSynergyAdvisor(player);
 
@@ -1965,9 +1955,9 @@ describe('getDuoSynergyAdvisor (M145)', () => {
     expect(advisor.unlockedDuos).toEqual(['JUGGERNAUT OVERDRIVE', 'VOLTAIC WAKE']);
     expect(advisor.nearMissCount).toBe(1);
     expect(advisor.partialDuos).toHaveLength(1);
-    expect(advisor.partialDuos[0].id).toBe('void_vortex');
-    expect(advisor.partialDuos[0].missingItem).toBe('high_explosive');
-    expect(advisor.partialDuos[0].ownedItem).toBe('magnet_coil');
+    expect(advisor.partialDuos[0].id).toBe('thermal_shock');
+    expect(advisor.partialDuos[0].missingItem).toBe('cryo_rounds');
+    expect(advisor.partialDuos[0].ownedItem).toBe('high_explosive');
 
     expect(advisor.summaryLine).toBe('DUOS: 2 ACTIVE (JUGGERNAUT OVERDRIVE, VOLTAIC WAKE) · 1 NEAR-MISS');
   });

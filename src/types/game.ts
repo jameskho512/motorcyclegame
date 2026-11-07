@@ -242,6 +242,7 @@ export interface PlayerState {
   vampChance: number;
   items: string[];
   itemStacks: Record<string, number>;
+  chosenDuoSynergies?: string[];
   killCount: number;
   // NOS booster system
   nos: number;
@@ -286,6 +287,7 @@ export interface BaseEnemy {
   radius: number;
   hp: number;
   maxHp: number;
+  dmg?: number;
   speed: number;
   burnTimer: number;
   burnTick: number;
@@ -448,7 +450,6 @@ export type DropItemId =
   | 'tesla_capacitor'
   | 'exhaust_afterburner'
   | 'reactive_plating'
-  | 'magnet_coil'
   | 'adrenaline_injector'
   | 'titanium_spikes';
 

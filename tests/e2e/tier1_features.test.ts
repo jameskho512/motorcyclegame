@@ -797,10 +797,10 @@ describe('Tier 1: Feature Coverage — 28 Features in Isolation', () => {
   // Feature 27: In-Run Mods & RoR2 Drops
   // --------------------------------------------------------------------------
   describe('Feature 27: In-Run Mods & RoR2 Drops', () => {
-    it('verifies 15 in-run pedestal mods mutate player stats and 12 RoR2 stacking items exist', () => {
+    it('verifies 15 in-run pedestal mods mutate player stats and 11 RoR2 stacking items exist', () => {
       expect(RUN_MOD_POOL).toHaveLength(15);
-      expect(Object.keys(DROP_ITEMS)).toHaveLength(12);
-      expect(DROP_ITEM_IDS).toHaveLength(12);
+      expect(Object.keys(DROP_ITEMS)).toHaveLength(11);
+      expect(DROP_ITEM_IDS).toHaveLength(11);
 
       // Test mod application: Hollow-Point (+25% damage)
       const hpMod = RUN_MOD_POOL.find(m => m.id === 'hollow_point')!;
@@ -2181,7 +2181,7 @@ describe('Tier 1: Feature Coverage — 28 Features in Isolation', () => {
       expect(emptySummary.topItemId).toBeNull();
       expect(emptySummary.topItemName).toBeNull();
       expect(emptySummary.topItemCount).toBe(0);
-      expect(emptySummary.summaryLine).toBe('CRATES: 0 STACKS (0/12 TYPES) // TOP: NONE');
+      expect(emptySummary.summaryLine).toBe('CRATES: 0 STACKS (0/11 TYPES) // TOP: NONE');
 
       // 2. Single item type stacked
       const singleSummary = getDropItemStackSummary({
@@ -2192,7 +2192,7 @@ describe('Tier 1: Feature Coverage — 28 Features in Isolation', () => {
       expect(singleSummary.topItemId).toBe('nitro_syringe');
       expect(singleSummary.topItemName).toBe('Nitro Syringe');
       expect(singleSummary.topItemCount).toBe(4);
-      expect(singleSummary.summaryLine).toBe('CRATES: 4 STACKS (1/12 TYPES) // TOP: NITRO SYRINGE x4');
+      expect(singleSummary.summaryLine).toBe('CRATES: 4 STACKS (1/11 TYPES) // TOP: NITRO SYRINGE x4');
 
       // 3. Multi-item collection with clear top stack
       const multiSummary = getDropItemStackSummary({
@@ -2207,7 +2207,7 @@ describe('Tier 1: Feature Coverage — 28 Features in Isolation', () => {
       expect(multiSummary.topItemId).toBe('reactive_plating');
       expect(multiSummary.topItemName).toBe('Reactive Plating');
       expect(multiSummary.topItemCount).toBe(5);
-      expect(multiSummary.summaryLine).toBe('CRATES: 8 STACKS (3/12 TYPES) // TOP: REACTIVE PLATING x5');
+      expect(multiSummary.summaryLine).toBe('CRATES: 8 STACKS (3/11 TYPES) // TOP: REACTIVE PLATING x5');
     });
 
     it('10. verifies robust defensive handling of null, negative, NaN, and corrupted data in survivability and crate telemetry', () => {
@@ -2235,7 +2235,7 @@ describe('Tier 1: Feature Coverage — 28 Features in Isolation', () => {
       expect(corruptDrop.totalItemDrops).toBe(0);
       expect(corruptDrop.uniqueItemTypes).toBe(0);
       expect(corruptDrop.topItemId).toBeNull();
-      expect(corruptDrop.summaryLine).toBe('CRATES: 0 STACKS (0/12 TYPES) // TOP: NONE');
+      expect(corruptDrop.summaryLine).toBe('CRATES: 0 STACKS (0/11 TYPES) // TOP: NONE');
     });
   });
 });

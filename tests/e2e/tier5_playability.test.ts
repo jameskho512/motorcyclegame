@@ -3643,7 +3643,7 @@ describe('Tier 5: Playability Verification & End-to-End Simulation', () => {
       expect(summary.totalItemDrops).toBe(0);
       expect(summary.uniqueItemTypes).toBe(0);
       expect(summary.topItemId).toBeNull();
-      expect(summary.summaryLine).toBe('CRATES: 0 STACKS (0/12 TYPES) // TOP: NONE');
+      expect(summary.summaryLine).toBe('CRATES: 0 STACKS (0/11 TYPES) // TOP: NONE');
 
       // 2. Collect crate drops
       app.stateManager.player.itemStacks = {
@@ -3658,7 +3658,7 @@ describe('Tier 5: Playability Verification & End-to-End Simulation', () => {
       expect(summary.topItemId).toBe('reactive_plating');
       expect(summary.topItemName).toBe('Reactive Plating');
       expect(summary.topItemCount).toBe(5);
-      expect(summary.summaryLine).toBe('CRATES: 10 STACKS (3/12 TYPES) // TOP: REACTIVE PLATING x5');
+      expect(summary.summaryLine).toBe('CRATES: 10 STACKS (3/11 TYPES) // TOP: REACTIVE PLATING x5');
 
       // 3. HUD sidebar update renders cleanly and keeps style rank card suppressed
       app.updateHUD();
