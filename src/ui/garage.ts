@@ -897,6 +897,13 @@ export class GarageController {
         const R = RARITY[it.rarity];
         const statsStr = statsText(it.stats);
         const spec = getEquipmentVisualSpec(it, slotDef.id);
+        const itemTier = Math.max(0, Math.floor(Number(it.tier) || 0));
+        const tierLabel = itemTier > 0 ? ` · Tier ${itemTier}/4` : '';
+        const tipHtml =
+          `<b style="color:${R.color}">${esc(it.name)}</b><br/>` +
+          `<span style="color:#a8b2d1">${esc(R.name)} ${esc(slotDef.label)}${esc(tierLabel)} (${esc(spec.modelCode)})</span><br/>` +
+          `<span style="color:#00f5d4">${esc(statsStr)}</span><br/>` +
+          `<span style="color:#9a93a8">Click to unequip to Stash</span>`;
         const el = document.createElement('button');
         el.type = 'button';
         el.className = `eq-slot is-filled rarity-${R.id}`;
@@ -904,11 +911,12 @@ export class GarageController {
         el.setAttribute('data-slot-id', slotDef.id);
         el.setAttribute('data-model-code', spec.modelCode);
         el.setAttribute('data-tier-badge', spec.tierBadge);
-        el.title = `${it.name} [${spec.modelCode} · ${spec.tierBadge}] (${R.name})\n${spec.subAssemblyLabel}\n${statsStr}\nClick to remove.`;
-        el.setAttribute('aria-label', `${slotDef.label}: ${it.name}, ${R.name} (${spec.modelCode}). ${statsStr}. Remove part`);
+        el.setAttribute('data-forge-tier', String(itemTier));
+        el.setAttribute('data-tip', tipHtml);
+        el.setAttribute('aria-label', `${slotDef.label}: ${it.name}, ${R.name}${tierLabel} (${spec.modelCode}). ${statsStr}. Remove part`);
         el.innerHTML = `
           <span class="gx-slot-icon sl-icon">${slotIcon(slotDef.id, it)}</span>
-          <span class="sl-name">${esc(it.name)}</span>
+          <span class="sl-name">${esc(it.name)}${itemTier > 0 ? ` <small class="sl-tier">T${itemTier}</small>` : ''}</span>
           <span class="sl-model-tag">${esc(spec.modelCode)}</span>
           <span class="sl-stats">${esc(statsStr)}</span>
           <span class="sl-label">${esc(slotDef.label.toUpperCase())}</span>
@@ -974,7 +982,7 @@ export class GarageController {
 
     const archetype = getBuildArchetypeSummary(curPlayer, metaSave);
     let summaryHtml = `<span class="gx-totals-base">${esc(baseSummary)}</span>`;
-    summaryHtml += ` <span class="gx-archetype-badge" style="color:${archetype.badgeColor};font-weight:bold;margin-left:8px;" title="${esc(archetype.description)}">${esc(archetype.title)}</span>`;
+    summaryHtml += ` <span class="gx-archetype-badge" style="color:${archetype.badgeColor};font-weight:600;margin-left:8px;" data-tip="${esc(archetype.description)}">${esc(archetype.title)}</span>`;
     if (setBonus && setBonus.label) {
       summaryHtml += ` <span class="gx-set-bonus" style="color:#00f5d4;">★ <b>SET:</b> ${esc(setBonus.label)}</span>`;
     } else {
@@ -1067,6 +1075,14 @@ export class GarageController {
       }
 
       const spec = getEquipmentVisualSpec(it, it.slot);
+      const itemTier = Math.max(0, Math.floor(Number(it.tier) || 0));
+      const tierLabel = itemTier > 0 ? ` · Tier ${itemTier}/4` : '';
+      const tipHtml =
+        `<b style="color:${R.color}">${esc(it.name)}</b><br/>` +
+        `<span style="color:#a8b2d1">${esc(R.name)} ${esc(slotLabel)}${esc(tierLabel)} (${esc(spec.modelCode)})</span><br/>` +
+        `<span style="color:#00f5d4">${esc(statsStr)}</span><br/>` +
+        `<span>${esc(vsEquippedLine)}</span><br/>` +
+        `<span style="color:#ffd60a">Left-click: Equip · Right-click / Del: Salvage (+${R.sell} ⚙️)</span>`;
       const el = document.createElement('button');
       el.type = 'button';
       el.className = `stash-item rarity-${R.id}`;
@@ -1075,13 +1091,14 @@ export class GarageController {
       el.setAttribute('data-is-downgrade', isDowngrade ? 'true' : 'false');
       el.setAttribute('data-model-code', spec.modelCode);
       el.setAttribute('data-tier-badge', spec.tierBadge);
-      el.title = `${it.name} [${spec.modelCode} · ${spec.tierBadge}] - ${R.name} ${slotLabel}\n${spec.subAssemblyLabel}\n${statsStr}\n${vsEquippedLine}\nClick: install | Right-click / Del: sell for ${R.sell} scrap`;
-      el.setAttribute('aria-label', `${it.name}, ${R.name} ${slotLabel} (${spec.modelCode}). ${statsStr}. ${vsEquippedLine}. Install. Press Delete to sell for ${R.sell} scrap`);
+      el.setAttribute('data-forge-tier', String(itemTier));
+      el.setAttribute('data-tip', tipHtml);
+      el.setAttribute('aria-label', `${it.name}, ${R.name} ${slotLabel}${tierLabel} (${spec.modelCode}). ${statsStr}. ${vsEquippedLine}. Install. Press Delete to sell for ${R.sell} scrap`);
       el.innerHTML = `
         ${diffBadgeHtml}
         <div class="gx-stash-art">${getEquipmentItemModelSvg(it, it.slot)}</div>
         <b>${esc(it.name)}</b>
-        <span class="gx-stash-meta">${esc(spec.modelCode)} · ${esc(R.name)}</span>
+        <span class="gx-stash-meta">${esc(spec.modelCode)} · ${esc(R.name)}${itemTier > 0 ? ` · T${itemTier}` : ''}</span>
         <span class="gx-stash-stats">${esc(statsStr)}</span>
         <span class="gx-stash-sell">${GEAR_SVG}${R.sell}</span>
       `;

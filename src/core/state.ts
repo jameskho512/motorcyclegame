@@ -160,6 +160,7 @@ export function createDefaultPlayerState(): PlayerState {
     coins: 0,
     invuln: 0,
     stunTimer: 0,
+    stunImmuneTimer: 0,
     weapon: 'pistol',
     runWeapons: {},
     fireTimer: 0,
@@ -622,11 +623,14 @@ export function resetPlayerStatsForRun(
   player.runWeapons = {};
   player.items = [];
   player.itemStacks = {};
+  (player as any).modStacks = {};
   player.killCount = 0;
   player.nos = player.nosMax;
   player.nosLock = false;
   player.nosDelay = 0;
   player.invuln = 0;
+  player.stunTimer = 0;
+  player.stunImmuneTimer = 0;
   player.livery = save.livery || 'crimson_kaneda';
   player.heatLevel = save.heatLevel || 0;
 }

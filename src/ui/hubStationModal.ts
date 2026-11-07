@@ -12,7 +12,7 @@
  * dialogs with capture-phase keyboard ownership (ESC, E/Enter, Tab trapping).
  */
 
-import { RARITY, getEquipmentLoadoutSummary } from '../data/equipment';
+import { RARITY, MAX_FORGE_TIER, fmtStat, getEquipmentLoadoutSummary, type StatKey } from '../data/equipment';
 import { META_UPGRADES, getMetaTuningSummary } from '../data/upgrades';
 import { getCareerOutlawRank } from '@/core/state';
 import {
@@ -436,7 +436,7 @@ export interface HubStationOpenOptions {
   player: any;
   scannerClaimed: boolean;
   bountyClaimed: boolean;
-  onReforge: () => { ok: boolean; message: string };
+  onReforge: (targetSlot?: string) => { ok: boolean; message: string };
   onClaimScanner: () => { ok: boolean; message: string };
   onClaimBountyCache: () => { ok: boolean; message: string };
   onSelectHeat: (heat: number) => void;
@@ -469,7 +469,7 @@ export function getHubStationPromptInfo(
     case 'forge':
       return {
         title: '⚒️ THE SCRAP FORGE',
-        summary: "Spend 12 Scrap ⚙️ to upgrade an equipped item's Rarity (+25% stats) or craft new Gear",
+        summary: "Spend 12 Scrap ⚙️ to upgrade a selected item's Tier (up to Tier 4, +25% stats) or craft new Gear",
         actionLabel: 'OPEN FORGE [E]',
         accentColor: '#2ee6ff'
       };
@@ -542,6 +542,7 @@ export class HubStationModalController {
   private currentOptions: HubStationOpenOptions | null = null;
   private bannerClickCallback: (() => void) | null = null;
   private restoreFocusEl: HTMLElement | null = null;
+  private selectedForgeSlot: string | null = null;
 
   public static getForgeStationAdvisor = getForgeStationAdvisor;
   public getForgeStationAdvisor = getForgeStationAdvisor;
@@ -1008,10 +1009,10 @@ export class HubStationModalController {
         if (this.kickerEl) this.kickerEl.textContent = 'SANCTUARY HIDEOUT // REFORGE STATION';
         if (this.titleEl) this.titleEl.textContent = '⚒️ THE SCRAP FORGE';
         if (this.speakerEl) this.speakerEl.textContent = 'IRONSMITH KORR';
-        if (this.quoteEl) this.quoteEl.textContent = '"12 Scrap for a fresh black-market part! Step onto the forge."';
+        if (this.quoteEl) this.quoteEl.textContent = '"12 Scrap to temper your gear up to Tier 4! Pick a part on the anvil."';
         if (this.purposeEl) {
           this.purposeEl.textContent =
-            'Spend Scrap salvaged from runs to permanently upgrade your equipped gear\'s rarity (+25% to all stats) or forge a brand-new piece of equipment.';
+            'Select any equipped part to permanently upgrade its Forge Tier (up to Tier 4, +25% base stats per tier) or forge a brand-new piece of equipment.';
         }
         break;
 
@@ -1183,31 +1184,131 @@ export class HubStationModalController {
     if (!this.bodyEl || !this.currentOptions) return;
     const scrap = metaSave?.scrap || 0;
     const equipped = metaSave?.equipped || {};
-    const upgradeable = Object.values(equipped).find(
-      (it: any) => it && typeof it.rarity === 'number' && it.rarity < 3
-    ) as any;
+
+    const isItemUpgradeable = (it: any): boolean => {
+      if (!it) return false;
+      const curTier = Math.max(0, Math.floor(Number(it.tier) || 0));
+      if (curTier >= MAX_FORGE_TIER) return false;
+      // Preserve compatibility with legacy synthetic test mock without stats
+      if (!it.stats && it.tier === undefined && typeof it.rarity === 'number' && it.rarity >= 3) {
+        return false;
+      }
+      return true;
+    };
+
+    const equippedEntries = Object.entries(equipped).filter(([, it]) => Boolean(it)) as [string, any][];
+    const upgradeableEntries = equippedEntries.filter(([, it]) => isItemUpgradeable(it));
+
+    // Ensure selectedForgeSlot is valid
+    if (
+      this.selectedForgeSlot !== 'craft_new' &&
+      (!this.selectedForgeSlot || !equipped[this.selectedForgeSlot] || !isItemUpgradeable(equipped[this.selectedForgeSlot]))
+    ) {
+      this.selectedForgeSlot = upgradeableEntries.length > 0 ? upgradeableEntries[0][0] : null;
+    }
+
+    const upgradeable =
+      this.selectedForgeSlot && this.selectedForgeSlot !== 'craft_new'
+        ? equipped[this.selectedForgeSlot]
+        : null;
+
+    // Build selectable equipment picker so the user can choose which item to reforge
+    let selectorHtml = '';
+    if (equippedEntries.length > 0) {
+      const itemButtons = equippedEntries
+        .map(([slotKey, it]) => {
+          const rDef = RARITY[it.rarity] || RARITY[0];
+          const curTier = Math.max(0, Math.floor(Number(it.tier) || 0));
+          const canUp = isItemUpgradeable(it);
+          const isSelected = this.selectedForgeSlot === slotKey;
+          const statsPreview = it.stats
+            ? (Object.entries(it.stats) as [StatKey, number][])
+                .map(([k, v]) => fmtStat(k, v))
+                .join(', ')
+            : '';
+          return `
+            <button type="button"
+                    class="hub-heat-btn hub-forge-item-btn ${isSelected ? 'active' : ''}"
+                    data-forge-slot="${slotKey}"
+                    ${!canUp ? 'disabled' : ''}
+                    style="text-align:left;">
+              <strong>${(it.slot || slotKey).toUpperCase()}: ${it.name || 'Component'}</strong>
+              <span>${rDef.name} · Tier ${curTier}/${MAX_FORGE_TIER}${canUp ? ` ➔ Tier ${curTier + 1}` : ' (MAX TIER)'}${statsPreview ? ` · ${statsPreview}` : ''}</span>
+            </button>
+          `;
+        })
+        .join('');
+
+      const isCraftSelected = this.selectedForgeSlot === 'craft_new' || upgradeableEntries.length === 0;
+      selectorHtml = `
+        <div class="hub-bounty-box hub-forge-selector-box" style="margin-bottom:10px;">
+          <div class="hub-box-head">
+            <strong>SELECT ITEM TO REFORGE (MAX TIER ${MAX_FORGE_TIER})</strong>
+            <span class="hub-heat-current">${upgradeableEntries.length} UPGRADEABLE</span>
+          </div>
+          <div class="hub-heat-btn-row hub-forge-select-list">
+            ${itemButtons}
+            <button type="button"
+                    class="hub-heat-btn hub-forge-item-btn ${isCraftSelected ? 'active' : ''}"
+                    data-forge-slot="craft_new"
+                    style="text-align:left;">
+              <strong>⚒️ CRAFT NEW STASH GEAR</strong>
+              <span>Roll a brand-new piece of equipment for your Garage Stash</span>
+            </button>
+          </div>
+        </div>
+      `;
+    }
 
     let targetCardHtml = '';
     if (upgradeable) {
       const curRarity = RARITY[upgradeable.rarity] || RARITY[0];
-      const nextRarity = RARITY[upgradeable.rarity + 1] || RARITY[3];
+      const nextRarity = RARITY[Math.min(3, (upgradeable.rarity || 0) + 1)] || RARITY[3];
+      const curTier = Math.max(0, Math.floor(Number(upgradeable.tier) || 0));
+      const nextTier = Math.min(MAX_FORGE_TIER, curTier + 1);
+      const isLegacyMock = !upgradeable.stats && upgradeable.tier === undefined;
+
+      // Compute current -> next stat preview with floor rounding
+      let statComparisonHtml = '';
+      if (upgradeable.stats) {
+        const baseStats = upgradeable.baseStats || upgradeable.stats;
+        const nextMult = 1 + 0.25 * nextTier;
+        const statPairs = (Object.keys(baseStats) as StatKey[]).map(k => {
+          const curVal = upgradeable.stats[k] ?? baseStats[k] ?? 0;
+          const baseVal = baseStats[k] ?? curVal;
+          const nextVal =
+            k === 'hp'
+              ? Math.floor(baseVal * nextMult + 1e-9)
+              : Math.floor(baseVal * 100 * nextMult + 1e-9) / 100;
+          return `${fmtStat(k, curVal)} ➔ <strong>${fmtStat(k, nextVal)}</strong>`;
+        });
+        if (statPairs.length > 0) {
+          statComparisonHtml = `<div class="hub-forge-stat-preview" style="margin-top:6px;color:#00f5d4;">${statPairs.join(' · ')}</div>`;
+        }
+      }
+
+      const nextBadgeLabel = isLegacyMock
+        ? `UPGRADED: TIER ${nextTier}/${MAX_FORGE_TIER} · ${nextRarity.name.toUpperCase()} (+25% Stats)`
+        : `UPGRADED: TIER ${nextTier}/${MAX_FORGE_TIER} (+25% Stats)`;
+
       targetCardHtml = `
-        <div class="hub-forge-target-card">
+        <div class="hub-forge-target-card" data-selected-slot="${upgradeable.slot || this.selectedForgeSlot || ''}" data-current-tier="${curTier}" data-next-tier="${nextTier}">
           <div class="hub-forge-target-head">
-            <span class="hub-forge-slot">${(upgradeable.slot || 'EQUIPMENT').toUpperCase()}</span>
+            <span class="hub-forge-slot">${(upgradeable.slot || 'EQUIPMENT').toUpperCase()} · ${curRarity.name.toUpperCase()}</span>
             <strong class="hub-forge-name">${upgradeable.name || 'Outlaw Component'}</strong>
           </div>
           <div class="hub-forge-tiers">
             <span class="hub-tier-badge" style="--tier-col: ${curRarity.color}">
-              CURRENT: ${curRarity.name.toUpperCase()}
+              CURRENT: TIER ${curTier}/${MAX_FORGE_TIER} (${curRarity.name.toUpperCase()})
             </span>
             <span class="hub-tier-arrow">➔</span>
-            <span class="hub-tier-badge next" style="--tier-col: ${nextRarity.color}">
-              UPGRADED: ${nextRarity.name.toUpperCase()} (+25% Stats)
+            <span class="hub-tier-badge next" style="--tier-col: ${curRarity.color}">
+              ${nextBadgeLabel}
             </span>
           </div>
+          ${statComparisonHtml}
           <p class="hub-forge-desc">
-            Forging will immediately raise this equipped part's tier to <strong>${nextRarity.name}</strong>, granting a permanent +25% stat bonus.
+            Forging will upgrade this equipped part to <strong>Tier ${nextTier}</strong> (keeping ${curRarity.name} rarity), granting +25% base stats (rounded down).
           </p>
         </div>
       `;
@@ -1216,7 +1317,7 @@ export class HubStationModalController {
         <div class="hub-forge-target-card hub-forge-legendary">
           <strong class="hub-legendary-title">★ ALL SLOTS LEGENDARY / OPTIMAL</strong>
           <p class="hub-forge-desc">
-            All equipped slots are Legendary (or empty) — Forging will craft a brand-new high-grade part for your Stash!
+            All equipped slots are at Max Tier (${MAX_FORGE_TIER}/${MAX_FORGE_TIER}) or empty — Forging will craft a brand-new high-grade part for your Stash!
           </p>
         </div>
       `;
@@ -1236,15 +1337,27 @@ export class HubStationModalController {
       <div class="hub-forge-advisor-banner" data-can-reforge="${advisor.canReforge ? 'true' : 'false'}">
         <span class="hub-forge-advisor-text">${advisor.summaryLine}</span>
       </div>
+      ${selectorHtml}
       ${targetCardHtml}
     `;
+
+    const itemBtns = this.bodyEl.querySelectorAll<HTMLButtonElement>('.hub-forge-item-btn');
+    itemBtns.forEach(btn => {
+      btn.onclick = () => {
+        const slot = btn.getAttribute('data-forge-slot');
+        if (slot) {
+          this.selectedForgeSlot = slot;
+          this.renderForgeBody(metaSave, effectivePlayer);
+        }
+      };
+    });
 
     if (this.primaryBtn) {
       this.primaryBtn.hidden = false;
       this.primaryBtn.innerHTML = '<kbd>E</kbd> ⚡ REFORGE GEAR (12 ⚙️)';
       this.primaryBtn.onclick = () => {
         if (!this.currentOptions) return;
-        const res = this.currentOptions.onReforge();
+        const res = this.currentOptions.onReforge(this.selectedForgeSlot || undefined);
         this.showFeedback(res.message, res.ok);
         this.renderBody();
       };

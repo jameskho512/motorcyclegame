@@ -1215,19 +1215,20 @@ describe('Tier 5: Playability Verification & End-to-End Simulation', () => {
       // Confirm metaSave.scrap decreases by 12 (24 -> 12)
       expect(app.stateManager.metaSave.scrap).toBe(12);
 
-      // Confirm equipped gear updates (rarity upgraded 0 -> 1, stats upgraded by +25%)
+      // Confirm equipped gear updates (tier upgraded 0 -> 1 while rarity stays 0, stats upgraded by +25% and rounded down)
       const updatedChassis = app.stateManager.metaSave.equipped.frame;
       expect(updatedChassis).toBeDefined();
-      expect(updatedChassis?.rarity).toBe(1);
-      expect(updatedChassis?.stats.hp).toBe(12.5);
+      expect(updatedChassis?.rarity).toBe(0);
+      expect(updatedChassis?.tier).toBe(1);
+      expect(updatedChassis?.stats.hp).toBe(12);
       expect(updatedChassis?.stats.speed).toBe(25);
 
       const feedback = document.getElementById('hub-station-feedback');
       expect(feedback?.classList.contains('is-success')).toBe(true);
       expect(feedback?.textContent).toContain('REFORGED: ALLOY FRAME UPGRADED');
 
-      // Crafting when equipped gear has no further upgrades (all rarity 3) -> crafts into Stash
-      updatedChassis!.rarity = 3;
+      // Crafting when equipped gear has no further upgrades (tier 4 max) -> crafts into Stash
+      updatedChassis!.tier = 4;
       const initialStashCount = app.stateManager.metaSave.stash.length;
       primaryBtn.click();
 

@@ -50,7 +50,13 @@ export interface EquipmentItem {
   name: string;
   /** Rolled stats dictionary */
   stats: Partial<Record<StatKey, number>>;
+  /** Scrap Forge upgrade tier (0..4, max tier is 4) */
+  tier?: number;
+  /** Original un-upgraded base stats snapshot for linear +25% per tier scaling */
+  baseStats?: Partial<Record<StatKey, number>>;
 }
+
+export const MAX_FORGE_TIER = 4;
 
 /**
  * 6 Motorcycle Equipment Slots
@@ -205,14 +211,18 @@ export function itemScore(it: EquipmentItem): number {
 
 /**
  * Formats a stat key and numeric value into a human-readable display string.
+ * Non-integer display values are rounded down.
  * Example: 'hp', 2 -> '+2 Max Fuel'; 'dmg', 0.12 -> '+12% Damage'
  */
 export function fmtStat(k: StatKey, v: number): string {
   const label = STAT_LABELS[k] || k;
   const sign = v >= 0 ? '+' : '';
-  return k === 'hp'
-    ? `${sign}${v} ${label}`
-    : `${sign}${Math.round(v * 100)}% ${label}`;
+  if (k === 'hp') {
+    const intVal = v >= 0 ? Math.floor(v + 1e-9) : -Math.floor(Math.abs(v) + 1e-9);
+    return `${sign}${intVal} ${label}`;
+  }
+  const pctVal = v >= 0 ? Math.floor(v * 100 + 1e-9) : -Math.floor(Math.abs(v) * 100 + 1e-9);
+  return `${sign}${pctVal}% ${label}`;
 }
 
 /**
@@ -243,9 +253,53 @@ export function applyItemStats(
   if (s.blast) player.blastMult += sign * s.blast;
   if (s.siphon) player.vampChance = Math.max(0, player.vampChance + sign * s.siphon);
   if (s.hp) {
-    player.maxHp = Math.max(1, player.maxHp + sign * s.hp);
-    player.hp = Math.max(1, Math.min(player.maxHp, player.hp + (sign > 0 ? s.hp : 0)));
+    const hpDelta = Math.floor(s.hp + 1e-9);
+    player.maxHp = Math.max(1, Math.floor(player.maxHp + sign * hpDelta));
+    player.hp = Math.max(1, Math.min(player.maxHp, Math.floor(player.hp + (sign > 0 ? hpDelta : 0))));
   }
+}
+
+/**
+ * Upgrades an equipment item's Scrap Forge tier by +1 (up to MAX_FORGE_TIER = 4)
+ * without changing its rarity. Each tier grants +25% of the item's base stats,
+ * with non-integer values rounded down (e.g. +1 Max HP upgraded 4 times -> +2 Max HP).
+ */
+export function upgradeEquipmentTier(
+  item: EquipmentItem,
+  player?: EquipmentTargetPlayer
+): boolean {
+  if (!item || !item.stats) return false;
+  const curTier = Math.max(0, Math.floor(Number(item.tier) || 0));
+  if (curTier >= MAX_FORGE_TIER) return false;
+
+  if (!item.baseStats) {
+    item.baseStats = { ...item.stats };
+  }
+
+  if (player) {
+    applyItemStats(item, -1, player);
+  }
+
+  const nextTier = curTier + 1;
+  item.tier = nextTier;
+  const mult = 1 + 0.25 * nextTier;
+
+  for (const k of Object.keys(item.baseStats) as StatKey[]) {
+    const baseVal = item.baseStats[k];
+    if (typeof baseVal === 'number') {
+      if (k === 'hp') {
+        item.stats[k] = Math.floor(baseVal * mult + 1e-9);
+      } else {
+        item.stats[k] = Math.floor(baseVal * 100 * mult + 1e-9) / 100;
+      }
+    }
+  }
+
+  if (player) {
+    applyItemStats(item, 1, player);
+  }
+
+  return true;
 }
 
 // ---------------------------------------------------------------------------

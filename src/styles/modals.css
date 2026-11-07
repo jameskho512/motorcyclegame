@@ -319,12 +319,12 @@
   border: none;
   box-shadow: none;
   transform: none;
-  font-family: var(--font-display);
-  font-size: clamp(14px, 2.35cqmin, 22px);
-  font-weight: 700;
-  line-height: 1.22;
-  letter-spacing: 0.6px;
-  text-transform: uppercase;
+  font-family: var(--font-body);
+  font-size: clamp(14px, 2.1cqmin, 19px);
+  font-weight: 400;
+  line-height: 1.4;
+  letter-spacing: 0.2px;
+  text-transform: none;
   color: var(--ink);
   overflow-wrap: normal;
   word-break: normal;
@@ -517,8 +517,8 @@
   position: fixed;
   display: none;
   pointer-events: none;
-  z-index: var(--z-tooltip);
-  max-width: 270px;
+  z-index: var(--z-tooltip, 10000);
+  max-width: 290px;
   padding: 10px 14px 10px 14px;
   background: transparent;
   border: none;
@@ -527,8 +527,8 @@
   color: var(--ink);
   font-family: var(--font-body);
   font-size: 13px;
-  font-weight: 600;
-  line-height: 1.35;
+  font-weight: 400;
+  line-height: 1.45;
   isolation: isolate;
   filter: drop-shadow(4px 4px 0 var(--ink));
 }
@@ -588,19 +588,25 @@
 #tooltip [style*='color'] { color: var(--ink) !important; }
 
 #tooltip b,
-#tooltip strong,
-#tooltip .tip-title {
-  font-family: var(--font-display);
-  font-weight: 900;
-  font-size: 18px;
-  font-style: italic;
-  letter-spacing: 0.4px;
-  line-height: 1.05;
-  text-transform: uppercase;
+#tooltip strong {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 13.5px;
+  font-style: normal;
+  letter-spacing: 0.2px;
+  line-height: 1.3;
   color: var(--ink);
 }
 
 #tooltip .tip-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 16px;
+  font-style: normal;
+  letter-spacing: 0.3px;
+  line-height: 1.2;
+  text-transform: uppercase;
+  color: var(--ink);
   /* Accent marker underline in the item's rarity / weapon color */
   background: linear-gradient(transparent 62%, color-mix(in srgb, var(--tip-accent, var(--yellow)) 70%, transparent) 62%);
   overflow-wrap: anywhere;
@@ -935,7 +941,98 @@
 .hub-magenta { color: #ff2e93 !important; }
 .hub-green { color: #00f5d4 !important; }
 
-/* Scrap Forge Target Card */
+/* Scrap Forge Target Card & Item Selector */
+.hub-forge-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hub-forge-selector-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  color: #94a3b8;
+  text-transform: uppercase;
+}
+
+.hub-forge-item-list {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+
+.hub-forge-item-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 7px 10px;
+  background: rgba(16, 18, 28, 0.85);
+  border: 1.5px solid rgba(255, 255, 255, 0.16);
+  border-radius: 4px;
+  color: #e2e8f0;
+  font-family: var(--font-body);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.hub-forge-item-btn:hover {
+  border-color: #2ee6ff;
+  background: rgba(46, 230, 255, 0.1);
+}
+
+.hub-forge-item-btn.is-selected {
+  border-color: #ffd60a;
+  background: rgba(255, 214, 10, 0.15);
+  box-shadow: 0 0 10px rgba(255, 214, 10, 0.25);
+}
+
+.hub-forge-item-btn.is-maxed {
+  opacity: 0.72;
+}
+
+.hub-forge-item-slot {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #00f5d4;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.hub-forge-item-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.hub-forge-item-tier {
+  font-size: 11px;
+  font-weight: 600;
+  color: #ffd60a;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 1px 5px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.hub-forge-stat-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 12.5px;
+  font-weight: 400;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 4px;
+}
+
 .hub-forge-target-card {
   background: rgba(0, 0, 0, 0.45);
   border: 1.5px solid rgba(46, 230, 255, 0.4);
@@ -953,14 +1050,15 @@
 
 .hub-forge-slot {
   font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 1.2px;
+  font-weight: 600;
+  letter-spacing: 1px;
   color: #00f5d4;
 }
 
 .hub-forge-name {
-  font-family: var(--font-display, 'Impact', sans-serif);
+  font-family: var(--font-body);
   font-size: 15px;
+  font-weight: 600;
   color: #ffffff;
 }
 
@@ -968,14 +1066,15 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .hub-tier-badge {
   padding: 3px 8px;
-  font-family: var(--font-display, 'Impact', sans-serif);
+  font-family: var(--font-body);
   font-size: 12px;
-  font-weight: 900;
-  letter-spacing: 0.8px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
   background: rgba(0, 0, 0, 0.6);
   border: 1.5px solid var(--tier-col, #c9ced8);
   color: var(--tier-col, #c9ced8);
@@ -984,12 +1083,13 @@
 .hub-tier-arrow {
   color: #ffd60a;
   font-size: 14px;
-  font-weight: 900;
+  font-weight: 600;
 }
 
 .hub-forge-desc {
   margin: 0;
   font-size: 13.5px;
+  font-weight: 400;
   color: #e2e8f0;
   line-height: 1.5;
 }
@@ -1001,9 +1101,10 @@
 
 .hub-legendary-title {
   color: #ffd60a;
-  font-family: var(--font-display, 'Impact', sans-serif);
+  font-family: var(--font-body);
+  font-weight: 600;
   font-size: 14px;
-  letter-spacing: 1px;
+  letter-spacing: 0.8px;
 }
 
 /* Codex 4-stat Telemetry Grid */

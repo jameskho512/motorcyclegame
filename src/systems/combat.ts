@@ -1482,8 +1482,9 @@ export function updateEnemyCollisions(
         player.y += ny * (overlap + 4);
         player.vx = nx * 520;
         player.vy = ny * 520;
-        if ((player.stunTimer || 0) <= 0) {
+        if ((player.stunTimer || 0) <= 0 && ((player as any).stunImmuneTimer || 0) <= 0) {
           player.stunTimer = 1.0;
+          (player as any).stunImmuneTimer = 1.0;
           addFloatingText(state, player.x, player.y - player.radius - 16, 'STUNNED! 1s', '#ffd166');
         }
         state.screenShake = Math.max(state.screenShake, 9);

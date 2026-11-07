@@ -23,11 +23,13 @@ import {
 } from '@/data/upgrades';
 import {
   MAX_STASH,
+  MAX_FORGE_TIER,
   rollRarity,
   genLoot,
   itemScore,
   fmtStat,
   applyItemStats,
+  upgradeEquipmentTier,
   EquipmentItem,
   EquipmentTargetPlayer,
   RarityTier
@@ -45,6 +47,10 @@ import {
   getNextSectorBriefing
 } from '@/ui/portalModal';
 import { HUDController } from '@/ui/hud';
+import { GarageController } from '@/ui/garage';
+import { HubStationModalController } from '@/ui/hubStationModal';
+import { TooltipManager } from '@/ui/tooltip';
+import { ShopModalController } from '@/ui/shopModal';
 import { MotoRogueApp } from '@/main';
 
 describe('Adversarial Challenge 1: Type Strictness & Untyped Any Audit', () => {
@@ -1414,3 +1420,266 @@ describe('MotoRogueApp openDropChoiceModal live stack telemetry (M144)', () => {
     expect(hbNorth.y).toBeLessThan(hbCenter.y);
   });
 });
+
+describe('Adversarial Challenge 14: Forge Tier System, Floor Rounding, Item Selection, Tooltips & Invincibility/Stun Immunity', () => {
+  it('upgrades item tier (up to max tier 4) without changing rarity, and rounds down non-integer stats (+1 Max HP x 4 upgrades = +2 Max HP)', () => {
+    const frameItem: EquipmentItem = {
+      slot: 'frame',
+      name: 'Alloy Frame',
+      rarity: 0,
+      tier: 0,
+      stats: { hp: 1, speed: 0.08 }
+    };
+    const player: EquipmentTargetPlayer = {
+      maxHp: 6,
+      hp: 6,
+      dmgMult: 1,
+      fireRateMult: 1,
+      speedMult: 1,
+      blastMult: 1,
+      vampChance: 0
+    };
+
+    // Upgrade 1: +25% of base 1 = 1.25 -> rounded down to 1
+    expect(upgradeEquipmentTier(frameItem, player)).toBe(true);
+    expect(frameItem.tier).toBe(1);
+    expect(frameItem.rarity).toBe(0);
+    expect(frameItem.stats.hp).toBe(1);
+    expect(fmtStat('hp', frameItem.stats.hp!)).toBe('+1 Max Fuel');
+
+    // Upgrade 2: +50% of base 1 = 1.5 -> rounded down to 1
+    expect(upgradeEquipmentTier(frameItem, player)).toBe(true);
+    expect(frameItem.tier).toBe(2);
+    expect(frameItem.rarity).toBe(0);
+    expect(frameItem.stats.hp).toBe(1);
+
+    // Upgrade 3: +75% of base 1 = 1.75 -> rounded down to 1
+    expect(upgradeEquipmentTier(frameItem, player)).toBe(true);
+    expect(frameItem.tier).toBe(3);
+    expect(frameItem.rarity).toBe(0);
+    expect(frameItem.stats.hp).toBe(1);
+
+    // Upgrade 4 (max tier 4): +100% of base 1 = 2.0 -> exactly +2 Max HP!
+    expect(upgradeEquipmentTier(frameItem, player)).toBe(true);
+    expect(frameItem.tier).toBe(MAX_FORGE_TIER);
+    expect(frameItem.rarity).toBe(0);
+    expect(frameItem.stats.hp).toBe(2);
+    expect(fmtStat('hp', frameItem.stats.hp!)).toBe('+2 Max Fuel');
+
+    // Attempting a 5th upgrade fails at max tier 4
+    expect(upgradeEquipmentTier(frameItem, player)).toBe(false);
+    expect(frameItem.tier).toBe(4);
+    expect(frameItem.stats.hp).toBe(2);
+  });
+
+  it('allows selecting which equipped item to reforge in the Scrap Forge modal', () => {
+    document.body.innerHTML = `
+      <div id="hub-station-overlay">
+        <div class="hub-station-card">
+          <div id="hub-station-kicker"></div>
+          <h2 id="hub-station-title"></h2>
+          <div id="hub-station-speaker"></div>
+          <blockquote id="hub-station-quote"></blockquote>
+          <div id="hub-station-purpose"></div>
+          <div id="hub-station-body"></div>
+          <div id="hub-station-feedback" hidden></div>
+          <button id="btn-hub-station-primary"></button>
+          <button id="btn-hub-station-secondary"></button>
+        </div>
+      </div>
+    `;
+    const reforgedSlots: Array<string | undefined> = [];
+    const modal = new HubStationModalController();
+
+    const metaSave = {
+      scrap: 36,
+      upgrades: { frame: 0, engine: 0, tires: 0, gun: 0, nos: 0 },
+      unlockedWeapons: ['pistol'],
+      stash: [],
+      equipped: {
+        frame: { id: 'f1', slot: 'frame', name: 'Iron Frame', rarity: 0, tier: 0, stats: { hp: 1 } },
+        engine: { id: 'e1', slot: 'engine', name: 'Twin Engine', rarity: 1, tier: 1, stats: { speed: 0.08 } }
+      }
+    } as any;
+
+    modal.open('blacksmith', metaSave, undefined, false, false, {
+      onReforge: (slot) => {
+        reforgedSlots.push(slot);
+        return { ok: true, message: `Reforged ${slot}` };
+      }
+    });
+    const itemBtns = document.querySelectorAll<HTMLButtonElement>('.hub-forge-item-btn');
+    expect(itemBtns.length).toBeGreaterThanOrEqual(2);
+
+    // Click the engine button to select it for reforging
+    const engineBtn = document.querySelector<HTMLButtonElement>('.hub-forge-item-btn[data-forge-slot="engine"]')!;
+    expect(engineBtn).toBeTruthy();
+    engineBtn.click();
+
+    const primaryBtn = document.getElementById('btn-hub-station-primary') as HTMLButtonElement;
+    primaryBtn.click();
+    expect(reforgedSlots).toEqual(['engine']);
+  });
+
+  it('clears bottom-right items/mods bar (#hud-mods-bar / #mod-bar) when starting a new run after death', () => {
+    document.body.innerHTML = `
+      <div id="hud-mods-bar"></div>
+      <div id="mod-bar"></div>
+    `;
+    const hud = new HUDController();
+    const playerWithItems = {
+      items: ['item_plating', 'item_injectors'],
+      itemStacks: { item_plating: 2, item_injectors: 1 }
+    } as any;
+
+    hud.updateMods(playerWithItems);
+    expect(document.getElementById('hud-mods-bar')!.querySelectorAll('.sticker').length).toBe(2);
+
+    // New run after death: items and itemStacks are empty
+    const freshPlayer = {
+      items: [],
+      itemStacks: {}
+    } as any;
+    hud.updateMods(freshPlayer);
+    expect(document.getElementById('hud-mods-bar')!.querySelectorAll('.sticker').length).toBe(0);
+    expect(document.getElementById('hud-mods-bar')!.querySelector('.items-empty')).toBeTruthy();
+  });
+
+  it('uses in-game data-tip tooltips instead of native browser title attributes on Garage items and strips title on hover', () => {
+    document.body.innerHTML = `
+      <div id="garage-overlay">
+        <div id="modal-title"></div>
+        <div id="modal-scrap"></div>
+        <div id="slots-left"></div>
+        <div id="slots-right"></div>
+        <div id="stash-list"></div>
+        <div id="unlock-list"></div>
+        <div id="meta-upgrade-list"></div>
+      </div>
+      <div id="tooltip"></div>
+    `;
+    const tooltip = new TooltipManager('tooltip');
+    tooltip.attachGlobalListener(() => null);
+
+    const garage = new GarageController({
+      onEquip: () => {},
+      onUnequip: () => {},
+      onSalvage: () => {},
+      onUpgrade: () => {},
+      onUnlockWeapon: () => {},
+      onNewRun: () => {},
+      onResumeRun: () => {},
+      onResetSave: () => {}
+    } as any);
+
+    const meta = {
+      scrap: 20,
+      ranks: { dmg: 0, fireRate: 0, speed: 0, maxHp: 0 },
+      unlockedWeapons: ['pistol'],
+      equipped: {
+        frame: { id: 'f1', slot: 'frame', name: 'Reinforced Frame', rarity: 1, tier: 2, stats: { hp: 2 } }
+      },
+      stash: [
+        { id: 's1', slot: 'engine', name: 'Turbo Block', rarity: 2, tier: 1, stats: { speed: 0.08 } }
+      ]
+    } as any;
+
+    garage.render(meta, { maxHp: 6, hp: 6 } as any);
+
+    const eqSlot = document.querySelector('.eq-slot.is-filled') as HTMLElement;
+    expect(eqSlot).toBeTruthy();
+    expect(eqSlot.getAttribute('data-tip')).toContain('Reinforced Frame');
+    expect(eqSlot.getAttribute('data-tip')).toContain('Tier 2/4');
+    expect(eqSlot.getAttribute('data-tip')).toContain('+2 Max Fuel');
+    expect(eqSlot.hasAttribute('title')).toBe(false);
+
+    const stashItem = document.querySelector('.stash-item') as HTMLElement;
+    expect(stashItem).toBeTruthy();
+    expect(stashItem.getAttribute('data-tip')).toContain('Turbo Block');
+    expect(stashItem.getAttribute('data-tip')).toContain('+8% Speed');
+    expect(stashItem.hasAttribute('title')).toBe(false);
+  });
+
+  it('does not duplicate buff text descriptions on items or mods in tooltips or ShopModal', () => {
+    document.body.innerHTML = `
+      <div id="hud-mods-bar"></div>
+      <div id="shop-confirm-overlay">
+        <div class="shop-confirm-card">
+          <div id="shop-modal-name"></div>
+          <div id="shop-modal-desc"></div>
+          <div id="shop-modal-cost"></div>
+          <button id="shop-modal-buy"></button>
+          <button id="shop-modal-cancel"></button>
+        </div>
+      </div>
+    `;
+    const hud = new HUDController();
+    hud.updateMods({
+      items: ['armor_plate'],
+      itemStacks: { armor_plate: 1 }
+    } as any);
+
+    const sticker = document.querySelector('#hud-mods-bar .sticker') as HTMLElement;
+    expect(sticker).toBeTruthy();
+    const tipHtml = sticker.getAttribute('data-tip') || '';
+    // Should contain "+2 Max HP" once in description, not duplicated via redundant stat pill
+    const matches = tipHtml.match(/\+2 Max/gi) || [];
+    expect(matches.length).toBe(1);
+
+    const shopModal = new ShopModalController();
+    const pickup = {
+      type: 'mod_pedestal',
+      cost: 0,
+      mod: RUN_MOD_POOL.find(m => m.id === 'armor_plate')!
+    } as any;
+    shopModal.open(pickup, () => {}, () => {}, 0);
+    const descHtml = document.getElementById('shop-modal-desc')!.innerHTML;
+    expect((descHtml.match(/\+2 Max/gi) || []).length).toBe(1);
+  });
+
+  it('grants 0.25s of invincibility after getting hit and stun immunity during and up to 1s after a stun', () => {
+    const app = new MotoRogueApp();
+    app.startNewRun(false);
+
+    // 1. Verify 0.25s post-hit invincibility when hit by an enemy bullet
+    const room = app.getCurrentRoom()!;
+    room.cleared = false;
+    app.roomEnemiesFrozen = false;
+    app.stateManager.player.invuln = 0;
+    app.combatState.enemyBullets.push({
+      x: app.stateManager.player.x,
+      y: app.stateManager.player.y,
+      vx: 0,
+      vy: 0,
+      radius: 10,
+      dmg: 1,
+      color: '#ff0000'
+    } as any);
+    app.update(0.001);
+    expect(app.stateManager.player.invuln).toBeCloseTo(0.25, 2);
+
+    // 2. Verify stun immunity during a 1.0s stun and for 1.0s after the stun ends
+    app.stateManager.player.stunTimer = 1.0;
+    app.stateManager.player.stunImmuneTimer = 1.0;
+
+    // Advance 0.5s (still stunned): stunTimer = 0.5, stunImmuneTimer held at 1.0
+    app.update(0.5);
+    expect(app.stateManager.player.stunTimer).toBeCloseTo(0.5, 2);
+    expect(app.stateManager.player.stunImmuneTimer).toBeCloseTo(1.0, 2);
+
+    // Advance another 0.5s (stun just ended): stunTimer = 0, stunImmuneTimer = 1.0
+    app.update(0.5);
+    expect(app.stateManager.player.stunTimer).toBe(0);
+    expect(app.stateManager.player.stunImmuneTimer).toBeGreaterThan(0.9);
+
+    // Advance 0.5s into post-stun window: player still has ~0.5s stun immunity
+    app.update(0.5);
+    expect(app.stateManager.player.stunTimer).toBe(0);
+    expect(app.stateManager.player.stunImmuneTimer).toBeCloseTo(0.5, 1);
+
+    // Advance final 0.6s: post-stun immunity expires cleanly at 0
+    app.update(0.6);
+    expect(app.stateManager.player.stunImmuneTimer).toBe(0);
+  });
+});
+

@@ -1035,7 +1035,7 @@ describe('HubStationModalController & getHubStationPromptInfo (Wave 14-15)', () 
       const info = getHubStationPromptInfo('blacksmith');
       expect(info).toEqual({
         title: '⚒️ THE SCRAP FORGE',
-        summary: "Spend 12 Scrap ⚙️ to upgrade an equipped item's Rarity (+25% stats) or craft new Gear",
+        summary: "Spend 12 Scrap ⚙️ to upgrade a selected item's Tier (up to Tier 4, +25% stats) or craft new Gear",
         actionLabel: 'OPEN FORGE [E]',
         accentColor: '#2ee6ff'
       });

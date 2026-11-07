@@ -366,7 +366,12 @@ export class TooltipManager {
       const costHtml = rawCost > 0
         ? tipCost(`Cost: ${rawCost} coins`)
         : '<span class="tip-free">Free</span>';
-      const deltasHtml = formatModStatDeltas(mod?.statDeltas);
+      const isCanonicalPoolMod = Boolean(
+        mod?.id &&
+          mod?.desc &&
+          (ALL_RUN_MOD_POOL as readonly any[]).some(m => m.id === mod.id && m.desc === mod.desc)
+      );
+      const deltasHtml = isCanonicalPoolMod ? '' : formatModStatDeltas(mod?.statDeltas);
       const evoTarget = getModEvolutionTarget(mod);
       const evoBadge = evoTarget
         ? '<div style="color:#00f5d4;font-weight:800;margin-top:3px">⚡ OVERCLOCK EVOLUTION MOD</div>'
@@ -431,6 +436,9 @@ export class TooltipManager {
       const target = e.target as HTMLElement | null;
       const tipTarget = target?.closest ? target.closest('[data-tip]') as HTMLElement | null : null;
       if (tipTarget && tipTarget.dataset.tip) {
+        if (e.isTrusted && tipTarget.hasAttribute('title')) {
+          tipTarget.removeAttribute('title');
+        }
         this.hoveringMouse = true;
         this.autoInspectActive = false;
         this.show(tipTarget.dataset.tip, e.clientX, e.clientY);

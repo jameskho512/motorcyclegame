@@ -1476,7 +1476,8 @@ export class HUDController {
         return `<span class="item-badge mod-chip mod-badge sticker is-mod ${rotClass} ${stackClass}" data-mod-id="${modId}" data-stack-tier="${stackClass}"${evoAttr} style="--ic:#ffd60a" aria-label="${modName} x${n}" data-tip="${safeTip}"><span class="sticker-glyph">${svgIcon}</span><span class="sticker-count">x${n}</span><span class="sticker-peel" aria-hidden="true"></span></span>`;
       });
 
-    const modBadges = items
+    const uniqueItemNames = Array.from(new Set(items));
+    const modBadges = uniqueItemNames
       .filter(name => {
         const m = (ALL_RUN_MOD_POOL || RUN_MOD_POOL).find(x => x.name === name || x.id === name);
         const modId = m ? m.id : name;
@@ -1494,16 +1495,23 @@ export class HUDController {
         const evoHint = formatModDeckTooltipHint(name, targetPlayer) || formatModDeckTooltipHint(modId, targetPlayer);
         const evoHintTip = evoHint ? `<br/>${evoHint}` : '';
         const safeEvoHint = evoHint ? evoHint.replace(/"/g, '&quot;') : '';
-        const tipContent = `<b style='color:#ffd166'>${name}</b><br/>${m ? m.desc : ''}${evoHintTip}`;
+        const countSuffix = count > 1 ? ` x${count}` : '';
+        const tipContent = `<b style='color:#ffd166'>${name}${countSuffix}</b><br/>${m ? m.desc : ''}${evoHintTip}`;
         const safeTip = tipContent.replace(/"/g, '&quot;');
         const evoAttr = evoHint ? ` data-mod-evo-hint="${safeEvoHint}"` : '';
-        return `<span class="item-badge mod-chip mod-badge sticker is-mod ${rotClass} ${stackClass}" data-mod-id="${modId}" data-stack-tier="${stackClass}"${evoAttr} style="--ic:#ffd60a" aria-label="${name}" data-tip="${safeTip}"><span class="sticker-glyph">${svgIcon}</span><span class="sticker-peel" aria-hidden="true"></span></span>`;
+        const countBadgeHtml = count > 1 ? `<span class="sticker-count">x${count}</span>` : '';
+        return `<span class="item-badge mod-chip mod-badge sticker is-mod ${rotClass} ${stackClass}" data-mod-id="${modId}" data-stack-tier="${stackClass}"${evoAttr} style="--ic:#ffd60a" aria-label="${name}${countSuffix}" data-tip="${safeTip}"><span class="sticker-glyph">${svgIcon}</span>${countBadgeHtml}<span class="sticker-peel" aria-hidden="true"></span></span>`;
       });
 
     const all = stackBadges.concat(modBadges).filter(Boolean);
 
     for (const container of containers) {
-      if (all.length === 0 && container.children.length > 0 && !container.querySelector('.items-empty')) {
+      if (
+        all.length === 0 &&
+        container.children.length > 0 &&
+        !container.querySelector('.items-empty') &&
+        !container.querySelector('.sticker')
+      ) {
         Array.from(container.children).forEach(child => {
           if (child.classList.contains('items-empty') || !(child instanceof HTMLElement)) return;
           const countAttr = child.getAttribute('data-count') || child.getAttribute('data-stacks');
@@ -1525,7 +1533,7 @@ export class HUDController {
             if (evoHint) {
               child.setAttribute('data-mod-evo-hint', evoHint);
               const tip = child.getAttribute('data-tip');
-              if (tip && !tip.includes(evoHint)) {
+              if (tip && !tip.includes(evoHint) && !tip.includes('tip-mod-evo-hint')) {
                 child.setAttribute('data-tip', tip ? `${tip}<br/>${evoHint}` : evoHint);
               }
               const title = child.getAttribute('title');
@@ -1554,7 +1562,7 @@ export class HUDController {
               if (evoHint) {
                 child.setAttribute('data-mod-evo-hint', evoHint);
                 const tip = child.getAttribute('data-tip');
-                if (tip && !tip.includes(evoHint)) {
+                if (tip && !tip.includes(evoHint) && !tip.includes('tip-mod-evo-hint')) {
                   child.setAttribute('data-tip', `${tip}<br/>${evoHint}`);
                 }
                 const title = child.getAttribute('title');
@@ -1633,7 +1641,7 @@ export class HUDController {
           if (evoHint) {
             badge.setAttribute('data-mod-evo-hint', evoHint);
             const tip = badge.getAttribute('data-tip');
-            if (tip && !tip.includes(evoHint)) {
+            if (tip && !tip.includes(evoHint) && !tip.includes('tip-mod-evo-hint')) {
               badge.setAttribute('data-tip', `${tip}<br/>${evoHint}`);
             }
             const title = badge.getAttribute('title');

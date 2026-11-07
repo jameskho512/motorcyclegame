@@ -29,7 +29,7 @@ import { StateManager } from './core/state';
 import { InputManager } from './core/input';
 import { SoundSynthesizer } from './audio/sfx';
 import { generateDungeon, createHomeBaseRoom, enableChoicePedestalsInTreasureRooms, getFloorBountyContract, getHubNpcGreeting } from './world/dungeon';
-import { genLoot } from './data/equipment';
+import { genLoot, upgradeEquipmentTier, MAX_FORGE_TIER } from './data/equipment';
 import { KISS_CURSE_MOD_POOL, getActiveDuoSynergies } from './data/upgrades';
 import {
   updateBikeKinematics,
@@ -415,6 +415,12 @@ export class MotoRogueApp {
     player.vx = 0;
     player.vy = 0;
     player.stunTimer = 0;
+    player.stunImmuneTimer = 0;
+    if (!restored && this.stateManager.floorNum <= 1) {
+      player.items = [];
+      player.itemStacks = {};
+      (player as any).modStacks = {};
+    }
     this.hitStopTimer = 0;
     this.hitStopCooldown = 0;
     this.killStreakCount = 0;
@@ -703,6 +709,9 @@ export class MotoRogueApp {
 
     if (player.stunTimer && player.stunTimer > 0) {
       player.stunTimer = Math.max(0, player.stunTimer - dt);
+      player.stunImmuneTimer = Math.max(player.stunImmuneTimer || 0, 1.0);
+    } else if (player.stunImmuneTimer && player.stunImmuneTimer > 0) {
+      player.stunImmuneTimer = Math.max(0, player.stunImmuneTimer - dt);
     }
     const isStunned = (player.stunTimer || 0) > 0;
 
@@ -935,7 +944,7 @@ export class MotoRogueApp {
       (dmg: number) => {
         if (player.invuln <= 0) {
           player.hp = Math.max(0, player.hp - dmg);
-          player.invuln = 1.05; // 1.05s i-frames
+          player.invuln = 0.25; // 0.25s post-hit invincibility frames
           this.combatState.screenShake = 6;
           this.audio.playerHurt();
           this.updateHUD();
@@ -1331,24 +1340,31 @@ export class MotoRogueApp {
       player: this.stateManager.player,
       scannerClaimed: this.codexBuffClaimedInHub,
       bountyClaimed: this.bountyClaimedInHub,
-      onReforge: () => {
+      onReforge: (targetSlot?: string) => {
         const meta = this.stateManager.metaSave;
         if (meta.scrap >= 12) {
           meta.scrap -= 12;
-          const upgradable = Object.values(meta.equipped).find(it => it && it.rarity < 3);
-          if (upgradable) {
-            upgradable.rarity = Math.min(3, upgradable.rarity + 1) as any;
-            for (const k of Object.keys(upgradable.stats) as (keyof typeof upgradable.stats)[]) {
-              if (typeof upgradable.stats[k] === 'number') {
-                upgradable.stats[k] = Number((upgradable.stats[k]! * 1.25).toFixed(2));
-              }
+          const equippedMap = meta.equipped as Record<string, EquipmentItem | undefined>;
+          let upgradable: EquipmentItem | undefined;
+          if (targetSlot && targetSlot !== 'craft_new') {
+            const candidate = equippedMap[targetSlot];
+            if (candidate && (candidate.tier ?? 0) < MAX_FORGE_TIER) {
+              upgradable = candidate;
             }
+          } else if (targetSlot !== 'craft_new') {
+            upgradable = Object.values(meta.equipped).find(
+              it => it && (it.tier ?? 0) < MAX_FORGE_TIER
+            );
+          }
+
+          if (upgradable) {
+            upgradeEquipmentTier(upgradable, this.stateManager.player);
             this.stateManager.saveMeta();
             this.audio.pickupLoot(upgradable.rarity);
             this.updateHUD();
             return {
               ok: true,
-              message: `✓ REFORGED: ${upgradable.name.toUpperCase()} UPGRADED (+25% stats)!`
+              message: `✓ REFORGED: ${upgradable.name.toUpperCase()} UPGRADED TO TIER ${upgradable.tier}/${MAX_FORGE_TIER} (+25% base stats)!`
             };
           } else {
             const forged = genLoot(Math.max(2, this.stateManager.floorNum + 1));

@@ -372,13 +372,15 @@ export class ShopModalController {
     if (this.descEl) {
       let badgeHtml = '';
       if (singlePickup?.type === 'mod_pedestal') {
-        badgeHtml += formatModStatDeltas((singlePickup.mod as any).statDeltas);
+        if (!desc) {
+          badgeHtml += formatModStatDeltas((singlePickup.mod as any).statDeltas);
+        }
         if (getModEvolutionTarget(singlePickup.mod as any)) {
-          badgeHtml += '<div style="color:#00f5d4;font-weight:800;margin-top:3px">⚡ OVERCLOCK EVOLUTION MOD</div>';
+          badgeHtml += '<div style="color:#00f5d4;font-weight:600;margin-top:3px">⚡ OVERCLOCK EVOLUTION MOD</div>';
         }
       }
       if ((singlePickup as any)?.choiceGroup) {
-        badgeHtml += '<div style="color:#ffd60a;font-weight:800;margin-top:3px">⚖️ CHOICE PEDESTAL — OTHER DESPAWNS</div>';
+        badgeHtml += '<div style="color:#ffd60a;font-weight:600;margin-top:3px">⚖️ CHOICE PEDESTAL — OTHER DESPAWNS</div>';
       }
       if (badgeHtml) {
         this.descEl.innerHTML = `${desc}${badgeHtml}`;

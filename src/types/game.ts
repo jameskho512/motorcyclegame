@@ -225,6 +225,7 @@ export interface PlayerState {
   invulnTimer?: number; // Compatibility alias
   deathTimer?: number;
   stunTimer?: number;
+  stunImmuneTimer?: number;
   weapon: WeaponId;
   runWeapons: Partial<Record<WeaponId, boolean>>;
   fireTimer: number;
@@ -427,6 +428,8 @@ export interface EquipmentItem {
   rarity: RarityTier;
   name: string;
   stats: Partial<Record<StatKey, number>>;
+  tier?: number;
+  baseStats?: Partial<Record<StatKey, number>>;
 }
 
 export interface EquipSlotDef {
