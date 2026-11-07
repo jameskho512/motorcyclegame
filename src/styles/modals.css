@@ -753,40 +753,40 @@
 
 .hub-station-card {
   position: relative;
-  width: min(580px, 94%);
+  width: min(600px, 95%);
   max-height: 90vh;
   overflow-y: auto;
-  padding: 24px 26px;
-  color: var(--paper, #fdf6ec);
-  font-family: var(--font-body, system-ui, sans-serif);
+  padding: 24px 28px;
+  color: var(--paper, #f8fafc);
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
   background:
-    var(--halftone-light, radial-gradient(circle, rgba(255, 255, 255, 0.05) 1px, transparent 1px)),
     radial-gradient(ellipse at 50% 0%, rgba(46, 230, 255, 0.12), transparent 70%),
     linear-gradient(180deg, #161822 0%, #0d0e14 100%);
   border: 3px solid #0a0b10;
+  border-radius: 8px;
   outline: 2px solid var(--cyan, #2ee6ff);
   outline-offset: -6px;
   box-shadow:
     8px 8px 0 #0a0b10,
     0 0 0 2px var(--magenta, #ff2e93),
     0 0 40px rgba(46, 230, 255, 0.3);
-  transform: skewX(-2deg);
-  animation: hub-modal-pop 220ms cubic-bezier(0.18, 0.89, 0.32, 1.28) both;
+  transform: none;
+  animation: hub-modal-pop 200ms cubic-bezier(0.18, 0.89, 0.32, 1.28) both;
 }
 
 @keyframes hub-modal-pop {
   from {
     opacity: 0;
-    transform: skewX(-2deg) scale(0.92);
+    transform: scale(0.94);
   }
   to {
     opacity: 1;
-    transform: skewX(-2deg) scale(1);
+    transform: scale(1);
   }
 }
 
 .hub-station-card > * {
-  transform: skewX(2deg);
+  transform: none;
 }
 
 .hub-station-header {
@@ -794,21 +794,21 @@
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
-  border-bottom: 2px solid rgba(255, 255, 255, 0.14);
-  padding-bottom: 10px;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.16);
+  padding-bottom: 12px;
 }
 
 .hub-station-title-wrap {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
 
 .hub-station-kicker {
-  font-family: var(--font-display, 'Impact', sans-serif);
-  font-size: 11px;
-  font-weight: 900;
-  letter-spacing: 1.5px;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1px;
   color: #00f5d4;
   text-transform: uppercase;
 }
@@ -816,10 +816,10 @@
 .hub-station-title {
   margin: 0;
   font-family: var(--font-display, 'Impact', sans-serif);
-  font-size: 22px;
-  font-style: italic;
+  font-size: 24px;
+  font-style: normal;
   font-weight: 900;
-  letter-spacing: 1.2px;
+  letter-spacing: 1px;
   color: #ffd60a;
   text-shadow: 2px 2px 0 #0a0b10;
 }
@@ -827,36 +827,39 @@
 .hub-station-speaker-pill {
   background: #ffd60a;
   color: #0a0b10;
-  font-family: var(--font-display, 'Impact', sans-serif);
-  font-size: 11px;
-  font-weight: 900;
-  letter-spacing: 1px;
-  padding: 3px 8px;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  padding: 4px 10px;
   border: 1.5px solid #0a0b10;
+  border-radius: 4px;
   box-shadow: 2px 2px 0 #0a0b10;
   text-transform: uppercase;
   white-space: nowrap;
 }
 
 .hub-station-quote {
-  margin: 10px 0;
-  padding: 6px 12px;
-  font-size: 12.5px;
-  font-style: italic;
-  line-height: 1.35;
-  color: #e0e6ed;
-  background: rgba(255, 255, 255, 0.05);
-  border-left: 3px solid #ffd60a;
+  margin: 12px 0;
+  padding: 8px 14px;
+  font-size: 14px;
+  font-style: normal;
+  line-height: 1.5;
+  color: #f1f5f9;
+  background: rgba(255, 255, 255, 0.06);
+  border-left: 3.5px solid #ffd60a;
+  border-radius: 0 4px 4px 0;
 }
 
 .hub-station-purpose {
-  font-size: 12px;
-  line-height: 1.4;
-  color: #b0b8c6;
-  background: rgba(0, 0, 0, 0.35);
-  padding: 8px 12px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  margin-bottom: 12px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: #e2e8f0;
+  background: rgba(0, 0, 0, 0.42);
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 4px;
+  margin-bottom: 14px;
 }
 
 .hub-station-body {
@@ -986,9 +989,9 @@
 
 .hub-forge-desc {
   margin: 0;
-  font-size: 11.5px;
-  color: #aeb9cc;
-  line-height: 1.35;
+  font-size: 13.5px;
+  color: #e2e8f0;
+  line-height: 1.5;
 }
 
 .hub-forge-legendary {
@@ -1139,34 +1142,36 @@
 
 .hub-box-copy {
   margin: 0;
-  font-size: 11.5px;
-  color: #aeb9cc;
-  line-height: 1.35;
+  font-size: 13.5px;
+  color: #e2e8f0;
+  line-height: 1.5;
 }
 
 .hub-action-btn {
   background: linear-gradient(180deg, #ffd60a 0%, #ff9e00 100%);
   color: #0a0b10;
   border: 2px solid #0a0b10;
+  border-radius: 4px;
   box-shadow: 3px 3px 0 #0a0b10;
-  font-family: var(--font-display, 'Impact', sans-serif);
-  font-size: 12px;
-  letter-spacing: 0.8px;
-  padding: 6px 10px;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  padding: 8px 12px;
   cursor: pointer;
-  transform: skewX(-4deg);
+  transform: none;
   transition: transform 0.1s ease, filter 0.1s ease;
 }
 
 .hub-action-btn:hover:not(:disabled) {
   filter: brightness(1.1);
-  transform: skewX(-4deg) translate(-1px, -1px);
+  transform: translate(-1px, -1px);
 }
 
 .hub-action-btn.is-claimed,
 .hub-action-btn:disabled {
   background: #2a2d3d;
-  color: #7b8599;
+  color: #94a3b8;
   border-color: #1a1c26;
   box-shadow: none;
   cursor: default;
@@ -1174,46 +1179,50 @@
 }
 
 .hub-heat-current {
-  font-family: var(--font-display, 'Impact', sans-serif);
-  font-size: 11px;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size: 12.5px;
+  font-weight: 800;
   color: #ff2e93;
 }
 
 .hub-heat-desc {
   margin: 0;
-  font-size: 11.5px;
-  color: #aeb9cc;
+  font-size: 13.5px;
+  color: #e2e8f0;
+  line-height: 1.5;
 }
 
 .hub-heat-btn-row {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 6px;
+  gap: 8px;
 }
 
 .hub-heat-btn {
-  background: rgba(20, 22, 30, 0.9);
-  border: 1.5px solid rgba(255, 255, 255, 0.16);
-  color: #cfd6e6;
-  padding: 6px 8px;
+  background: rgba(20, 22, 30, 0.92);
+  border: 1.5px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  color: #f1f5f9;
+  padding: 8px 10px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
+  gap: 3px;
   cursor: pointer;
   text-align: left;
   transition: border-color 0.1s ease, background 0.1s ease;
 }
 
 .hub-heat-btn strong {
-  font-family: var(--font-display, 'Impact', sans-serif);
-  font-size: 12px;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  font-weight: 800;
   color: #ffd60a;
 }
 
 .hub-heat-btn span {
-  font-size: 10px;
-  color: #8c96a8;
+  font-size: 12px;
+  color: #cbd5e1;
 }
 
 .hub-heat-btn:hover {

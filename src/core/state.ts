@@ -349,11 +349,11 @@ export interface FloorBountyContractStatus {
 }
 
 const FLOOR_BOUNTY_DEFINITIONS = [
-  { title: 'NEON DAREDEVIL', task: 'Graze 3 enemy projectiles or clear Floor 1 Boss', scrap: 8, coins: 10 },
+  { title: 'NEON DAREDEVIL', task: 'Dodge 3 enemy projectiles or clear Floor 1 Boss', scrap: 8, coins: 10 },
   { title: 'DRIFT EXECUTIONER', task: 'Trigger 2 Drift Shockwaves or clear Floor 2 Boss', scrap: 10, coins: 12 },
-  { title: 'THERMAL HUNTER', task: 'Reach Style Rank A or clear Floor 3 Boss', scrap: 12, coins: 15 },
+  { title: 'THERMAL HUNTER', task: 'Eliminate 6 hostiles or clear Floor 3 Boss', scrap: 12, coins: 15 },
   { title: 'CRYO BREAKER', task: 'Detonate 2 Arena Barrels or clear Floor 4 Boss', scrap: 15, coins: 18 },
-  { title: 'APEX INTERCEPTOR', task: 'Reach Style Rank S or clear Floor 5 Boss', scrap: 18, coins: 22 },
+  { title: 'APEX INTERCEPTOR', task: 'Clear 3 combat rooms or defeat Floor 5 Boss', scrap: 18, coins: 22 },
   { title: 'VALHALLA CONQUEROR', task: 'Defeat Omega Valhalla on Floor 6', scrap: 25, coins: 30 }
 ] as const;
 

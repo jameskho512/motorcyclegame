@@ -1033,16 +1033,15 @@ describe('Tier 3: Cross-Feature Combinations & Synergies', () => {
         expect(briefing.enemyScaleText).toBe(expected.enemyScale);
         expect(briefing.scrapBonusText).toBe(expected.scrapBonus);
 
-        // Hub Station Bounty Prompt Info (unclaimed vs claimed cache)
+        // Hub Station Bounty Prompt Info
         const unclaimedPrompt = getHubStationPromptInfo('bounty', undefined, undefined, { bountyClaimed: false });
         expect(unclaimedPrompt.title).toBe('🎖️ OUTLAW WAR ROOM & BOUNTIES');
         expect(unclaimedPrompt.actionLabel).toBe('OPEN WAR ROOM [E]');
         expect(unclaimedPrompt.accentColor).toBe('#06d6a0');
-        expect(unclaimedPrompt.summary).toContain('Claim FREE +15 Coins');
+        expect(unclaimedPrompt.summary).toContain('Configure Threat Heat Level (0–3)');
 
         const claimedPrompt = getHubStationPromptInfo('bounty', undefined, undefined, { bountyClaimed: true });
         expect(claimedPrompt.summary).toContain('Configure Threat Heat Level (0–3)');
-        expect(claimedPrompt.summary).toContain('Free Cache Claimed!');
 
         // Hub NPC Bounty Greeting
         const greeting = getHubNpcGreeting('bounty', 1, expected.heat);
@@ -1840,7 +1839,7 @@ describe('Tier 3: Cross-Feature Combinations & Synergies', () => {
       const expectedContracts = [
         { floor: 1, id: 'GRAZE_INITIATE', title: 'NEON DAREDEVIL', baseScrap: 8, baseCoins: 10 },
         { floor: 2, id: 'DRIFT_DEMON', title: 'ASPHALT DRIFTER', baseScrap: 10, baseCoins: 14 },
-        { floor: 3, id: 'STYLE_HUNTER', title: 'HIGH-OCTANE STYLER', baseScrap: 14, baseCoins: 18 },
+        { floor: 3, id: 'THERMAL_HUNTER', title: 'THERMAL HUNTER', baseScrap: 14, baseCoins: 18 },
         { floor: 4, id: 'CRYO_SHATTER', title: 'CRYO BREAKER', baseScrap: 18, baseCoins: 22 },
         { floor: 5, id: 'OVERDRIVE_SLAYER', title: 'FORGE EXECUTIONER', baseScrap: 22, baseCoins: 28 },
         { floor: 6, id: 'VALHALLA_LEGEND', title: 'VALHALLA ASCENDANT', baseScrap: 30, baseCoins: 40 }

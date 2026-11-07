@@ -1053,11 +1053,11 @@ describe('Tier 1: Feature Coverage — 28 Features in Isolation', () => {
       const b1 = getFloorBountyContractStatus(1, { styleScore: 0, styleRank: 'D' });
       expect(b1.targetFloor).toBe(1);
       expect(b1.contractTitle).toBe('NEON DAREDEVIL');
-      expect(b1.taskText).toBe('Graze 3 enemy projectiles or clear Floor 1 Boss');
+      expect(b1.taskText).toBe('Dodge 3 enemy projectiles or clear Floor 1 Boss');
       expect(b1.rewardScrap).toBe(8);
       expect(b1.rewardCoins).toBe(10);
       expect(b1.isStyleMilestoneMet).toBe(false);
-      expect(b1.summaryLine).toBe('BOUNTY [F1] NEON DAREDEVIL: Graze 3 enemy projectiles or clear Floor 1 Boss (+8 SCRAP, +10 COINS)');
+      expect(b1.summaryLine).toBe('BOUNTY [F1] NEON DAREDEVIL: Dodge 3 enemy projectiles or clear Floor 1 Boss (+8 SCRAP, +10 COINS)');
 
       // Contract 2: Drift Executioner (Floor 2)
       const b2 = getFloorBountyContractStatus(2, { styleScore: 20, styleRank: 'C' });
@@ -1068,11 +1068,11 @@ describe('Tier 1: Feature Coverage — 28 Features in Isolation', () => {
       expect(b2.rewardCoins).toBe(12);
       expect(b2.isStyleMilestoneMet).toBe(false);
 
-      // Contract 3: Thermal Hunter (Floor 3) - Meets style milestone via Rank A
+      // Contract 3: Thermal Hunter (Floor 3)
       const b3 = getFloorBountyContractStatus(3, { styleScore: 10, styleRank: 'A' });
       expect(b3.targetFloor).toBe(3);
       expect(b3.contractTitle).toBe('THERMAL HUNTER');
-      expect(b3.taskText).toBe('Reach Style Rank A or clear Floor 3 Boss');
+      expect(b3.taskText).toBe('Eliminate 6 hostiles or clear Floor 3 Boss');
       expect(b3.rewardScrap).toBe(12);
       expect(b3.rewardCoins).toBe(15);
       expect(b3.isStyleMilestoneMet).toBe(true);
@@ -1086,11 +1086,11 @@ describe('Tier 1: Feature Coverage — 28 Features in Isolation', () => {
       expect(b4.rewardCoins).toBe(18);
       expect(b4.isStyleMilestoneMet).toBe(false);
 
-      // Contract 5: Apex Interceptor (Floor 5) - Meets style milestone via styleScore >= 50
+      // Contract 5: Apex Interceptor (Floor 5)
       const b5 = getFloorBountyContractStatus(5, { styleScore: 55, styleRank: 'B' });
       expect(b5.targetFloor).toBe(5);
       expect(b5.contractTitle).toBe('APEX INTERCEPTOR');
-      expect(b5.taskText).toBe('Reach Style Rank S or clear Floor 5 Boss');
+      expect(b5.taskText).toBe('Clear 3 combat rooms or defeat Floor 5 Boss');
       expect(b5.rewardScrap).toBe(18);
       expect(b5.rewardCoins).toBe(22);
       expect(b5.isStyleMilestoneMet).toBe(true);
@@ -1631,20 +1631,8 @@ describe('Tier 1: Feature Coverage — 28 Features in Isolation', () => {
         'PRE-FLIGHT: ⚠️ MISSING SCANNER BUFF & WAR ROOM CACHE // WEAPON: SHOTGUN // HEAT 2'
       );
 
-      // Auto-claim all free pre-run buffs via #btn-hub-autoclaim
-      const autoClaimBtn = document.getElementById('btn-hub-autoclaim') as HTMLButtonElement;
-      expect(autoClaimBtn).not.toBeNull();
-      autoClaimBtn.click();
-
-      expect(onClaimScanner).toHaveBeenCalledTimes(1);
-      expect(onClaimBountyCache).toHaveBeenCalledTimes(1);
-      expect(overlayEl.getAttribute('data-launch-ready-count')).toBe('2');
-      expect(overlayEl.getAttribute('data-launch-fully-prepped')).toBe('true');
-      expect(overlayEl.getAttribute('data-launch-advisor')).toBe(
-        'PRE-FLIGHT: ✓ 2/2 BUFFS LOCKED // WEAPON: SHOTGUN // HEAT 2'
-      );
       expect(document.querySelector('.hub-ready-banner')?.textContent).toContain(
-        'All free pre-run systems calibrated'
+        'Bike systems calibrated'
       );
 
       // Deploy into run

@@ -23,10 +23,12 @@ import {
   getModStackTierClass,
   updateWeaponDeck,
   updateModDeck,
+  updateSurvivabilityTelemetry,
   type ModStackTierClass,
   type MinimapFloorSummary,
   type DungeonGrid
 } from '../../src/ui/hud';
+import { getCombatSurvivabilitySummary } from '../../src/systems/combat';
 import { getRunModDeckSummary } from '../../src/data/upgrades';
 import { parseColor, drawObstacle } from '../../src/render/vectorArt';
 import { TooltipManager, formatModDeckTooltipHint } from '../../src/ui/tooltip';
@@ -2577,7 +2579,7 @@ describe('Render & UI Subsystems', () => {
       expect(bountyRow1).not.toBeNull();
       expect(bountyRow1.textContent).toContain('NEON DAREDEVIL');
       expect(bountyRow1.textContent).toContain('+8⚙️ +10🪙');
-      expect(bountyRow1.getAttribute('data-tip')).toContain('NEON DAREDEVIL: Graze 3 enemy projectiles or clear Floor 1 Boss (Reward: +8 Scrap, +10 Coins)');
+      expect(bountyRow1.getAttribute('data-tip')).toContain('NEON DAREDEVIL: Dodge 3 enemy projectiles or clear Floor 1 Boss (Reward: +8 Scrap, +10 Coins)');
 
       // Floor 4 -> CRYO BREAKER
       hud.updateSidebar(player, 4, metaSave);
@@ -2592,7 +2594,7 @@ describe('Render & UI Subsystems', () => {
     it('sets data-bounty-contract-title, data-bounty-style-met, and data-bounty-summary telemetry attributes across Floor 1 and Floor 3', () => {
       const metaSave: any = { scrap: 50, unlocked: {}, weaponKills: {} };
 
-      // Floor 1: NEON DAREDEVIL, cruising D rank -> isStyleMilestoneMet is false
+      // Floor 1: NEON DAREDEVIL
       const playerFloor1 = {
         ...player,
         styleScore: 10,
@@ -2607,23 +2609,23 @@ describe('Render & UI Subsystems', () => {
       expect(hudList1.getAttribute('data-bounty-contract-title')).toBe('NEON DAREDEVIL');
       expect(hudList1.getAttribute('data-bounty-style-met')).toBe('false');
       expect(hudList1.getAttribute('data-bounty-summary')).toBe(
-        'BOUNTY [F1] NEON DAREDEVIL: Graze 3 enemy projectiles or clear Floor 1 Boss (+8 SCRAP, +10 COINS)'
+        'BOUNTY [F1] NEON DAREDEVIL: Dodge 3 enemy projectiles or clear Floor 1 Boss (+8 SCRAP, +10 COINS)'
       );
 
       expect(synList1.getAttribute('data-bounty-contract-title')).toBe('NEON DAREDEVIL');
       expect(synList1.getAttribute('data-bounty-style-met')).toBe('false');
       expect(synList1.getAttribute('data-bounty-summary')).toBe(
-        'BOUNTY [F1] NEON DAREDEVIL: Graze 3 enemy projectiles or clear Floor 1 Boss (+8 SCRAP, +10 COINS)'
+        'BOUNTY [F1] NEON DAREDEVIL: Dodge 3 enemy projectiles or clear Floor 1 Boss (+8 SCRAP, +10 COINS)'
       );
 
       expect(hud.synergyListEl).not.toBeNull();
       expect(hud.synergyListEl?.getAttribute('data-bounty-contract-title')).toBe('NEON DAREDEVIL');
       expect(hud.synergyListEl?.getAttribute('data-bounty-style-met')).toBe('false');
       expect(hud.synergyListEl?.getAttribute('data-bounty-summary')).toBe(
-        'BOUNTY [F1] NEON DAREDEVIL: Graze 3 enemy projectiles or clear Floor 1 Boss (+8 SCRAP, +10 COINS)'
+        'BOUNTY [F1] NEON DAREDEVIL: Dodge 3 enemy projectiles or clear Floor 1 Boss (+8 SCRAP, +10 COINS)'
       );
 
-      // Floor 3: THERMAL HUNTER, high style A rank -> isStyleMilestoneMet is true
+      // Floor 3: THERMAL HUNTER
       const playerFloor3A = {
         ...player,
         styleScore: 60,
@@ -2635,40 +2637,19 @@ describe('Render & UI Subsystems', () => {
       expect(hudList1.getAttribute('data-bounty-contract-title')).toBe('THERMAL HUNTER');
       expect(hudList1.getAttribute('data-bounty-style-met')).toBe('true');
       expect(hudList1.getAttribute('data-bounty-summary')).toBe(
-        'BOUNTY [F3] THERMAL HUNTER: Reach Style Rank A or clear Floor 3 Boss (+12 SCRAP, +15 COINS)'
+        'BOUNTY [F3] THERMAL HUNTER: Eliminate 6 hostiles or clear Floor 3 Boss (+12 SCRAP, +15 COINS)'
       );
 
       expect(synList1.getAttribute('data-bounty-contract-title')).toBe('THERMAL HUNTER');
       expect(synList1.getAttribute('data-bounty-style-met')).toBe('true');
       expect(synList1.getAttribute('data-bounty-summary')).toBe(
-        'BOUNTY [F3] THERMAL HUNTER: Reach Style Rank A or clear Floor 3 Boss (+12 SCRAP, +15 COINS)'
+        'BOUNTY [F3] THERMAL HUNTER: Eliminate 6 hostiles or clear Floor 3 Boss (+12 SCRAP, +15 COINS)'
       );
 
       expect(hud.synergyListEl?.getAttribute('data-bounty-contract-title')).toBe('THERMAL HUNTER');
       expect(hud.synergyListEl?.getAttribute('data-bounty-style-met')).toBe('true');
       expect(hud.synergyListEl?.getAttribute('data-bounty-summary')).toBe(
-        'BOUNTY [F3] THERMAL HUNTER: Reach Style Rank A or clear Floor 3 Boss (+12 SCRAP, +15 COINS)'
-      );
-
-      // Floor 3: THERMAL HUNTER, high style SSS rank -> isStyleMilestoneMet is true
-      const playerFloor3SSS = {
-        ...player,
-        styleScore: 98,
-        styleRank: 'SSS'
-      } as unknown as PlayerState;
-
-      hud.updateSidebar(playerFloor3SSS, 3, metaSave);
-
-      expect(hudList1.getAttribute('data-bounty-contract-title')).toBe('THERMAL HUNTER');
-      expect(hudList1.getAttribute('data-bounty-style-met')).toBe('true');
-      expect(hudList1.getAttribute('data-bounty-summary')).toBe(
-        'BOUNTY [F3] THERMAL HUNTER: Reach Style Rank A or clear Floor 3 Boss (+12 SCRAP, +15 COINS)'
-      );
-
-      expect(synList1.getAttribute('data-bounty-contract-title')).toBe('THERMAL HUNTER');
-      expect(synList1.getAttribute('data-bounty-style-met')).toBe('true');
-      expect(synList1.getAttribute('data-bounty-summary')).toBe(
-        'BOUNTY [F3] THERMAL HUNTER: Reach Style Rank A or clear Floor 3 Boss (+12 SCRAP, +15 COINS)'
+        'BOUNTY [F3] THERMAL HUNTER: Eliminate 6 hostiles or clear Floor 3 Boss (+12 SCRAP, +15 COINS)'
       );
     });
   });
@@ -2880,51 +2861,13 @@ describe('Render & UI Subsystems', () => {
       };
     });
 
-    it('populates #style-rank-sub with BUFF: (BUFF: None at Rank D, ACTIVE BUFF: at higher ranks)', () => {
-      // 1. Rank D case
-      player.styleScore = 12;
+    it('hides #style-rank-card when present in DOM and renders only Evolution & Synergy Matrix', () => {
       (hud as any).update(player, 1);
 
-      const subEl = document.getElementById('style-rank-sub');
-      expect(subEl).not.toBeNull();
-      expect(subEl?.textContent).toContain('BUFF:');
-      expect(subEl?.textContent).toBe('BUFF: None (Reach Rank C at 24% for +3% Fire Rate & Speed)');
-
-      // 2. Rank S case
-      player.styleScore = 70;
-      (hud as any).update(player, 1);
-      expect(subEl?.textContent).toContain('BUFF:');
-      expect(subEl?.textContent).toContain('ACTIVE BUFF: +15% SPD/RATE · +35% LUCK · +1.5 NOS/s');
-
-      // 3. Rank SSS case
-      player.styleScore = 95;
-      (hud as any).update(player, 1);
-      expect(subEl?.textContent).toContain('BUFF:');
-      expect(subEl?.textContent).toContain('ACTIVE BUFF: +25% SPD/RATE · +55% LUCK · +4 NOS/s');
-    });
-
-    it('populates #style-rank-howto with HOW TO RAISE: and live drift percentage', () => {
-      player.driftCharge = 0.45;
-      (hud as any).update(player, 1);
-
-      const howtoEl = document.getElementById('style-rank-howto');
-      expect(howtoEl).not.toBeNull();
-      expect(howtoEl?.textContent).toContain('HOW TO RAISE:');
-      expect(howtoEl?.textContent).toContain('Hold [SPACE] Drift (45%)');
-      expect(howtoEl?.textContent).toContain('Graze Bullets');
-      expect(howtoEl?.textContent).toContain('Kill Hostiles');
-    });
-
-    it('creates #style-rank-howto dynamically if not already present in DOM', () => {
-      const existing = document.getElementById('style-rank-howto');
-      if (existing) existing.remove();
-
-      expect(document.getElementById('style-rank-howto')).toBeNull();
-      (hud as any).update(player, 1);
-
-      const created = document.getElementById('style-rank-howto');
-      expect(created).not.toBeNull();
-      expect(created?.textContent).toContain('HOW TO RAISE:');
+      const card = document.getElementById('style-rank-card') as HTMLElement;
+      expect(card).not.toBeNull();
+      expect(card.hidden).toBe(true);
+      expect(card.style.display).toBe('none');
     });
 
     it('populates #synergy-list with sub-elements containing Effect: and Task:', () => {
@@ -2959,18 +2902,6 @@ describe('Render & UI Subsystems', () => {
       expect(effectRow).toBeDefined();
       expect(effectRow?.textContent).toContain('Effect:');
       expect(synList.innerHTML).toContain('★ EVOLVED');
-    });
-
-    it('sets rich style rank tooltip on #style-rank-card via update', () => {
-      player.styleScore = 55; // Rank A
-      (hud as any).update(player, 1);
-
-      const card = document.getElementById('style-rank-card')!;
-      const tip = card.getAttribute('data-tip') || '';
-      expect(tip).toContain('OUTLAW STYLE RANK (A — 55%)');
-      expect(tip).toContain('HOW TO IMPROVE:');
-      expect(tip).toContain('[SPACE]');
-      expect(tip).toContain('RANK REWARDS:');
     });
   });
 
@@ -4169,6 +4100,275 @@ describe('Render & UI Subsystems', () => {
         hud.updateSectorSummaryTelemetry(undefined, 2, 1);
         hud.updateMinimap(null, 3, 2);
       }).not.toThrow();
+    });
+  });
+
+  describe('HUD Live Combat Survivability & Hull Integrity Telemetry (M136)', () => {
+    const createTestPlayer = (overrides?: Partial<PlayerState>): PlayerState => ({
+      hp: 6,
+      maxHp: 6,
+      coins: 20,
+      nos: 100,
+      nosMax: 100,
+      nosLock: false,
+      items: [],
+      itemStacks: {},
+      weapon: 'pistol',
+      runWeapons: {},
+      dmgMult: 1.0,
+      fireRateMult: 1.0,
+      speedMult: 1.0,
+      multiShot: 1,
+      pierce: 0,
+      bounce: 0,
+      vampChance: 0,
+      killCount: 0,
+      heatLevel: 0,
+      invuln: 0,
+      ...overrides
+    } as unknown as PlayerState);
+
+    it('1. populates critical hull state (<=35%) telemetry on DOM elements via updateSurvivabilityTelemetry', () => {
+      document.body.innerHTML = `
+        <div id="fuel-bar"></div>
+        <div id="sidebar"></div>
+        <div id="hud-synergy-list"></div>
+      `;
+
+      const hud = new HUDController();
+      const player = createTestPlayer({ hp: 1, maxHp: 5, invuln: 0 });
+      const summary = getCombatSurvivabilitySummary(player);
+      expect(summary.hullPct).toBe(20);
+      expect(summary.hullStatus).toBe('CRITICAL HULL');
+
+      hud.updateSurvivabilityTelemetry(player);
+
+      const fuelEl = document.getElementById('fuel-bar')!;
+      const sidebarEl = document.getElementById('sidebar')!;
+      const synergyEl = document.getElementById('hud-synergy-list')!;
+
+      for (const el of [fuelEl, sidebarEl, synergyEl]) {
+        expect(el.getAttribute('data-hull-pct')).toBe('20');
+        expect(el.getAttribute('data-hull-status')).toBe('CRITICAL HULL');
+        expect(el.getAttribute('data-chassis-tier')).toBe('STANDARD CHASSIS');
+        expect(el.getAttribute('data-hull-invulnerable')).toBe('false');
+        expect(el.getAttribute('data-survivability-summary')).toBe('HULL: 1/5 (20% · CRITICAL HULL) // STANDARD CHASSIS');
+      }
+    });
+
+    it('2. populates damaged hull state (36..79%) telemetry on DOM elements via updateSurvivabilityTelemetry', () => {
+      document.body.innerHTML = `
+        <div id="hp-bar"></div>
+        <div id="hud-sidebar"></div>
+        <div id="synergy-list"></div>
+      `;
+
+      const hud = new HUDController();
+      const player = createTestPlayer({ hp: 3, maxHp: 6, invuln: 0 });
+      const summary = getCombatSurvivabilitySummary(player);
+      expect(summary.hullPct).toBe(50);
+      expect(summary.hullStatus).toBe('DAMAGED HULL');
+
+      hud.updateSurvivabilityTelemetry(player);
+
+      const hpBar = document.getElementById('hp-bar')!;
+      const hudSidebar = document.getElementById('hud-sidebar')!;
+      const synergyList = document.getElementById('synergy-list')!;
+
+      for (const el of [hpBar, hudSidebar, synergyList]) {
+        expect(el.getAttribute('data-hull-pct')).toBe('50');
+        expect(el.getAttribute('data-hull-status')).toBe('DAMAGED HULL');
+        expect(el.getAttribute('data-chassis-tier')).toBe('STANDARD CHASSIS');
+        expect(el.getAttribute('data-hull-invulnerable')).toBe('false');
+        expect(el.getAttribute('data-survivability-summary')).toBe('HULL: 3/6 (50% · DAMAGED HULL) // STANDARD CHASSIS');
+      }
+    });
+
+    it('3. populates optimal hull state (>=80%) telemetry on DOM elements via updateSurvivabilityTelemetry', () => {
+      document.body.innerHTML = `
+        <div id="fuel-bar"></div>
+        <div id="sidebar"></div>
+        <div id="hud-synergy-list"></div>
+      `;
+
+      const hud = new HUDController();
+      const player = createTestPlayer({ hp: 5, maxHp: 5, invuln: 0 });
+      const summary = getCombatSurvivabilitySummary(player);
+      expect(summary.hullPct).toBe(100);
+      expect(summary.hullStatus).toBe('OPTIMAL HULL');
+
+      hud.updateSurvivabilityTelemetry(player);
+
+      const fuelEl = document.getElementById('fuel-bar')!;
+      const sidebarEl = document.getElementById('sidebar')!;
+      const synergyEl = document.getElementById('hud-synergy-list')!;
+
+      for (const el of [fuelEl, sidebarEl, synergyEl]) {
+        expect(el.getAttribute('data-hull-pct')).toBe('100');
+        expect(el.getAttribute('data-hull-status')).toBe('OPTIMAL HULL');
+        expect(el.getAttribute('data-chassis-tier')).toBe('STANDARD CHASSIS');
+        expect(el.getAttribute('data-hull-invulnerable')).toBe('false');
+        expect(el.getAttribute('data-survivability-summary')).toBe('HULL: 5/5 (100% · OPTIMAL HULL) // STANDARD CHASSIS');
+      }
+    });
+
+    it('4. verifies critical boundary condition at exact 35% hull threshold vs 36% damaged', () => {
+      document.body.innerHTML = `
+        <div id="fuel-bar"></div>
+        <div id="sidebar"></div>
+      `;
+
+      const hud = new HUDController();
+      const player35 = createTestPlayer({ hp: 35, maxHp: 100, invuln: 0 });
+      hud.updateSurvivabilityTelemetry(player35);
+
+      const fuelEl = document.getElementById('fuel-bar')!;
+      expect(fuelEl.getAttribute('data-hull-pct')).toBe('35');
+      expect(fuelEl.getAttribute('data-hull-status')).toBe('CRITICAL HULL');
+
+      const player36 = createTestPlayer({ hp: 36, maxHp: 100, invuln: 0 });
+      hud.updateSurvivabilityTelemetry(player36);
+
+      expect(fuelEl.getAttribute('data-hull-pct')).toBe('36');
+      expect(fuelEl.getAttribute('data-hull-status')).toBe('DAMAGED HULL');
+    });
+
+    it('5. verifies optimal boundary condition at exact 79% damaged vs 80% optimal threshold', () => {
+      document.body.innerHTML = `
+        <div id="fuel-bar"></div>
+        <div id="sidebar"></div>
+      `;
+
+      const hud = new HUDController();
+      const player79 = createTestPlayer({ hp: 79, maxHp: 100, invuln: 0 });
+      hud.updateSurvivabilityTelemetry(player79);
+
+      const fuelEl = document.getElementById('fuel-bar')!;
+      expect(fuelEl.getAttribute('data-hull-pct')).toBe('79');
+      expect(fuelEl.getAttribute('data-hull-status')).toBe('DAMAGED HULL');
+
+      const player80 = createTestPlayer({ hp: 80, maxHp: 100, invuln: 0 });
+      hud.updateSurvivabilityTelemetry(player80);
+
+      expect(fuelEl.getAttribute('data-hull-pct')).toBe('80');
+      expect(fuelEl.getAttribute('data-hull-status')).toBe('OPTIMAL HULL');
+    });
+
+    it('6. populates STANDARD CHASSIS tier when maxHp is below 7', () => {
+      document.body.innerHTML = `<div id="fuel-bar"></div>`;
+      const hud = new HUDController();
+      const player = createTestPlayer({ hp: 6, maxHp: 6, invuln: 0 });
+
+      hud.updateSurvivabilityTelemetry(player);
+
+      const fuelEl = document.getElementById('fuel-bar')!;
+      expect(fuelEl.getAttribute('data-chassis-tier')).toBe('STANDARD CHASSIS');
+      expect(fuelEl.getAttribute('data-survivability-summary')).toContain('STANDARD CHASSIS');
+    });
+
+    it('7. populates REINFORCED CHASSIS tier when maxHp is between 7 and 9', () => {
+      document.body.innerHTML = `<div id="fuel-bar"></div>`;
+      const hud = new HUDController();
+      const player = createTestPlayer({ hp: 7, maxHp: 8, invuln: 0 });
+
+      hud.updateSurvivabilityTelemetry(player);
+
+      const fuelEl = document.getElementById('fuel-bar')!;
+      expect(fuelEl.getAttribute('data-chassis-tier')).toBe('REINFORCED CHASSIS');
+      expect(fuelEl.getAttribute('data-survivability-summary')).toContain('REINFORCED CHASSIS');
+    });
+
+    it('8. populates JUGGERNAUT TANK chassis tier when maxHp is 10 or greater', () => {
+      document.body.innerHTML = `<div id="fuel-bar"></div>`;
+      const hud = new HUDController();
+      const player = createTestPlayer({ hp: 12, maxHp: 12, invuln: 0 });
+
+      hud.updateSurvivabilityTelemetry(player);
+
+      const fuelEl = document.getElementById('fuel-bar')!;
+      expect(fuelEl.getAttribute('data-chassis-tier')).toBe('JUGGERNAUT TANK');
+      expect(fuelEl.getAttribute('data-survivability-summary')).toContain('JUGGERNAUT TANK');
+    });
+
+    it('9. populates active i-frames telemetry flag and summary tag when invuln > 0 vs invuln = 0', () => {
+      document.body.innerHTML = `<div id="fuel-bar"></div>`;
+      const hud = new HUDController();
+      const playerActive = createTestPlayer({ hp: 5, maxHp: 8, invuln: 45 });
+
+      hud.updateSurvivabilityTelemetry(playerActive);
+
+      const fuelEl = document.getElementById('fuel-bar')!;
+      expect(fuelEl.getAttribute('data-hull-invulnerable')).toBe('true');
+      expect(fuelEl.getAttribute('data-survivability-summary')).toContain('· SHIELD I-FRAMES ACTIVE');
+
+      const playerInactive = createTestPlayer({ hp: 5, maxHp: 8, invuln: 0 });
+      hud.updateSurvivabilityTelemetry(playerInactive);
+
+      expect(fuelEl.getAttribute('data-hull-invulnerable')).toBe('false');
+      expect(fuelEl.getAttribute('data-survivability-summary')).not.toContain('· SHIELD I-FRAMES ACTIVE');
+    });
+
+    it('10. integrates telemetry updates automatically via updateSidebar and updateStats across all target elements', () => {
+      document.body.innerHTML = `
+        <div id="fuel-bar"></div>
+        <div id="sidebar"></div>
+        <div id="hud-synergy-list"></div>
+        <div id="stats-grid"></div>
+        <div id="hp-text"></div>
+        <div id="hull-bar"></div>
+        <div id="coin-count"></div>
+        <div id="scrap-count"></div>
+        <div id="floor-num"></div>
+        <div id="hud-lv-badge"></div>
+        <div id="hud-weapon-deck"></div>
+      `;
+
+      const hud = new HUDController();
+      const player = createTestPlayer({ hp: 2, maxHp: 10, invuln: 20 });
+
+      hud.updateSidebar(player, 3);
+
+      const fuelEl = document.getElementById('fuel-bar')!;
+      const sidebarEl = document.getElementById('sidebar')!;
+      const synergyEl = document.getElementById('hud-synergy-list')!;
+
+      expect(fuelEl.getAttribute('data-hull-pct')).toBe('20');
+      expect(fuelEl.getAttribute('data-hull-status')).toBe('CRITICAL HULL');
+      expect(fuelEl.getAttribute('data-chassis-tier')).toBe('JUGGERNAUT TANK');
+      expect(fuelEl.getAttribute('data-hull-invulnerable')).toBe('true');
+      expect(fuelEl.getAttribute('data-survivability-summary')).toBe(
+        'HULL: 2/10 (20% · CRITICAL HULL) // JUGGERNAUT TANK · SHIELD I-FRAMES ACTIVE'
+      );
+
+      expect(sidebarEl.getAttribute('data-hull-pct')).toBe('20');
+      expect(sidebarEl.getAttribute('data-hull-status')).toBe('CRITICAL HULL');
+      expect(synergyEl.getAttribute('data-hull-pct')).toBe('20');
+      expect(synergyEl.getAttribute('data-hull-status')).toBe('CRITICAL HULL');
+
+      // Also verify custom directly-assigned elements, updateStats, and standalone updateSurvivabilityTelemetry
+      const customHud = new HUDController();
+      const customFuel = document.createElement('div');
+      const customSidebar = document.createElement('aside');
+      const customSynergy = document.createElement('section');
+
+      customHud.fuelBarEl = customFuel;
+      customHud.sidebarEl = customSidebar;
+      customHud.synergyListEl = customSynergy;
+
+      const player2 = createTestPlayer({ hp: 8, maxHp: 8, invuln: 0 });
+      customHud.updateStats(player2);
+
+      expect(customFuel.getAttribute('data-hull-pct')).toBe('100');
+      expect(customFuel.getAttribute('data-hull-status')).toBe('OPTIMAL HULL');
+      expect(customFuel.getAttribute('data-chassis-tier')).toBe('REINFORCED CHASSIS');
+      expect(customFuel.getAttribute('data-hull-invulnerable')).toBe('false');
+
+      expect(customSidebar.getAttribute('data-hull-pct')).toBe('100');
+      expect(customSynergy.getAttribute('data-hull-pct')).toBe('100');
+
+      // Standalone helper
+      updateSurvivabilityTelemetry(player);
+      expect(fuelEl.getAttribute('data-hull-pct')).toBe('20');
     });
   });
 });

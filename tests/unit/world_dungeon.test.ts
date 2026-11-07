@@ -493,7 +493,7 @@ describe('World Module: Procedural Dungeon Generation (src/world/dungeon.ts)', (
         id: 'GRAZE_INITIATE',
         floor: 1,
         title: 'NEON DAREDEVIL',
-        desc: 'Graze 3 enemy projectiles or clear Floor 1 Boss',
+        desc: 'Dodge 3 enemy projectiles or clear Floor 1 Boss',
         targetCount: 3,
         scrapReward: 8,
         coinReward: 10
@@ -512,11 +512,11 @@ describe('World Module: Procedural Dungeon Generation (src/world/dungeon.ts)', (
 
       const f3 = getFloorBountyContract(3);
       expect(f3).toEqual({
-        id: 'STYLE_HUNTER',
+        id: 'THERMAL_HUNTER',
         floor: 3,
-        title: 'HIGH-OCTANE STYLER',
-        desc: 'Reach Style Rank A in combat or clear Floor 3 Boss',
-        targetCount: 55,
+        title: 'THERMAL HUNTER',
+        desc: 'Eliminate 6 hostiles or clear Floor 3 Boss',
+        targetCount: 6,
         scrapReward: 14,
         coinReward: 18
       });
@@ -550,8 +550,8 @@ describe('World Module: Procedural Dungeon Generation (src/world/dungeon.ts)', (
         id: 'VALHALLA_LEGEND',
         floor: 6,
         title: 'VALHALLA ASCENDANT',
-        desc: 'Reach Style Rank SS or defeat the Sector Boss',
-        targetCount: 85,
+        desc: 'Defeat the Sector Boss to claim Valhalla bounty',
+        targetCount: 1,
         scrapReward: 30,
         coinReward: 40
       });
@@ -561,8 +561,8 @@ describe('World Module: Procedural Dungeon Generation (src/world/dungeon.ts)', (
         id: 'VALHALLA_LEGEND',
         floor: 7,
         title: 'VALHALLA ASCENDANT',
-        desc: 'Reach Style Rank SS or defeat the Sector Boss',
-        targetCount: 85,
+        desc: 'Defeat the Sector Boss to claim Valhalla bounty',
+        targetCount: 1,
         scrapReward: 35,
         coinReward: 48
       });
@@ -572,8 +572,8 @@ describe('World Module: Procedural Dungeon Generation (src/world/dungeon.ts)', (
         id: 'VALHALLA_LEGEND',
         floor: 8,
         title: 'VALHALLA ASCENDANT',
-        desc: 'Reach Style Rank SS or defeat the Sector Boss',
-        targetCount: 85,
+        desc: 'Defeat the Sector Boss to claim Valhalla bounty',
+        targetCount: 1,
         scrapReward: 40,
         coinReward: 56
       });
@@ -674,7 +674,7 @@ describe('World Module: Procedural Dungeon Generation (src/world/dungeon.ts)', (
       expect(c).toEqual({
         npcId: 'codex',
         speaker: 'DOC CULLEN',
-        quote: 'Tactical Scanner calibrated: +8% DMG & +15% Bullet Speed locked in.',
+        quote: 'Outlaw career dossier and sector combat logs online.',
         accentColor: '#9d4edd'
       });
     });

@@ -1043,16 +1043,16 @@ describe('HubStationModalController & getHubStationPromptInfo (Wave 14-15)', () 
 
     it('returns contextual prompt info for codex station with scannerClaimed variations', () => {
       const unclaimed = getHubStationPromptInfo('codex', undefined, undefined, { scannerClaimed: false });
-      expect(unclaimed.title).toBe('📡 TACTICAL INTEL & SCANNER LAB');
-      expect(unclaimed.summary).toContain('Claim FREE +8–20% Weapon DMG & +15% Bullet Speed Buff');
-      expect(unclaimed.actionLabel).toBe('OPEN INTEL LAB [E]');
+      expect(unclaimed.title).toBe('📡 OUTLAW CAREER DOSSIER');
+      expect(unclaimed.summary).toContain('Inspect your lifetime Outlaw Rank, deepest sector reached, and boss defeat records');
+      expect(unclaimed.actionLabel).toBe('OPEN DOSSIER [E]');
       expect(unclaimed.accentColor).toBe('#9d4edd');
 
       const claimed = getHubStationPromptInfo('codex', undefined, undefined, { scannerClaimed: true });
-      expect(claimed.summary).toContain('Tactical Scanner +DMG/+SPD Buff Active!');
+      expect(claimed.summary).toContain('Inspect your lifetime Outlaw Rank');
 
       const undefinedBuffs = getHubStationPromptInfo('codex');
-      expect(undefinedBuffs.summary).toContain('Claim FREE +8–20% Weapon DMG & +15% Bullet Speed Buff');
+      expect(undefinedBuffs.summary).toContain('Inspect your lifetime Outlaw Rank');
     });
 
     it('returns contextual prompt info for bounty station across claimed states and Heat levels 0..3', () => {
@@ -1061,7 +1061,7 @@ describe('HubStationModalController & getHubStationPromptInfo (Wave 14-15)', () 
 
         const unclaimed = getHubStationPromptInfo('bounty', meta, undefined, { bountyClaimed: false });
         expect(unclaimed.title).toBe('🎖️ OUTLAW WAR ROOM & BOUNTIES');
-        expect(unclaimed.summary).toContain('Claim FREE +15 Coins 🪙 & +1 Max Hull ❤️ Cache');
+        expect(unclaimed.summary).toContain('Configure Threat Heat Level (0–3) for up to +75% Bonus Scrap');
         expect(unclaimed.actionLabel).toBe('OPEN WAR ROOM [E]');
         expect(unclaimed.accentColor).toBe('#06d6a0');
 
@@ -1069,7 +1069,7 @@ describe('HubStationModalController & getHubStationPromptInfo (Wave 14-15)', () 
         expect(claimed.summary).toContain('Configure Threat Heat Level (0–3) for up to +75% Bonus Scrap');
 
         const noBuffs = getHubStationPromptInfo('bounty', meta);
-        expect(noBuffs.summary).toContain('Claim FREE +15 Coins 🪙 & +1 Max Hull ❤️ Cache');
+        expect(noBuffs.summary).toContain('Configure Threat Heat Level (0–3) for up to +75% Bonus Scrap');
       }
     });
 
@@ -1385,8 +1385,7 @@ describe('HubStationModalController & getHubStationPromptInfo (Wave 14-15)', () 
       expect(document.querySelector('.hub-forge-desc')?.textContent).toContain('craft a brand-new high-grade part');
     });
 
-    it('renders codex station with career telemetry and claims tactical scanner buff', () => {
-      const onClaimScanner = vi.fn(() => ({ ok: true, message: 'Tactical Scanner locked: +15% Speed, +12% DMG' }));
+    it('renders codex station with career telemetry and closes on primary action', () => {
       const options = createHubOptions({
         npcId: 'codex',
         metaSave: {
@@ -1394,31 +1393,19 @@ describe('HubStationModalController & getHubStationPromptInfo (Wave 14-15)', () 
           totalKills: 489,
           bossesSlain: 4,
           totalRuns: 16
-        },
-        scannerClaimed: false,
-        onClaimScanner
+        }
       });
       modal.open(options);
 
-      expect(document.getElementById('hub-station-title')?.textContent).toBe('📡 TACTICAL INTEL & SCANNER LAB');
+      expect(document.getElementById('hub-station-title')?.textContent).toBe('📡 OUTLAW CAREER DOSSIER');
       expect(document.getElementById('hub-station-speaker')?.textContent).toBe('CHIEF TACTICIAN DOC');
       expect(document.body.innerHTML).toContain('Floor 5');
       expect(document.body.innerHTML).toContain('489');
       expect(document.body.innerHTML).toContain('4');
       expect(document.body.innerHTML).toContain('16');
-      expect(document.querySelector('.hub-scanner-status-pill')?.textContent).toBe('⚡ READY TO CALIBRATE');
 
       const primaryBtn = document.getElementById('btn-hub-station-primary') as HTMLButtonElement;
-      expect(primaryBtn.textContent).toContain('CALIBRATE TACTICAL SCANNER (FREE)');
-      primaryBtn.click();
-
-      expect(onClaimScanner).toHaveBeenCalledTimes(1);
-      expect(options.scannerClaimed).toBe(true);
-      expect(document.getElementById('hub-station-feedback')?.textContent).toContain('Tactical Scanner locked');
-      expect(document.querySelector('.hub-scanner-status-pill')?.textContent).toBe('✓ ACTIVE');
-      expect(primaryBtn.textContent).toContain('SCANNER CALIBRATED & ACTIVE');
-
-      // Clicking again when active closes the dialog
+      expect(primaryBtn.textContent).toContain('CLOSE DOSSIER');
       primaryBtn.click();
       expect(modal.isOpen()).toBe(false);
     });
@@ -1453,14 +1440,11 @@ describe('HubStationModalController & getHubStationPromptInfo (Wave 14-15)', () 
       expect(banner?.textContent).toContain(`${expectedRank.title} (SCORE: ${expectedRank.careerScore}) — ${expectedRank.nextMilestoneText}`);
     });
 
-    it('renders bounty station, claims supply cache, and selects Heat levels 0..3', () => {
-      const onClaimBountyCache = vi.fn(() => ({ ok: true, message: 'Free Cache Claimed: +15 Coins & +1 Max Hull' }));
+    it('renders bounty station and selects Heat levels 0..3', () => {
       const onSelectHeat = vi.fn();
       const options = createHubOptions({
         npcId: 'bounty',
         metaSave: { heatLevel: 0 },
-        bountyClaimed: false,
-        onClaimBountyCache,
         onSelectHeat
       });
       modal.open(options);
@@ -1468,18 +1452,7 @@ describe('HubStationModalController & getHubStationPromptInfo (Wave 14-15)', () 
       expect(document.getElementById('hub-station-title')?.textContent).toBe('🎖️ OUTLAW WAR ROOM & BOUNTIES');
       expect(document.getElementById('hub-station-speaker')?.textContent).toBe('VALKYRIE VEX');
 
-      // 1. Claim supply cache
-      const cacheBtn = document.getElementById('btn-hub-claim-cache') as HTMLButtonElement;
-      expect(cacheBtn).not.toBeNull();
-      expect(cacheBtn.disabled).toBe(false);
-      cacheBtn.click();
-
-      expect(onClaimBountyCache).toHaveBeenCalledTimes(1);
-      expect(options.bountyClaimed).toBe(true);
-      expect(document.getElementById('hub-station-feedback')?.textContent).toContain('Free Cache Claimed');
-      expect((document.getElementById('btn-hub-claim-cache') as HTMLButtonElement).disabled).toBe(true);
-
-      // 2. Select Heat levels 0..3 via heat buttons
+      // Select Heat levels 0..3 via heat buttons
       const heatButtons = document.querySelectorAll<HTMLButtonElement>('.hub-heat-btn');
       expect(heatButtons.length).toBe(4);
 
@@ -1556,9 +1529,7 @@ describe('HubStationModalController & getHubStationPromptInfo (Wave 14-15)', () 
       expect(document.querySelector('.hub-heat-current')?.textContent).toBe('CURRENT: HEAT 0');
     });
 
-    it('renders launch station checklist and auto-claims unclaimed buffs before deployment', () => {
-      const onClaimScanner = vi.fn(() => ({ ok: true, message: 'Scanner locked!' }));
-      const onClaimBountyCache = vi.fn(() => ({ ok: true, message: 'Cache secured!' }));
+    it('renders launch station checklist and deploys into Sector 1', () => {
       const onLaunchRun = vi.fn();
       const options = createHubOptions({
         npcId: 'launch',
@@ -1566,39 +1537,15 @@ describe('HubStationModalController & getHubStationPromptInfo (Wave 14-15)', () 
         metaSave: { heatLevel: 2 },
         scannerClaimed: false,
         bountyClaimed: false,
-        onClaimScanner,
-        onClaimBountyCache,
         onLaunchRun
       });
       modal.open(options);
-
-      const overlay = document.getElementById('hub-station-overlay');
-      expect(overlay?.getAttribute('data-launch-ready-count')).toBe('0');
-      expect(overlay?.getAttribute('data-launch-fully-prepped')).toBe('false');
-      expect(overlay?.getAttribute('data-launch-advisor')).toBe(
-        'PRE-FLIGHT: ⚠️ MISSING SCANNER BUFF & WAR ROOM CACHE // WEAPON: SHOTGUN // HEAT 2'
-      );
 
       expect(document.getElementById('hub-station-title')?.textContent).toBe('🚀 SECTOR 1 HIGHWAY LAUNCH GATE');
       expect(document.getElementById('hub-station-speaker')?.textContent).toBe('DISPATCH OPERATOR');
       expect(document.body.innerHTML).toContain('SHOTGUN');
       expect(document.body.innerHTML).toContain('HEAT 2 (+50% Bonus Scrap)');
-
-      const autoClaimBtn = document.getElementById('btn-hub-autoclaim') as HTMLButtonElement;
-      expect(autoClaimBtn).not.toBeNull();
-      autoClaimBtn.click();
-
-      expect(onClaimScanner).toHaveBeenCalledTimes(1);
-      expect(onClaimBountyCache).toHaveBeenCalledTimes(1);
-      expect(options.scannerClaimed).toBe(true);
-      expect(options.bountyClaimed).toBe(true);
-      expect(document.querySelector('.hub-ready-banner')?.textContent).toContain('All free pre-run systems calibrated');
-
-      expect(overlay?.getAttribute('data-launch-ready-count')).toBe('2');
-      expect(overlay?.getAttribute('data-launch-fully-prepped')).toBe('true');
-      expect(overlay?.getAttribute('data-launch-advisor')).toBe(
-        'PRE-FLIGHT: ✓ 2/2 BUFFS LOCKED // WEAPON: SHOTGUN // HEAT 2'
-      );
+      expect(document.querySelector('.hub-ready-banner')?.textContent).toContain('Bike systems calibrated');
 
       // Click primary button to deploy into Sector 1
       const primaryBtn = document.getElementById('btn-hub-station-primary') as HTMLButtonElement;
@@ -2119,26 +2066,19 @@ describe('HubStationModalController & getHubStationPromptInfo (Wave 14-15)', () 
         'CACHE: ⚡ FREE DROP READY (+15 🪙 / +1 ❤️) // HEAT 0 (+0% SCRAP) // REC HEAT: <= 2'
       );
 
-      // Claim cache
-      const cacheBtn = document.getElementById('btn-hub-claim-cache') as HTMLButtonElement;
-      cacheBtn.click();
-      expect(overlayEl.getAttribute('data-war-room-advisor')).toBe(
-        'CACHE: ✓ CLAIMED (+15 🪙 / +1 ❤️) // HEAT 0 (+0% SCRAP) // REC HEAT: <= 2'
-      );
-
       // Click Heat 2
       const heatButtons = document.querySelectorAll<HTMLButtonElement>('.hub-heat-btn');
       heatButtons[2].click();
       expect(overlayEl.getAttribute('data-war-room-heat')).toBe('2');
-      expect(overlayEl.getAttribute('data-war-room-advisor')).toBe(
-        'CACHE: ✓ CLAIMED (+15 🪙 / +1 ❤️) // HEAT 2 (+50% SCRAP) // REC HEAT: <= 2'
+      expect(overlayEl.getAttribute('data-war-room-advisor')).toContain(
+        'HEAT 2 (+50% SCRAP) // REC HEAT: <= 2'
       );
 
       // Click Heat 3
       heatButtons[3].click();
       expect(overlayEl.getAttribute('data-war-room-heat')).toBe('3');
-      expect(overlayEl.getAttribute('data-war-room-advisor')).toBe(
-        'CACHE: ✓ CLAIMED (+15 🪙 / +1 ❤️) // HEAT 3 (+75% SCRAP) // REC HEAT: <= 2'
+      expect(overlayEl.getAttribute('data-war-room-advisor')).toContain(
+        'HEAT 3 (+75% SCRAP) // REC HEAT: <= 2'
       );
     });
 

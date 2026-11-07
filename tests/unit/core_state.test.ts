@@ -786,7 +786,7 @@ describe('Core State Management & Persistence', () => {
         {
           floor: 1,
           title: 'NEON DAREDEVIL',
-          task: 'Graze 3 enemy projectiles or clear Floor 1 Boss',
+          task: 'Dodge 3 enemy projectiles or clear Floor 1 Boss',
           scrap: 8,
           coins: 10
         },
@@ -800,7 +800,7 @@ describe('Core State Management & Persistence', () => {
         {
           floor: 3,
           title: 'THERMAL HUNTER',
-          task: 'Reach Style Rank A or clear Floor 3 Boss',
+          task: 'Eliminate 6 hostiles or clear Floor 3 Boss',
           scrap: 12,
           coins: 15
         },
@@ -814,7 +814,7 @@ describe('Core State Management & Persistence', () => {
         {
           floor: 5,
           title: 'APEX INTERCEPTOR',
-          task: 'Reach Style Rank S or clear Floor 5 Boss',
+          task: 'Clear 3 combat rooms or defeat Floor 5 Boss',
           scrap: 18,
           coins: 22
         },
@@ -848,7 +848,7 @@ describe('Core State Management & Persistence', () => {
       expect(bountyF7.rewardScrap).toBe(8);
       expect(bountyF7.rewardCoins).toBe(10);
       expect(bountyF7.summaryLine).toBe(
-        'BOUNTY [F7] NEON DAREDEVIL: Graze 3 enemy projectiles or clear Floor 1 Boss (+8 SCRAP, +10 COINS)'
+        'BOUNTY [F7] NEON DAREDEVIL: Dodge 3 enemy projectiles or clear Floor 1 Boss (+8 SCRAP, +10 COINS)'
       );
 
       const bountyF12 = getFloorBountyContractStatus(12);

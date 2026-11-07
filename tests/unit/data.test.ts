@@ -49,7 +49,9 @@ import {
   MetaTuningSummary,
   getMetaTuningSummary,
   RunModDeckSummary,
-  getRunModDeckSummary
+  getRunModDeckSummary,
+  DropItemStackSummary,
+  getDropItemStackSummary
 } from '@/data/upgrades';
 import {
   EQUIP_SLOTS,
@@ -731,7 +733,7 @@ describe('Tooltip: formatHubNpcTooltip', () => {
     expect(tip).toEqual({
       title: 'DOC CULLEN',
       subtitle: 'SANCTUARY STATION // CODEX',
-      quote: '"Tactical Scanner calibrated: +8% DMG & +15% Bullet Speed locked in."',
+      quote: '"Outlaw career dossier and sector combat logs online."',
       accentColor: '#9d4edd'
     });
   });
@@ -1531,6 +1533,217 @@ describe('Tooltip: formatHubNpcTooltip', () => {
       });
       expect(alreadyActive.map(s => s.id)).not.toContain('thermal_shock');
       expect(alreadyActive.map(s => s.id)).toContain('superconductor');
+    });
+  });
+
+  describe('getDropItemStackSummary (M137: RoR2 Toolbox Crate Item Stack Telemetry & Summary)', () => {
+    it('returns default zero summary when player is null, undefined, or empty object', () => {
+      const expectedEmpty: DropItemStackSummary = {
+        totalItemDrops: 0,
+        uniqueItemTypes: 0,
+        totalPoolSize: 12,
+        topItemId: null,
+        topItemName: null,
+        topItemCount: 0,
+        summaryLine: 'CRATES: 0 STACKS (0/12 TYPES) // TOP: NONE'
+      };
+
+      expect(getDropItemStackSummary(null)).toEqual(expectedEmpty);
+      expect(getDropItemStackSummary(undefined)).toEqual(expectedEmpty);
+      expect(getDropItemStackSummary({})).toEqual(expectedEmpty);
+      expect(getDropItemStackSummary({ itemStacks: null })).toEqual(expectedEmpty);
+      expect(getDropItemStackSummary({ itemStacks: {} })).toEqual(expectedEmpty);
+    });
+
+    it('accurately summarizes single drop item stack', () => {
+      const summary = getDropItemStackSummary({
+        itemStacks: {
+          nitro_syringe: 3
+        }
+      });
+
+      expect(summary.totalItemDrops).toBe(3);
+      expect(summary.uniqueItemTypes).toBe(1);
+      expect(summary.totalPoolSize).toBe(12);
+      expect(summary.topItemId).toBe('nitro_syringe');
+      expect(summary.topItemName).toBe('Nitro Syringe');
+      expect(summary.topItemCount).toBe(3);
+      expect(summary.summaryLine).toBe('CRATES: 3 STACKS (1/12 TYPES) // TOP: NITRO SYRINGE x3');
+    });
+
+    it('correctly tracks top item when multiple items are stacked with distinct counts', () => {
+      const summary = getDropItemStackSummary({
+        itemStacks: {
+          tire_iron: 1,
+          chrome_lens: 4,
+          gasoline: 2
+        }
+      });
+
+      expect(summary.totalItemDrops).toBe(7);
+      expect(summary.uniqueItemTypes).toBe(3);
+      expect(summary.totalPoolSize).toBe(12);
+      expect(summary.topItemId).toBe('chrome_lens');
+      expect(summary.topItemName).toBe('Chrome Lens');
+      expect(summary.topItemCount).toBe(4);
+      expect(summary.summaryLine).toBe('CRATES: 7 STACKS (3/12 TYPES) // TOP: CHROME LENS x4');
+    });
+
+    it('enforces first-in-DROP_ITEM_IDS order tie-breaking when two items have identical highest stack', () => {
+      // racing_slicks (index 4) and nitro_syringe (index 0) both have count 5
+      const summary = getDropItemStackSummary({
+        itemStacks: {
+          racing_slicks: 5,
+          nitro_syringe: 5
+        }
+      });
+
+      expect(summary.totalItemDrops).toBe(10);
+      expect(summary.uniqueItemTypes).toBe(2);
+      expect(summary.topItemId).toBe('nitro_syringe');
+      expect(summary.topItemName).toBe('Nitro Syringe');
+      expect(summary.topItemCount).toBe(5);
+      expect(summary.summaryLine).toBe('CRATES: 10 STACKS (2/12 TYPES) // TOP: NITRO SYRINGE x5');
+    });
+
+    it('enforces first-in-DROP_ITEM_IDS order tie-breaking across multiple tied items later in array', () => {
+      // tesla_capacitor (idx 6), exhaust_afterburner (idx 7), titanium_spikes (idx 11) all have count 2
+      const summary = getDropItemStackSummary({
+        itemStacks: {
+          exhaust_afterburner: 2,
+          titanium_spikes: 2,
+          tesla_capacitor: 2
+        }
+      });
+
+      expect(summary.totalItemDrops).toBe(6);
+      expect(summary.uniqueItemTypes).toBe(3);
+      expect(summary.topItemId).toBe('tesla_capacitor');
+      expect(summary.topItemName).toBe('Tesla Capacitor');
+      expect(summary.topItemCount).toBe(2);
+      expect(summary.summaryLine).toBe('CRATES: 6 STACKS (3/12 TYPES) // TOP: TESLA CAPACITOR x2');
+    });
+
+    it('handles all 12 DROP_ITEM_IDS stacked simultaneously with distinct top item', () => {
+      const fullStacks: Record<string, number> = {};
+      for (const id of DROP_ITEM_IDS) {
+        fullStacks[id] = 1;
+      }
+      fullStacks.titanium_spikes = 10;
+
+      const summary = getDropItemStackSummary({ itemStacks: fullStacks });
+
+      expect(summary.totalItemDrops).toBe(21);
+      expect(summary.uniqueItemTypes).toBe(12);
+      expect(summary.totalPoolSize).toBe(12);
+      expect(summary.topItemId).toBe('titanium_spikes');
+      expect(summary.topItemName).toBe('Titanium Ram Spikes');
+      expect(summary.topItemCount).toBe(10);
+      expect(summary.summaryLine).toBe('CRATES: 21 STACKS (12/12 TYPES) // TOP: TITANIUM RAM SPIKES x10');
+    });
+
+    it('handles all 12 DROP_ITEM_IDS with uniform 1 stack where tie-break awards top to first item', () => {
+      const uniformStacks: Record<string, number> = {};
+      for (const id of DROP_ITEM_IDS) {
+        uniformStacks[id] = 1;
+      }
+
+      const summary = getDropItemStackSummary({ itemStacks: uniformStacks });
+
+      expect(summary.totalItemDrops).toBe(12);
+      expect(summary.uniqueItemTypes).toBe(12);
+      expect(summary.totalPoolSize).toBe(12);
+      expect(summary.topItemId).toBe('nitro_syringe');
+      expect(summary.topItemName).toBe('Nitro Syringe');
+      expect(summary.topItemCount).toBe(1);
+      expect(summary.summaryLine).toBe('CRATES: 12 STACKS (12/12 TYPES) // TOP: NITRO SYRINGE x1');
+    });
+
+    it('floors floating-point fractional stack values', () => {
+      const summary = getDropItemStackSummary({
+        itemStacks: {
+          oil_infusion: 3.8,
+          magnet_coil: 1.1
+        }
+      });
+
+      expect(summary.totalItemDrops).toBe(4);
+      expect(summary.uniqueItemTypes).toBe(2);
+      expect(summary.topItemId).toBe('oil_infusion');
+      expect(summary.topItemName).toBe('Oil Infusion');
+      expect(summary.topItemCount).toBe(3);
+      expect(summary.summaryLine).toBe('CRATES: 4 STACKS (2/12 TYPES) // TOP: OIL INFUSION x3');
+    });
+
+    it('ignores zero and negative counts', () => {
+      const summary = getDropItemStackSummary({
+        itemStacks: {
+          reactive_plating: 0,
+          adrenaline_injector: -4,
+          chrome_lens: 2
+        }
+      });
+
+      expect(summary.totalItemDrops).toBe(2);
+      expect(summary.uniqueItemTypes).toBe(1);
+      expect(summary.topItemId).toBe('chrome_lens');
+      expect(summary.topItemName).toBe('Chrome Lens');
+      expect(summary.topItemCount).toBe(2);
+      expect(summary.summaryLine).toBe('CRATES: 2 STACKS (1/12 TYPES) // TOP: CHROME LENS x2');
+    });
+
+    it('ignores non-finite numbers such as NaN, Infinity, and negative Infinity', () => {
+      const summary = getDropItemStackSummary({
+        itemStacks: {
+          nitro_syringe: NaN,
+          tire_iron: Infinity,
+          gasoline: -Infinity,
+          reactive_plating: 4
+        }
+      });
+
+      expect(summary.totalItemDrops).toBe(4);
+      expect(summary.uniqueItemTypes).toBe(1);
+      expect(summary.topItemId).toBe('reactive_plating');
+      expect(summary.topItemName).toBe('Reactive Plating');
+      expect(summary.topItemCount).toBe(4);
+      expect(summary.summaryLine).toBe('CRATES: 4 STACKS (1/12 TYPES) // TOP: REACTIVE PLATING x4');
+    });
+
+    it('ignores non-numeric types and malformed values', () => {
+      const summary = getDropItemStackSummary({
+        itemStacks: {
+          tire_iron: '3' as any,
+          gasoline: true as any,
+          magnet_coil: null as any,
+          adrenaline_injector: {} as any,
+          exhaust_afterburner: 2
+        }
+      });
+
+      expect(summary.totalItemDrops).toBe(2);
+      expect(summary.uniqueItemTypes).toBe(1);
+      expect(summary.topItemId).toBe('exhaust_afterburner');
+      expect(summary.topItemName).toBe('Exhaust Afterburner');
+      expect(summary.topItemCount).toBe(2);
+      expect(summary.summaryLine).toBe('CRATES: 2 STACKS (1/12 TYPES) // TOP: EXHAUST AFTERBURNER x2');
+    });
+
+    it('ignores extraneous or unrecognized keys not in DROP_ITEM_IDS', () => {
+      const summary = getDropItemStackSummary({
+        itemStacks: {
+          unknown_item_crate: 100,
+          bogus_perk: 50,
+          adrenaline_injector: 3
+        } as any
+      });
+
+      expect(summary.totalItemDrops).toBe(3);
+      expect(summary.uniqueItemTypes).toBe(1);
+      expect(summary.topItemId).toBe('adrenaline_injector');
+      expect(summary.topItemName).toBe('Adrenaline Injector');
+      expect(summary.topItemCount).toBe(3);
+      expect(summary.summaryLine).toBe('CRATES: 3 STACKS (1/12 TYPES) // TOP: ADRENALINE INJECTOR x3');
     });
   });
 

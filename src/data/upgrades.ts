@@ -903,3 +903,66 @@ export function getRunModDeckSummary(
   };
 }
 
+// ============================================================================
+// ROR2 TOOLBOX CRATE ITEM STACK TELEMETRY & SUMMARY (M137)
+// ============================================================================
+
+export interface DropItemStackSummary {
+  totalItemDrops: number;
+  uniqueItemTypes: number;
+  totalPoolSize: number;
+  topItemId: DropItemId | null;
+  topItemName: string | null;
+  topItemCount: number;
+  summaryLine: string;
+}
+
+/**
+ * Pure function computing in-run RoR2 toolbox crate drop item stack progression,
+ * unique item collection ratio, top stacked item with name/count,
+ * and single-line summary badge string for UI menus and run stats.
+ */
+export function getDropItemStackSummary(
+  player?: { itemStacks?: Partial<Record<string, number>> | null } | null
+): DropItemStackSummary {
+  const totalPoolSize = DROP_ITEM_IDS.length;
+  let totalItemDrops = 0;
+  let uniqueItemTypes = 0;
+  let topItemId: DropItemId | null = null;
+  let topItemName: string | null = null;
+  let topItemCount = 0;
+
+  for (const id of DROP_ITEM_IDS) {
+    const raw = player?.itemStacks?.[id];
+    const count =
+      typeof raw === 'number' && Number.isFinite(raw) && raw > 0
+        ? Math.floor(raw)
+        : 0;
+
+    if (count > 0) {
+      totalItemDrops += count;
+      uniqueItemTypes += 1;
+      if (count > topItemCount) {
+        topItemId = id;
+        topItemName = DROP_ITEMS[id].name;
+        topItemCount = count;
+      }
+    }
+  }
+
+  const topLabel =
+    topItemId && topItemName ? `${topItemName.toUpperCase()} x${topItemCount}` : 'NONE';
+  const summaryLine = `CRATES: ${totalItemDrops} STACKS (${uniqueItemTypes}/${totalPoolSize} TYPES) // TOP: ${topLabel}`;
+
+  return {
+    totalItemDrops,
+    uniqueItemTypes,
+    totalPoolSize,
+    topItemId,
+    topItemName,
+    topItemCount,
+    summaryLine
+  };
+}
+
+

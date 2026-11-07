@@ -440,9 +440,9 @@
 }
 
 .unlock-item.gx-upgrade .info span:last-child {
-  font-size: 11px;
-  color: #a4aab8;
-  line-height: 1.22;
+  font-size: 12.5px;
+  color: #d8dee9;
+  line-height: 1.38;
   white-space: normal;
 }
 
@@ -576,9 +576,9 @@
 }
 
 .unlock-item.gx-weapon .info span {
-  font-size: 11.5px;
-  color: #b4bac8;
-  line-height: 1.25;
+  font-size: 12.5px;
+  color: #d8dee9;
+  line-height: 1.38;
   white-space: normal;
 }
 

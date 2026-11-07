@@ -418,7 +418,7 @@ describe('Adversarial Challenge 4: Stress Testing Run Mod Clamps', () => {
         id: 'GRAZE_INITIATE',
         floor: 1,
         title: 'NEON DAREDEVIL',
-        desc: 'Graze 3 enemy projectiles or clear Floor 1 Boss',
+        desc: 'Dodge 3 enemy projectiles or clear Floor 1 Boss',
         targetCount: 3,
         scrapReward: 8,
         coinReward: 10
@@ -437,11 +437,11 @@ describe('Adversarial Challenge 4: Stress Testing Run Mod Clamps', () => {
 
       const f3 = getFloorBountyContract(3);
       expect(f3).toEqual({
-        id: 'STYLE_HUNTER',
+        id: 'THERMAL_HUNTER',
         floor: 3,
-        title: 'HIGH-OCTANE STYLER',
-        desc: 'Reach Style Rank A in combat or clear Floor 3 Boss',
-        targetCount: 55,
+        title: 'THERMAL HUNTER',
+        desc: 'Eliminate 6 hostiles or clear Floor 3 Boss',
+        targetCount: 6,
         scrapReward: 14,
         coinReward: 18
       });
@@ -473,8 +473,8 @@ describe('Adversarial Challenge 4: Stress Testing Run Mod Clamps', () => {
         id: 'VALHALLA_LEGEND',
         floor: 6,
         title: 'VALHALLA ASCENDANT',
-        desc: 'Reach Style Rank SS or defeat the Sector Boss',
-        targetCount: 85,
+        desc: 'Defeat the Sector Boss to claim Valhalla bounty',
+        targetCount: 1,
         scrapReward: 30,
         coinReward: 40
       });
@@ -503,7 +503,7 @@ describe('Adversarial Challenge 4: Stress Testing Run Mod Clamps', () => {
 
       const fFloat = getFloorBountyContract(3.8);
       expect(fFloat.floor).toBe(3);
-      expect(fFloat.id).toBe('STYLE_HUNTER');
+      expect(fFloat.id).toBe('THERMAL_HUNTER');
 
       const fNaN = getFloorBountyContract(NaN as any);
       expect(fNaN.floor).toBe(1);

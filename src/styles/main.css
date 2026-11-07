@@ -262,15 +262,16 @@ canvas#canvas {
   display: none;
   pointer-events: none;
   z-index: 1000;
-  background: #10101a;
-  color: #e6e8f0;
+  background: #10121d;
+  color: #f8fafc;
   border: 2px solid #ffd166;
-  border-radius: 6px;
-  padding: 8px 12px;
-  font-size: 12.5px;
-  line-height: 1.4;
-  max-width: 280px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.85);
+  border-radius: 7px;
+  padding: 11px 15px;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size: 13.5px;
+  line-height: 1.5;
+  max-width: 340px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.9);
 }
 
 /* --------------------------------------------------------------------------

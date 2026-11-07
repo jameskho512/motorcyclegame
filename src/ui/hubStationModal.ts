@@ -454,7 +454,7 @@ export function getHubStationPromptInfo(
   npcId: string,
   _metaSave?: any,
   _player?: any,
-  buffs?: HubStationBuffState
+  _buffs?: HubStationBuffState
 ): HubStationPromptInfo {
   switch (npcId) {
     case 'garage':
@@ -477,20 +477,16 @@ export function getHubStationPromptInfo(
     case 'scanner':
     case 'codex':
       return {
-        title: '📡 TACTICAL INTEL & SCANNER LAB',
-        summary: buffs?.scannerClaimed
-          ? 'Inspect Career Telemetry (✓ Tactical Scanner +DMG/+SPD Buff Active!)'
-          : 'Claim FREE +8–20% Weapon DMG & +15% Bullet Speed Buff + View Career Dossier',
-        actionLabel: 'OPEN INTEL LAB [E]',
+        title: '📡 OUTLAW CAREER DOSSIER',
+        summary: 'Inspect your lifetime Outlaw Rank, deepest sector reached, and boss defeat records',
+        actionLabel: 'OPEN DOSSIER [E]',
         accentColor: '#9d4edd'
       };
 
     case 'bounty':
       return {
         title: '🎖️ OUTLAW WAR ROOM & BOUNTIES',
-        summary: buffs?.bountyClaimed
-          ? 'Configure Threat Heat Level (0–3) for up to +75% Bonus Scrap (✓ Free Cache Claimed!)'
-          : 'Claim FREE +15 Coins 🪙 & +1 Max Hull ❤️ Cache + Set Threat Heat Level (0–3)',
+        summary: 'Configure Threat Heat Level (0–3) for up to +75% Bonus Scrap & view Sector 1 Contract',
         actionLabel: 'OPEN WAR ROOM [E]',
         accentColor: '#06d6a0'
       };
@@ -1022,15 +1018,15 @@ export class HubStationModalController {
       case 'scanner':
       case 'codex':
         if (this.kickerEl) this.kickerEl.textContent = 'SANCTUARY HIDEOUT // INTEL ARCHIVE';
-        if (this.titleEl) this.titleEl.textContent = '📡 TACTICAL INTEL & SCANNER LAB';
+        if (this.titleEl) this.titleEl.textContent = '📡 OUTLAW CAREER DOSSIER';
         if (this.speakerEl) this.speakerEl.textContent = 'CHIEF TACTICIAN DOC';
         if (this.quoteEl) {
           this.quoteEl.textContent =
-            '"Knowledge is the sharpest blade out on the asphalt. Calibrate your sensors before rolling out."';
+            '"Every sector cleared and boss defeated is logged in the Outlaw Archive."';
         }
         if (this.purposeEl) {
           this.purposeEl.textContent =
-            'Review your lifetime outlaw dossier and calibrate tactical scanner sensors for +15% bullet speed and up to +20% weapon damage.';
+            'Review your lifetime outlaw career rank, deepest sector reached, total hostiles slain, and boss records.';
         }
         break;
 
@@ -1040,11 +1036,11 @@ export class HubStationModalController {
         if (this.speakerEl) this.speakerEl.textContent = 'VALKYRIE VEX';
         if (this.quoteEl) {
           this.quoteEl.textContent =
-            '"High risk, high yield. Dial up the heat if you crave extra scrap, or grab your survival cache."';
+            '"High risk, high yield. Dial up the heat if you crave extra scrap on the highway."';
         }
         if (this.purposeEl) {
           this.purposeEl.textContent =
-            'Claim free pre-run supplies (+15 Coins & +1 Max Hull) and adjust threat Heat Level (0–3) for up to +75% bonus Scrap.';
+            'Configure your Outlaw Bounty Heat Level (0–3) for up to +75% bonus Scrap and review your Sector 1 Bounty Contract.';
         }
         break;
 
@@ -1058,7 +1054,7 @@ export class HubStationModalController {
         }
         if (this.purposeEl) {
           this.purposeEl.textContent =
-            'Final pre-flight readiness inspection. Ensure free lab scanner buffs and war room caches are secured before dropping onto Floor 1.';
+            'Review your active primary weapon and Bounty Heat Level before deploying into Sector 1.';
         }
         break;
 
@@ -1269,7 +1265,6 @@ export class HubStationModalController {
     const bossesSlain = metaSave?.bossesSlain || 0;
     const totalRuns = metaSave?.totalRuns || 0;
 
-    const dmgBonusPct = Math.round((0.08 + Math.min(0.12, bossesSlain * 0.02)) * 100);
     const careerRank = getCareerOutlawRank(metaSave);
 
     this.bodyEl.innerHTML = `
@@ -1296,45 +1291,12 @@ export class HubStationModalController {
           <span class="hub-dossier-value hub-green">${totalRuns}</span>
         </div>
       </div>
-
-      <div class="hub-scanner-box ${scannerClaimed ? 'is-active' : ''}">
-        <div class="hub-scanner-header">
-          <strong>TACTICAL SCANNER PRE-RUN CALIBRATION</strong>
-          <span class="hub-scanner-status-pill">${scannerClaimed ? '✓ ACTIVE' : '⚡ READY TO CALIBRATE'}</span>
-        </div>
-        <p class="hub-scanner-desc">
-          Grants +15% Projectile Speed and +${dmgBonusPct}% Weapon Damage for your entire upcoming run.
-        </p>
-        <div class="hub-scanner-status-note">
-          ${
-            scannerClaimed
-              ? '✓ Tactical telemetry synchronized. Sensor feeds locked into bike firing arrays.'
-              : '⚠️ Uncalibrated. Calibrate scanner now to lock in free damage & velocity bonuses before departure.'
-          }
-        </div>
-      </div>
     `;
 
     if (this.primaryBtn) {
       this.primaryBtn.hidden = false;
-      if (scannerClaimed) {
-        this.primaryBtn.innerHTML = '<kbd>E</kbd> ✓ SCANNER CALIBRATED & ACTIVE';
-        this.primaryBtn.onclick = () => this.close();
-      } else {
-        this.primaryBtn.innerHTML = '<kbd>E</kbd> 📡 CALIBRATE TACTICAL SCANNER (FREE)';
-        this.primaryBtn.onclick = () => {
-          if (!this.currentOptions) return;
-          const res = this.currentOptions.onClaimScanner();
-          this.currentOptions.scannerClaimed = true;
-          if (this.currentOptions.player) {
-            this.currentOptions.player.scannerBuff = true;
-          } else {
-            this.currentOptions.player = { scannerBuff: true };
-          }
-          this.showFeedback(res.message, res.ok);
-          this.renderBody();
-        };
-      }
+      this.primaryBtn.innerHTML = '<kbd>E</kbd> ✓ CLOSE DOSSIER';
+      this.primaryBtn.onclick = () => this.close();
     }
   }
 
@@ -1356,24 +1318,10 @@ export class HubStationModalController {
         <span class="hub-war-room-advisor-text">${advisor.summaryLine.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>
       </div>
 
-      <!-- 1. War Room Supply Cache Box -->
-      <div class="hub-bounty-box hub-supply-box ${effectiveBountyClaimed ? 'is-claimed' : ''}">
-        <div class="hub-box-head">
-          <strong>1. WAR ROOM SUPPLY CACHE</strong>
-          <span class="hub-status-tag ${effectiveBountyClaimed ? 'claimed' : 'free'}">
-            ${effectiveBountyClaimed ? '✓ CLAIMED' : 'FREE DROP'}
-          </span>
-        </div>
-        <p class="hub-box-copy">Free pre-run supply drop: +15 Coins 🪙 (for Shop rooms) and +1 Max Hull Integrity ❤️.</p>
-        <button type="button" class="hub-action-btn ${effectiveBountyClaimed ? 'is-claimed' : ''}" id="btn-hub-claim-cache" ${effectiveBountyClaimed ? 'disabled' : ''}>
-          ${effectiveBountyClaimed ? '✓ SUPPLY CACHE CLAIMED (+15 🪙 & +1 ❤️)' : '🎁 CLAIM FREE SUPPLY CACHE (+15 🪙 & +1 ❤️)'}
-        </button>
-      </div>
-
-      <!-- 2. Outlaw Bounty Heat Selector -->
+      <!-- 1. Outlaw Bounty Heat Selector -->
       <div class="hub-bounty-box hub-heat-box">
         <div class="hub-box-head">
-          <strong>2. OUTLAW BOUNTY HEAT SELECTOR</strong>
+          <strong>1. OUTLAW BOUNTY HEAT SELECTOR</strong>
           <span class="hub-heat-current">CURRENT: HEAT ${currentHeat}</span>
         </div>
         <p class="hub-box-copy">Increase enemy aggression in exchange for +25% / +50% / +75% Bonus Scrap ⚙️ drops.</p>
@@ -1393,29 +1341,18 @@ export class HubStationModalController {
         </div>
       </div>
 
-      <!-- 3. Sector 1 Bounty Contract Box -->
+      <!-- 2. Sector 1 Bounty Contract Box -->
       <div class="hub-bounty-box hub-contract-box">
         <div class="hub-box-head">
-          <strong>3. SECTOR 1 BOUNTY CONTRACT</strong>
+          <strong>2. SECTOR 1 BOUNTY CONTRACT</strong>
           <span class="hub-status-tag contract">BOUNTY</span>
         </div>
         <p class="hub-contract-copy">
-          🏆 <strong>NEON DAREDEVIL:</strong> Graze 3 enemy projectiles or defeat the Floor 1 Boss &rarr;
+          🏆 <strong>NEON DAREDEVIL:</strong> Dodge 3 enemy projectiles or defeat the Floor 1 Boss &rarr;
           <span class="hub-gold">Reward: +8 ⚙️ Scrap &amp; +10 🪙 Coins</span>
         </p>
       </div>
     `;
-
-    const cacheBtn = this.bodyEl.querySelector('#btn-hub-claim-cache') as HTMLButtonElement | null;
-    if (cacheBtn && !effectiveBountyClaimed) {
-      cacheBtn.onclick = () => {
-        if (!this.currentOptions) return;
-        const res = this.currentOptions.onClaimBountyCache();
-        this.currentOptions.bountyClaimed = true;
-        this.showFeedback(res.message, res.ok);
-        this.renderBody();
-      };
-    }
 
     const heatButtons = this.bodyEl.querySelectorAll<HTMLButtonElement>('.hub-heat-btn');
     heatButtons.forEach((btn) => {
@@ -1456,8 +1393,6 @@ export class HubStationModalController {
     const heat = metaSave?.heatLevel || 0;
     const heatBonus = heat * 25;
 
-    const allBuffsClaimed = scannerClaimed && bountyClaimed;
-
     this.bodyEl.innerHTML = `
       <div class="hub-launch-checklist">
         <div class="hub-check-row">
@@ -1465,57 +1400,19 @@ export class HubStationModalController {
           <strong class="hub-check-val hub-gold">${weaponName}</strong>
         </div>
         <div class="hub-check-row">
-          <span class="hub-check-label">TACTICAL SCANNER BUFF</span>
-          <span class="hub-check-val ${scannerClaimed ? 'status-ok' : 'status-warn'}">
-            ${scannerClaimed ? '✓ ACTIVE (+DMG &amp; +15% Bullet Speed)' : '⚠️ NOT CLAIMED (Free in Intel Lab)'}
-          </span>
-        </div>
-        <div class="hub-check-row">
-          <span class="hub-check-label">WAR ROOM SUPPLY CACHE</span>
-          <span class="hub-check-val ${bountyClaimed ? 'status-ok' : 'status-warn'}">
-            ${bountyClaimed ? '✓ CLAIMED (+15 Coins &amp; +1 Max Hull)' : '⚠️ NOT CLAIMED (Free in War Room)'}
-          </span>
-        </div>
-        <div class="hub-check-row">
           <span class="hub-check-label">BOUNTY HEAT LEVEL</span>
           <strong class="hub-check-val hub-magenta">HEAT ${heat} (+${heatBonus}% Bonus Scrap)</strong>
         </div>
+        <div class="hub-check-row">
+          <span class="hub-check-label">TARGET SECTOR</span>
+          <strong class="hub-check-val status-ok">SECTOR 1 // RUSTYARD BUNKER</strong>
+        </div>
       </div>
 
-      ${
-        !allBuffsClaimed
-          ? `
-        <div class="hub-autoclaim-bar">
-          <p class="hub-autoclaim-note">You have unclaimed free pre-run buffs! Secure them with one click:</p>
-          <button type="button" class="hub-action-btn autoclaim-btn" id="btn-hub-autoclaim">
-            ⚡ AUTO-CLAIM ALL FREE PRE-RUN BUFFS
-          </button>
-        </div>
-      `
-          : `
-        <div class="hub-ready-banner">
-          ✓ All free pre-run systems calibrated and loaded! You are fully prepped for Floor 1.
-        </div>
-      `
-      }
+      <div class="hub-ready-banner">
+        ✓ Bike systems calibrated and loaded! Press [E] or click below to deploy to Sector 1.
+      </div>
     `;
-
-    const autoClaimBtn = this.bodyEl.querySelector('#btn-hub-autoclaim') as HTMLButtonElement | null;
-    if (autoClaimBtn) {
-      autoClaimBtn.onclick = () => {
-        if (!this.currentOptions) return;
-        if (!this.currentOptions.scannerClaimed) {
-          this.currentOptions.onClaimScanner();
-          this.currentOptions.scannerClaimed = true;
-        }
-        if (!this.currentOptions.bountyClaimed) {
-          this.currentOptions.onClaimBountyCache();
-          this.currentOptions.bountyClaimed = true;
-        }
-        this.showFeedback('All free pre-run buffs claimed! Ready for deployment.', true);
-        this.renderBody();
-      };
-    }
 
     if (this.primaryBtn) {
       this.primaryBtn.hidden = false;

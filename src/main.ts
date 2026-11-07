@@ -35,8 +35,7 @@ import {
   updateBikeKinematics,
   updateNos,
   handleWallAndDoors,
-  resolveObstacleCollisions,
-  getStyleAdrenalineBonus
+  resolveObstacleCollisions
 } from './systems/physics';
 import {
   createCombatState,
@@ -409,8 +408,6 @@ export class MotoRogueApp {
     player.vx = 0;
     player.vy = 0;
     player.stunTimer = 0;
-    player.styleScore = player.styleScore || 12;
-    player.styleRank = player.styleRank || 'D';
     this.hitStopTimer = 0;
     this.hitStopCooldown = 0;
     this.killStreakCount = 0;
@@ -705,8 +702,6 @@ export class MotoRogueApp {
     if (driftVal >= 0.85 || (releasedSpace && driftVal >= 0.50)) {
       player.driftCharge = 0;
       player.driftBoostTimer = 2.4;
-      player.styleScore = Math.min(100, (player.styleScore || 12) + 14);
-      this.styleGraceTimer = 2.5;
       this.audio.driftBoost?.();
       if (this.stateManager.floorNum === 2) {
         this.advanceFloorBounty(1);
@@ -741,44 +736,6 @@ export class MotoRogueApp {
 
     if ((player.driftBoostTimer || 0) > 0) {
       player.fireTimer = Math.max(0, player.fireTimer - dt * 0.35);
-    }
-
-    // Functional Outlaw Style Rank Engine (D -> SSS) & Adrenaline Multipliers
-    const hasLiveEnemies = !room.cleared && room.enemies.some(e => !e.isDummy && e.hp > 0);
-    if (hasLiveEnemies) {
-      if (speed > 200) {
-        player.styleScore = Math.min(100, (player.styleScore || 12) + dt * 2.5);
-      }
-      if (player.spacePowerslide || (player.driftCharge || 0) > 0.1) {
-        player.styleScore = Math.min(100, (player.styleScore || 12) + dt * 7.5);
-      }
-      if (this.styleGraceTimer <= 0 && !player.spacePowerslide) {
-        player.styleScore = Math.max(8, (player.styleScore || 12) - dt * 5.0);
-      }
-    }
-    const curStyle = player.styleScore || 12;
-    if (this.stateManager.floorNum === 3 && curStyle >= 55) {
-      this.advanceFloorBounty(55, true);
-    } else if (this.stateManager.floorNum >= 6 && curStyle >= 85) {
-      this.advanceFloorBounty(85, true);
-    }
-    const styleAdrenaline = getStyleAdrenalineBonus(curStyle) as (ReturnType<typeof getStyleAdrenalineBonus> & { nosRegenBonus: number });
-    if (styleAdrenaline.nosRegenBonus === undefined) {
-      (styleAdrenaline as any).nosRegenBonus = styleAdrenaline.nosRegenBonusPerSec ?? 0;
-    }
-    if (styleAdrenaline.nosRegenBonus > 0) {
-      player.nos = Math.min(player.nosMax, player.nos + dt * styleAdrenaline.nosRegenBonus);
-    }
-    if (curStyle >= 92) {
-      player.fireTimer = Math.max(0, player.fireTimer - dt * 0.25);
-    } else if (curStyle >= 80) {
-      player.fireTimer = Math.max(0, player.fireTimer - dt * 0.20);
-    } else if (curStyle >= 66) {
-      player.fireTimer = Math.max(0, player.fireTimer - dt * 0.15);
-    } else if (curStyle >= 52) {
-      player.fireTimer = Math.max(0, player.fireTimer - dt * 0.10);
-    } else if (curStyle >= 38) {
-      player.fireTimer = Math.max(0, player.fireTimer - dt * 0.06);
     }
 
     // Apply movement displacement
@@ -911,7 +868,7 @@ export class MotoRogueApp {
       });
     }
 
-    // 6c. 28px Near-Miss Bullet Graze Detection (+8 NOS & +12 Style)
+    // 6c. 28px Near-Miss Bullet Dodge Detection (+8 NOS)
     for (const eb of this.combatState.enemyBullets) {
       if (eb.grazed) continue;
       const dist = Math.hypot(eb.x - player.x, eb.y - player.y);
@@ -920,33 +877,9 @@ export class MotoRogueApp {
       if (dist > hitR && dist <= grazeR && player.invuln <= 0) {
         eb.grazed = true;
         player.nos = Math.min(player.nosMax, player.nos + 8);
-        player.styleScore = Math.min(100, (player.styleScore || 12) + 12);
-        this.styleGraceTimer = 2.4;
         this.audio.graze?.();
         if (this.stateManager.floorNum === 1) {
           this.advanceFloorBounty(1);
-        }
-        this.combatState.beamEffects.push({
-          x1: player.x,
-          y1: player.y,
-          x2: eb.x,
-          y2: eb.y,
-          color: '#00f5d4',
-          width: 2.5,
-          life: 0.14,
-          maxLife: 0.14,
-          isLightning: true
-        });
-        if (this.grazeCalloutCooldown <= 0) {
-          this.grazeCalloutCooldown = 0.35;
-          this.combatState.damageNumbers.push({
-            x: player.x,
-            y: player.y - 24,
-            text: '⚡ GRAZE! +8 NOS',
-            color: '#00f5d4',
-            life: 0.75,
-            maxLife: 0.75
-          });
         }
       }
     }
@@ -963,7 +896,6 @@ export class MotoRogueApp {
         if (player.invuln <= 0) {
           player.hp = Math.max(0, player.hp - dmg);
           player.invuln = 1.05; // 1.05s i-frames
-          player.styleScore = Math.max(0, (player.styleScore || 12) - 35);
           this.combatState.screenShake = 6;
           this.audio.playerHurt();
           this.updateHUD();
@@ -982,8 +914,6 @@ export class MotoRogueApp {
       this.lastKnownKillCount = currentKills;
       this.killStreakCount += deltaKills;
       this.killStreakTimer = 3.2;
-      this.styleGraceTimer = 2.6;
-      player.styleScore = Math.min(100, (player.styleScore || 12) + deltaKills * 9);
 
       // Weapon Mastery Progression Tracking
       const meta = this.stateManager.metaSave;
@@ -997,7 +927,7 @@ export class MotoRogueApp {
         this.audio.masteryUp?.();
       }
 
-      if (this.stateManager.floorNum === 4) {
+      if (this.stateManager.floorNum === 3 || this.stateManager.floorNum === 4) {
         this.advanceFloorBounty(deltaKills);
       }
 
@@ -1408,29 +1338,20 @@ export class MotoRogueApp {
       },
       onClaimScanner: () => {
         this.codexBuffClaimedInHub = true;
-        const player = this.stateManager.player;
-        const meta = this.stateManager.metaSave;
-        player.scannerBuff = true;
-        player.projSpeedMult += 0.15;
-        player.dmgMult += 0.08 + Math.min(0.12, (meta.bossesSlain || 0) * 0.02);
-        this.audio.pickupItem();
+        this.audio.uiClick();
         this.updateHUD();
         return {
           ok: true,
-          message: '✓ TACTICAL SCANNER CALIBRATED: +DMG & +15% Bullet Speed active!'
+          message: '✓ OUTLAW DOSSIER REVIEWED!'
         };
       },
       onClaimBountyCache: () => {
         this.bountyClaimedInHub = true;
-        const player = this.stateManager.player;
-        player.coins += 15;
-        player.maxHp += 1;
-        player.hp = player.maxHp;
-        this.audio.pickupItem();
+        this.audio.uiClick();
         this.updateHUD();
         return {
           ok: true,
-          message: '✓ WAR ROOM CACHE CLAIMED: +15 Coins 🪙 & +1 Max Hull ❤️ added!'
+          message: '✓ WAR ROOM HEAT LEVEL CONFIRMED!'
         };
       },
       onSelectHeat: (heat: number) => {
@@ -1447,26 +1368,10 @@ export class MotoRogueApp {
         this.updateHUD();
       },
       onLaunchRun: () => {
-        const player = this.stateManager.player;
-        const savedCoins = player.coins;
-        const savedExtraHp = Math.max(0, player.maxHp - (6 + (this.stateManager.metaSave.ranks.maxHp || 0)));
-        const savedScanner = this.codexBuffClaimedInHub;
         this.stateManager.metaSave.totalRuns = (this.stateManager.metaSave.totalRuns || 0) + 1;
         this.stateManager.saveMeta();
         this.audio.nextFloor();
         this.startNewRun(false);
-        if (savedCoins > 0) {
-          this.stateManager.player.coins += savedCoins;
-        }
-        if (savedExtraHp > 0) {
-          this.stateManager.player.maxHp += savedExtraHp;
-          this.stateManager.player.hp = this.stateManager.player.maxHp;
-        }
-        if (savedScanner) {
-          this.stateManager.player.scannerBuff = true;
-          this.stateManager.player.projSpeedMult += 0.15;
-          this.stateManager.player.dmgMult += 0.08 + Math.min(0.12, (this.stateManager.metaSave.bossesSlain || 0) * 0.02);
-        }
         this.updateHUD();
       }
     });

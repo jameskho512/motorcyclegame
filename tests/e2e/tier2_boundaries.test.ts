@@ -522,25 +522,25 @@ describe('Tier 2: Boundary & Corner Cases', () => {
       expect(launch.title).toContain('LAUNCH GATE');
       expect(launch.actionLabel).toBe('OPEN LAUNCH GATE [E]');
 
-      // Codex buff state branching
+      // Codex prompt info
       const codexUnclaimed = getHubStationPromptInfo('codex', null, null, { scannerClaimed: false });
-      expect(codexUnclaimed.summary).toContain('Claim FREE +8–20% Weapon DMG');
+      expect(codexUnclaimed.summary).toContain('Inspect your lifetime Outlaw Rank');
 
       const codexClaimed = getHubStationPromptInfo('codex', null, null, { scannerClaimed: true });
-      expect(codexClaimed.summary).toContain('Tactical Scanner +DMG/+SPD Buff Active!');
+      expect(codexClaimed.summary).toContain('Inspect your lifetime Outlaw Rank');
 
       const codexUndef = getHubStationPromptInfo('codex');
-      expect(codexUndef.summary).toContain('Claim FREE +8–20% Weapon DMG');
+      expect(codexUndef.summary).toContain('Inspect your lifetime Outlaw Rank');
 
-      // Bounty buff state branching
+      // Bounty prompt info
       const bountyUnclaimed = getHubStationPromptInfo('bounty', null, null, { bountyClaimed: false });
-      expect(bountyUnclaimed.summary).toContain('Claim FREE +15 Coins');
+      expect(bountyUnclaimed.summary).toContain('Configure Threat Heat Level (0–3)');
 
       const bountyClaimed = getHubStationPromptInfo('bounty', null, null, { bountyClaimed: true });
-      expect(bountyClaimed.summary).toContain('Free Cache Claimed!');
+      expect(bountyClaimed.summary).toContain('Configure Threat Heat Level (0–3)');
 
       const bountyUndef = getHubStationPromptInfo('bounty');
-      expect(bountyUndef.summary).toContain('Claim FREE +15 Coins');
+      expect(bountyUndef.summary).toContain('Configure Threat Heat Level (0–3)');
     });
 
     // 3. getPortalHeatBriefing non-numeric and infinite values

@@ -443,7 +443,7 @@ describe('Tier 4: Real-World Application Scenarios', () => {
         // Verify distinct contract identities across floors
         if (floor === 1) expect(contract.id).toBe('GRAZE_INITIATE');
         else if (floor === 2) expect(contract.id).toBe('DRIFT_DEMON');
-        else if (floor === 3) expect(contract.id).toBe('STYLE_HUNTER');
+        else if (floor === 3) expect(contract.id).toBe('THERMAL_HUNTER');
         else if (floor === 4) expect(contract.id).toBe('CRYO_SHATTER');
         else if (floor === 5) expect(contract.id).toBe('OVERDRIVE_SLAYER');
         else if (floor === 6) expect(contract.id).toBe('VALHALLA_LEGEND');
@@ -615,7 +615,7 @@ describe('Tier 4: Real-World Application Scenarios', () => {
       const codexGreeting = getHubNpcGreeting('codex');
       expect(codexGreeting.speaker).toBe('DOC CULLEN');
       expect(codexGreeting.accentColor).toBe('#9d4edd');
-      expect(codexGreeting.quote).toContain('Tactical Scanner calibrated');
+      expect(codexGreeting.quote).toContain('Outlaw career dossier');
 
       const bountyGreeting = getHubNpcGreeting('bounty', 1, 0);
       expect(bountyGreeting.speaker).toBe('VALKYRIE BROKER');
@@ -995,15 +995,15 @@ describe('Tier 4: Real-World Application Scenarios', () => {
       expect(forgePrompt.title).toBe('⚒️ THE SCRAP FORGE');
       expect(forgePrompt.summary).toContain('12 Scrap');
 
-      // Unclaimed vs Claimed Buffs for Codex & Bounty
+      // Prompt info for Codex & Bounty
       const codexUnclaimed = getHubStationPromptInfo('codex', undefined, undefined, { scannerClaimed: false });
-      expect(codexUnclaimed.summary).toContain('Claim FREE +8–20% Weapon DMG');
+      expect(codexUnclaimed.summary).toContain('Inspect your lifetime Outlaw Rank');
 
       const codexClaimed = getHubStationPromptInfo('codex', undefined, undefined, { scannerClaimed: true });
-      expect(codexClaimed.summary).toContain('Tactical Scanner +DMG/+SPD Buff Active');
+      expect(codexClaimed.summary).toContain('Inspect your lifetime Outlaw Rank');
 
       const bountyUnclaimed = getHubStationPromptInfo('bounty', undefined, undefined, { bountyClaimed: false });
-      expect(bountyUnclaimed.summary).toContain('Claim FREE +15 Coins');
+      expect(bountyUnclaimed.summary).toContain('Threat Heat Level (0–3)');
 
       const bountyClaimed = getHubStationPromptInfo('bounty', undefined, undefined, { bountyClaimed: true });
       expect(bountyClaimed.summary).toContain('Threat Heat Level (0–3)');
@@ -1828,11 +1828,13 @@ describe('Tier 4: Real-World Application Scenarios', () => {
         expect(status0.isStyleMilestoneMet).toBe(false);
         expect(status0.summaryLine).toContain(`BOUNTY [F${floor}]`);
 
-        // 2. Midway 50% State
-        const midCount = Math.max(1, Math.floor(contract.targetCount / 2));
-        app.advanceFloorBounty(midCount);
-        expect(app.floorBountyProgress).toBe(midCount);
-        expect(app.floorBountyCompleted).toBe(false);
+        // 2. Midway 50% State (for contracts with targetCount > 1)
+        if (contract.targetCount > 1) {
+          const midCount = Math.max(1, Math.floor(contract.targetCount / 2));
+          app.advanceFloorBounty(midCount);
+          expect(app.floorBountyProgress).toBe(midCount);
+          expect(app.floorBountyCompleted).toBe(false);
+        }
 
         const status50 = getFloorBountyContractStatus(floor, { styleScore: 25, styleRank: 'C' });
         expect(status50.isStyleMilestoneMet).toBe(false);

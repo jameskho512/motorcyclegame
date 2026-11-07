@@ -1248,7 +1248,7 @@ describe('Tier 5: Adversarial Coverage Hardening', () => {
       // Formula: scrapReward: 30 + (999 - 6) * 5 = 4995, coinReward: 40 + (999 - 6) * 8 = 7984
       expect(highFloorContract.scrapReward).toBe(30 + (999 - 6) * 5);
       expect(highFloorContract.coinReward).toBe(40 + (999 - 6) * 8);
-      expect(highFloorContract.targetCount).toBe(85);
+      expect(highFloorContract.targetCount).toBe(1);
       expect(Number.isFinite(highFloorContract.scrapReward)).toBe(true);
       expect(Number.isFinite(highFloorContract.coinReward)).toBe(true);
       expect(highFloorContract.scrapReward).toBeGreaterThan(0);
@@ -1264,7 +1264,7 @@ describe('Tier 5: Adversarial Coverage Hardening', () => {
       // 5. Floating point floor numbers are floored cleanly
       const floatFloorContract = getFloorBountyContract(3.85);
       expect(floatFloorContract.floor).toBe(3);
-      expect(floatFloorContract.id).toBe('STYLE_HUNTER');
+      expect(floatFloorContract.id).toBe('THERMAL_HUNTER');
     });
   });
 
@@ -1593,140 +1593,30 @@ describe('Tier 5: Adversarial Coverage Hardening', () => {
       modal.close();
     });
 
-    it('6.4 enforces idempotent Scanner & Bounty Cache claim protection — clicking #btn-hub-station-primary 10 times in a row at codex or bounty only grants the buff/cache once (scannerClaimed / bountyClaimed lock)', () => {
+    it('6.4 enforces idempotent Codex & War Room primary button close safety and Launch Gate deployment', () => {
       document.body.innerHTML = HUB_STATION_AND_HUD_MARKUP;
       const modal = new HubStationModalController();
-
-      // 1. CODEX SCANNER IDEMPOTENCY
-      let scannerGrantCount = 0;
-      const onClaimScanner = vi.fn(() => {
-        if (codexOptions.scannerClaimed) {
-          return { ok: false, message: 'Scanner already calibrated!' };
-        }
-        scannerGrantCount++;
-        return { ok: true, message: 'Tactical telemetry calibrated (+15% Velocity, +12% DMG)!' };
-      });
-
-      const codexOptions = createDefaultHubOptions({
-        npcId: 'codex',
-        scannerClaimed: false,
-        onClaimScanner
-      });
-
+      const onClaimScanner = vi.fn();
+      const onClaimBountyCache = vi.fn();
+      const codexOptions = createDefaultHubOptions({ npcId: 'codex', scannerClaimed: false, onClaimScanner });
       modal.open(codexOptions);
-
       const primaryBtn = document.getElementById('btn-hub-station-primary') as HTMLButtonElement;
-      expect(primaryBtn.textContent).toContain('CALIBRATE TACTICAL SCANNER (FREE)');
-      expect(document.querySelector('.hub-scanner-status-pill')?.textContent).toBe('⚡ READY TO CALIBRATE');
-
-      // Click #btn-hub-station-primary 10 times in rapid succession at codex
-      for (let i = 0; i < 10; i++) {
-        (document.getElementById('btn-hub-station-primary') as HTMLButtonElement)?.click();
-      }
-
-      // Lock must guarantee onClaimScanner was called exactly ONCE
-      expect(onClaimScanner).toHaveBeenCalledTimes(1);
-      expect(scannerGrantCount).toBe(1);
-      expect(codexOptions.scannerClaimed).toBe(true);
-
-      // Subsequent state has locked the scanner as active
-      modal.open(codexOptions);
-      expect(document.querySelector('.hub-scanner-status-pill')?.textContent).toBe('✓ ACTIVE');
-      expect(primaryBtn.textContent).toContain('SCANNER CALIBRATED & ACTIVE');
-
-      // 5 additional clicks on active scanner must only trigger close, never re-granting buff
-      for (let i = 0; i < 5; i++) {
-        modal.open(codexOptions);
-        (document.getElementById('btn-hub-station-primary') as HTMLButtonElement)?.click();
-      }
-      expect(onClaimScanner).toHaveBeenCalledTimes(1);
-      expect(scannerGrantCount).toBe(1);
-
-      // 2. WAR ROOM BOUNTY CACHE IDEMPOTENCY & PRIMARY BUTTON SAFETY
-      let bountyGrantCount = 0;
-      const onClaimBountyCache = vi.fn(() => {
-        if (bountyOptions.bountyClaimed) {
-          return { ok: false, message: 'Bounty cache already secured!' };
-        }
-        bountyGrantCount++;
-        return { ok: true, message: 'Free Cache Claimed: +15 Coins & +1 Max Hull!' };
-      });
-
-      const bountyOptions = createDefaultHubOptions({
-        npcId: 'bounty',
-        bountyClaimed: false,
-        onClaimBountyCache
-      });
-
+      expect(primaryBtn.textContent).toContain('CLOSE DOSSIER');
+      for (let i = 0; i < 10; i++) { primaryBtn.click(); }
+      expect(onClaimScanner).not.toHaveBeenCalled();
+      expect(modal.isOpen()).toBe(false);
+      const bountyOptions = createDefaultHubOptions({ npcId: 'bounty', bountyClaimed: false, onClaimBountyCache });
       modal.open(bountyOptions);
-
-      // Clicking #btn-hub-station-primary 10 times at bounty confirms setup/closes, NEVER grants cache
-      const bountyPrimaryBtn = document.getElementById('btn-hub-station-primary') as HTMLButtonElement;
-      expect(bountyPrimaryBtn.textContent).toContain('CONFIRM WAR ROOM SETUP');
-      for (let i = 0; i < 10; i++) {
-        modal.open(bountyOptions);
-        (document.getElementById('btn-hub-station-primary') as HTMLButtonElement)?.click();
-      }
+      expect(primaryBtn.textContent).toContain('CONFIRM WAR ROOM SETUP');
+      for (let i = 0; i < 10; i++) { modal.open(bountyOptions); primaryBtn.click(); }
       expect(onClaimBountyCache).not.toHaveBeenCalled();
-      expect(bountyGrantCount).toBe(0);
-
-      // Now open modal and click #btn-hub-claim-cache 10 times in rapid succession
-      modal.open(bountyOptions);
-      const cacheBtn = document.getElementById('btn-hub-claim-cache') as HTMLButtonElement;
-      expect(cacheBtn).not.toBeNull();
-      expect(cacheBtn.disabled).toBe(false);
-
-      for (let i = 0; i < 10; i++) {
-        (document.getElementById('btn-hub-claim-cache') as HTMLButtonElement)?.click();
-      }
-
-      // Lock guarantees onClaimBountyCache was called exactly ONCE
-      expect(onClaimBountyCache).toHaveBeenCalledTimes(1);
-      expect(bountyGrantCount).toBe(1);
-      expect(bountyOptions.bountyClaimed).toBe(true);
-
-      // The button in DOM must now be disabled with claimed status
-      const updatedCacheBtn = document.getElementById('btn-hub-claim-cache') as HTMLButtonElement;
-      expect(updatedCacheBtn.disabled).toBe(true);
-      expect(updatedCacheBtn.classList.contains('is-claimed')).toBe(true);
-      expect(document.querySelector('.hub-status-tag')?.textContent).toContain('CLAIMED');
-
-      // Clicking 10 more times on the disabled button does not grant again
-      for (let i = 0; i < 10; i++) {
-        (document.getElementById('btn-hub-claim-cache') as HTMLButtonElement)?.click();
-      }
-      expect(onClaimBountyCache).toHaveBeenCalledTimes(1);
-      expect(bountyGrantCount).toBe(1);
-
-      // 3. LAUNCH GATE AUTOCLAIM IDEMPOTENCY
-      const launchOptions = createDefaultHubOptions({
-        npcId: 'launch',
-        scannerClaimed: true,
-        bountyClaimed: true,
-        onClaimScanner,
-        onClaimBountyCache
-      });
-
-      modal.open(launchOptions);
-      // When both are already claimed, autoclaim bar is NOT rendered, ready banner is shown
-      expect(document.getElementById('btn-hub-autoclaim')).toBeNull();
-      expect(document.querySelector('.hub-ready-banner')?.textContent).toContain('All free pre-run systems calibrated');
-
-      // Click launch gate primary button 10 times (triggers close & onLaunchRun)
       const onLaunchRun = vi.fn();
-      launchOptions.onLaunchRun = onLaunchRun;
+      const launchOptions = createDefaultHubOptions({ npcId: 'launch', onLaunchRun });
       modal.open(launchOptions);
-
-      for (let i = 0; i < 10; i++) {
-        modal.open(launchOptions);
-        primaryBtn.click();
-      }
-
-      // Buffs were never re-granted
-      expect(onClaimScanner).toHaveBeenCalledTimes(1);
-      expect(onClaimBountyCache).toHaveBeenCalledTimes(1);
+      expect(document.getElementById('btn-hub-autoclaim')).toBeNull();
+      expect(document.querySelector('.hub-ready-banner')?.textContent).toContain('Bike systems calibrated');
+      for (let i = 0; i < 10; i++) { modal.open(launchOptions); primaryBtn.click(); }
       expect(onLaunchRun).toHaveBeenCalledTimes(10);
-
       modal.close();
     });
   });

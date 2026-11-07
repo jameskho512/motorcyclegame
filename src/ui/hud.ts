@@ -29,10 +29,11 @@ import {
   getModIconSvg
 } from './icons';
 import { formatModDeckTooltipHint } from './tooltip';
-import { formatWeaponMasteryHint, formatStyleRankTooltip, formatWeaponEvolutionTooltipHint } from '@/ui/tooltip';
+import { formatWeaponMasteryHint, formatWeaponEvolutionTooltipHint } from '@/ui/tooltip';
 import { getFloorBountyContract, getRoomHazardSummary, getFloorExplorationStatus, type RoomHazardSummary } from '@/world/dungeon';
 import { getDungeonSectorSummary } from '../world/dungeon';
 import { getCombatOffenseSummary } from '@/systems/combat';
+import { getCombatSurvivabilitySummary } from '../systems/combat';
 import { getRoomThreatAssessment, getBossEncounterBriefing } from '@/systems/enemyAI';
 import { getRiderMobilitySummary } from '@/systems/physics';
 import { getFloorBountyContractStatus } from '@/core/state';
@@ -280,6 +281,7 @@ export class HUDController {
   public synergyListEl: HTMLElement | null = null;
   public modBarEl: HTMLElement | null = null;
   public sidebarEl: HTMLElement | null = null;
+  public fuelBarEl: HTMLElement | null = null;
 
   constructor(callbacks?: { onSelectWeapon?: (id: WeaponId) => void }) {
     this.onSelectWeapon = callbacks?.onSelectWeapon;
@@ -290,6 +292,7 @@ export class HUDController {
       this.synergyListEl = (document.getElementById('hud-synergy-list') || document.getElementById('synergy-list')) as HTMLElement | null;
       this.modBarEl = (document.getElementById('hud-mods-bar') || document.getElementById('mod-bar')) as HTMLElement | null;
       this.sidebarEl = (document.getElementById('sidebar') || document.getElementById('hud-sidebar')) as HTMLElement | null;
+      this.fuelBarEl = (document.getElementById('fuel-bar') || document.getElementById('hp-bar')) as HTMLElement | null;
       this.fuelGaugeCanvas = document.getElementById('fuel-gauge') as HTMLCanvasElement | null;
       if (this.fuelGaugeCanvas) {
         this.fuelGaugeCtx = this.fuelGaugeCanvas.getContext('2d');
@@ -1591,6 +1594,46 @@ export class HUDController {
   }
 
   /**
+   * Updates combat survivability, hull integrity percentage, chassis tier,
+   * and shield i-frames telemetry data attributes (M136) on:
+   * - fuelBar (this.fuelBarEl || #fuel-bar || #hp-bar)
+   * - sidebarEl (this.sidebarEl || #sidebar || #hud-sidebar)
+   * - synergyListEl (this.synergyListEl || #hud-synergy-list || #synergy-list)
+   */
+  public updateSurvivabilityTelemetry(player: PlayerState): void {
+    const surv = getCombatSurvivabilitySummary(player);
+    const fuelEl = this.fuelBarEl || (typeof document !== 'undefined' ? (document.getElementById('fuel-bar') || document.getElementById('hp-bar')) as HTMLElement | null : null);
+    const sidebarEl = this.sidebarEl || (typeof document !== 'undefined' ? (document.getElementById('sidebar') || document.getElementById('hud-sidebar')) as HTMLElement | null : null);
+    const synergyEl = this.synergyListEl || (typeof document !== 'undefined' ? (document.getElementById('hud-synergy-list') || document.getElementById('synergy-list')) as HTMLElement | null : null);
+
+    if (!this.fuelBarEl && fuelEl) {
+      this.fuelBarEl = fuelEl;
+    }
+    if (!this.sidebarEl && sidebarEl) {
+      this.sidebarEl = sidebarEl;
+    }
+    if (!this.synergyListEl && synergyEl) {
+      this.synergyListEl = synergyEl;
+    }
+
+    const targets = [fuelEl, sidebarEl, this.synergyListEl, synergyEl].filter(
+      (el, idx, arr) => Boolean(el) && arr.indexOf(el) === idx
+    ) as HTMLElement[];
+
+    for (const el of targets) {
+      el.setAttribute('data-hull-pct', String(surv.hullPct));
+      el.setAttribute('data-hull-status', surv.hullStatus);
+      el.setAttribute('data-chassis-tier', surv.chassisTier);
+      el.setAttribute('data-hull-invulnerable', surv.isInvulnerable ? 'true' : 'false');
+      el.setAttribute('data-survivability-summary', surv.summaryLine);
+    }
+  }
+
+  public updateStats(player: PlayerState): void {
+    this.updateSurvivabilityTelemetry(player);
+  }
+
+  /**
    * Updates HUD DOM widgets: Hull meter, NOS meter, LV badge, stats, currency,
    * high-fidelity weapon cards, die-cut mod stickers, boss bar, and isometric minimap.
    */
@@ -1643,6 +1686,7 @@ export class HUDController {
     const hpText = document.getElementById('hp-text');
     if (hpText) hpText.textContent = `${player.hp} / ${player.maxHp}`;
     this.updateHull(player.hp, player.maxHp);
+    this.updateSurvivabilityTelemetry(player);
 
     // 2. NOS meter (+ per-frame sync loop) & Concept-Art LV. Badge
     this.trackedPlayer = player;
@@ -1718,71 +1762,16 @@ export class HUDController {
       this.updateBossBar(activeBoss, floorNum);
     }
 
-    // 8. Widescreen Left & Right Wing Panels (Style Rank D->SSS, Synergy Matrix & Sector Telemetry)
+    // 8. Widescreen Left & Right Wing Panels (Synergy Matrix & Sector Telemetry — Outlaw Style Mechanic Removed)
     const wrapperEl = document.getElementById('game-wrapper');
     if (wrapperEl) {
       wrapperEl.classList.toggle('is-low-hull', isLowFuel(player.hp, player.maxHp));
     }
 
-    const speedRatio = Math.min(1, Math.hypot(player.vx || 0, player.vy || 0) / 280);
-    const driftBonus = (player.driftCharge || 0) * 35 + ((player as any).driftBoostTimer > 0 ? 35 : 0);
-    const killBonus = Math.min(45, (player.killCount || 0) * 2.5);
-    const computedStyleScore = Math.min(100, Math.round(12 + speedRatio * 28 + driftBonus + killBonus));
-    const styleScore = typeof player.styleScore === 'number'
-      ? Math.max(0, Math.min(100, Math.round(player.styleScore)))
-      : computedStyleScore;
-
-    const styleGrades: Array<{ min: number; grade: 'SSS' | 'SS' | 'S' | 'A' | 'B' | 'C' | 'D'; title: string; color: string; bonusDesc: string }> = [
-      { min: 92, grade: 'SSS', title: 'VALHALLA OVERDRIVE!!', color: '#00f5d4', bonusDesc: '+25% SPD/RATE · +55% LUCK · +4 NOS/s' },
-      { min: 80, grade: 'SS', title: 'APEX OUTLAW!', color: '#ffd60a', bonusDesc: '+20% SPD/RATE · +45% LUCK · +2.5 NOS/s' },
-      { min: 66, grade: 'S', title: 'SAVAGE DRIFTER', color: '#ff5400', bonusDesc: '+15% SPD/RATE · +35% LUCK · +1.5 NOS/s' },
-      { min: 52, grade: 'A', title: 'HIGH OCTANE', color: '#ff4d6d', bonusDesc: '+10% SPD/RATE · +25% LUCK' },
-      { min: 38, grade: 'B', title: 'FULL THROTTLE', color: '#c77dff', bonusDesc: '+6% SPD/RATE · +15% LUCK' },
-      { min: 24, grade: 'C', title: 'ROLLING THUNDER', color: '#4cc9f0', bonusDesc: '+3% SPD/RATE · +5% LUCK' },
-      { min: 0, grade: 'D', title: 'CRUISING', color: '#adb5bd', bonusDesc: 'GRAZE & DRIFT TO BUILD RANK' }
-    ];
-    const rankDef = styleGrades.find(g => styleScore >= g.min) || styleGrades[styleGrades.length - 1];
-    player.styleRank = rankDef.grade;
-
     const styleCardEl = document.getElementById('style-rank-card');
     if (styleCardEl) {
-      styleCardEl.setAttribute('data-tip', formatStyleRankTooltip(styleScore, rankDef.grade));
-    }
-
-    const gradeEl = document.getElementById('style-rank-grade');
-    if (gradeEl) {
-      gradeEl.textContent = rankDef.grade;
-      gradeEl.style.setProperty('--rank-color', rankDef.color);
-    }
-    const titleEl = document.getElementById('style-rank-title');
-    if (titleEl) {
-      titleEl.textContent = rankDef.title;
-      titleEl.style.color = rankDef.color;
-    }
-    const fillEl = document.getElementById('style-rank-fill');
-    if (fillEl) {
-      fillEl.style.width = `${styleScore}%`;
-    }
-    const subEl = document.getElementById('style-rank-sub');
-    if (subEl) {
-      if (rankDef.grade === 'D') {
-        subEl.textContent = 'BUFF: None (Reach Rank C at 24% for +3% Fire Rate & Speed)';
-      } else {
-        subEl.textContent = (player as any).driftBoostTimer > 0
-          ? '⚡ DRIFT OVERCHARGE ACTIVE (+35% SPD/RATE)'
-          : 'ACTIVE BUFF: ' + rankDef.bonusDesc;
-      }
-    }
-
-    let howtoEl = document.getElementById('style-rank-howto');
-    if (!howtoEl && styleCardEl) {
-      howtoEl = document.createElement('div');
-      howtoEl.id = 'style-rank-howto';
-      howtoEl.className = 'style-rank-howto';
-      styleCardEl.appendChild(howtoEl);
-    }
-    if (howtoEl) {
-      howtoEl.textContent = `HOW TO RAISE: Hold [SPACE] Drift (${Math.round((player.driftCharge || 0) * 100)}%) · Graze Bullets · Kill Hostiles`;
+      styleCardEl.hidden = true;
+      styleCardEl.style.display = 'none';
     }
 
     const synergyCardEl = document.getElementById('synergy-tracker-card');
@@ -1868,17 +1857,6 @@ export class HUDController {
         );
       }
 
-      if ((player as any).scannerBuff) {
-        synergyRows.push(
-          `<div class="synergy-pill" style="--syn-color:#72efdd" data-tip="<b style='color:#72efdd'>Doc Tactical Scanner</b><br/>+8% Weapon Damage &amp; +15% Projectile Speed">
-            <div class="synergy-pill-main">
-              <span>DOC TACTICAL SCANNER</span>
-              <small>+8% DMG / +15% SPD</small>
-            </div>
-            <div class="synergy-pill-desc">Buff: +8% Weapon Damage &amp; +15% Projectile Speed</div>
-          </div>`
-        );
-      }
       if ((player.heatLevel || 0) > 0) {
         synergyRows.push(
           `<div class="synergy-pill" style="--syn-color:#ff4d6d" data-tip="<b style='color:#ff4d6d'>Valkyrie Bounty Heat ${player.heatLevel}</b><br/>+${(player.heatLevel || 0) * 25}% Bonus Scrap &amp; Elevated Enemy Threat">
@@ -1944,6 +1922,7 @@ export class HUDController {
     }
 
     this.updateModDeckTelemetry(player);
+    this.updateSurvivabilityTelemetry(player);
   }
 }
 
@@ -1963,5 +1942,13 @@ export function updateWeaponDeck(player: PlayerState, metaSave?: any): void {
 export function updateModDeck(player: PlayerState): void {
   const tempHud = new HUDController();
   tempHud.updateModDeck(player);
+}
+
+/**
+ * Standalone helper to render or update combat survivability telemetry attributes.
+ */
+export function updateSurvivabilityTelemetry(player: PlayerState): void {
+  const tempHud = new HUDController();
+  tempHud.updateSurvivabilityTelemetry(player);
 }
 
