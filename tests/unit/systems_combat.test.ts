@@ -35,9 +35,14 @@ import {
   calcOverkillBonus,
   formatDummyHitTelemetry,
   updateCombatPipeline,
-  getCombatOffenseSummary
+  getCombatOffenseSummary,
+  getCombatSurvivabilitySummary
 } from '../../src/systems/combat';
-import type { CombatOffenseSummary, Player } from '../../src/systems/combat';
+import type {
+  CombatOffenseSummary,
+  CombatSurvivabilitySummary,
+  Player
+} from '../../src/systems/combat';
 import { WEAPONS } from '../../src/data/weapons';
 import type {
   PlayerState,
@@ -1336,6 +1341,183 @@ describe('Systems: Combat — Overkill & Execution Bonus', () => {
       expect(summary.siphonPct).toBe(0);
       expect(summary.siphonStatus).toBe('NONE');
       expect(summary.summaryLine).toBe('DPS x1.00 · NONE (0% Siphon)');
+    });
+  });
+
+  describe('Combat Survivability & Hull Integrity Advisor (`getCombatSurvivabilitySummary`)', () => {
+    it('evaluates CRITICAL HULL status at or below 35% hull threshold', () => {
+      // 1 / 5 HP = 20%
+      const playerLow: Partial<Player> = { hp: 1, maxHp: 5 };
+      const summaryLow: CombatSurvivabilitySummary = getCombatSurvivabilitySummary(playerLow);
+      expect(summaryLow.hp).toBe(1);
+      expect(summaryLow.maxHp).toBe(5);
+      expect(summaryLow.hullPct).toBe(20);
+      expect(summaryLow.hullStatus).toBe('CRITICAL HULL');
+      expect(summaryLow.chassisTier).toBe('STANDARD CHASSIS');
+      expect(summaryLow.isInvulnerable).toBe(false);
+      expect(summaryLow.summaryLine).toBe('HULL: 1/5 (20% · CRITICAL HULL) // STANDARD CHASSIS');
+
+      // Exact 35% boundary
+      const playerExact35: Partial<Player> = { hp: 35, maxHp: 100 };
+      const summary35 = getCombatSurvivabilitySummary(playerExact35);
+      expect(summary35.hullPct).toBe(35);
+      expect(summary35.hullStatus).toBe('CRITICAL HULL');
+      expect(summary35.chassisTier).toBe('JUGGERNAUT TANK');
+
+      // 0 HP dead hull state
+      const playerZero: Partial<Player> = { hp: 0, maxHp: 8 };
+      const summaryZero = getCombatSurvivabilitySummary(playerZero);
+      expect(summaryZero.hp).toBe(0);
+      expect(summaryZero.hullPct).toBe(0);
+      expect(summaryZero.hullStatus).toBe('CRITICAL HULL');
+      expect(summaryZero.chassisTier).toBe('REINFORCED CHASSIS');
+    });
+
+    it('evaluates DAMAGED HULL status between 36% and 79% hull threshold', () => {
+      // Exact 36% boundary
+      const playerExact36: Partial<Player> = { hp: 36, maxHp: 100 };
+      const summary36: CombatSurvivabilitySummary = getCombatSurvivabilitySummary(playerExact36);
+      expect(summary36.hullPct).toBe(36);
+      expect(summary36.hullStatus).toBe('DAMAGED HULL');
+
+      // Mid-range: 3 / 5 HP = 60%
+      const playerMid: Partial<Player> = { hp: 3, maxHp: 5 };
+      const summaryMid = getCombatSurvivabilitySummary(playerMid);
+      expect(summaryMid.hp).toBe(3);
+      expect(summaryMid.maxHp).toBe(5);
+      expect(summaryMid.hullPct).toBe(60);
+      expect(summaryMid.hullStatus).toBe('DAMAGED HULL');
+      expect(summaryMid.summaryLine).toBe('HULL: 3/5 (60% · DAMAGED HULL) // STANDARD CHASSIS');
+
+      // Exact 79% boundary
+      const playerExact79: Partial<Player> = { hp: 79, maxHp: 100 };
+      const summary79 = getCombatSurvivabilitySummary(playerExact79);
+      expect(summary79.hullPct).toBe(79);
+      expect(summary79.hullStatus).toBe('DAMAGED HULL');
+    });
+
+    it('evaluates OPTIMAL HULL status at or above 80% hull threshold', () => {
+      // Exact 80% boundary
+      const playerExact80: Partial<Player> = { hp: 80, maxHp: 100 };
+      const summary80: CombatSurvivabilitySummary = getCombatSurvivabilitySummary(playerExact80);
+      expect(summary80.hullPct).toBe(80);
+      expect(summary80.hullStatus).toBe('OPTIMAL HULL');
+
+      // 4 / 5 HP = 80%
+      const playerFourFifth: Partial<Player> = { hp: 4, maxHp: 5 };
+      const summaryFourFifth = getCombatSurvivabilitySummary(playerFourFifth);
+      expect(summaryFourFifth.hullPct).toBe(80);
+      expect(summaryFourFifth.hullStatus).toBe('OPTIMAL HULL');
+      expect(summaryFourFifth.summaryLine).toBe('HULL: 4/5 (80% · OPTIMAL HULL) // STANDARD CHASSIS');
+
+      // 100% full health
+      const playerFull: Partial<Player> = { hp: 12, maxHp: 12 };
+      const summaryFull = getCombatSurvivabilitySummary(playerFull);
+      expect(summaryFull.hp).toBe(12);
+      expect(summaryFull.maxHp).toBe(12);
+      expect(summaryFull.hullPct).toBe(100);
+      expect(summaryFull.hullStatus).toBe('OPTIMAL HULL');
+      expect(summaryFull.chassisTier).toBe('JUGGERNAUT TANK');
+      expect(summaryFull.summaryLine).toBe('HULL: 12/12 (100% · OPTIMAL HULL) // JUGGERNAUT TANK');
+    });
+
+    it('classifies all 3 chassis tiers accurately (STANDARD < 7, REINFORCED 7..9, JUGGERNAUT >= 10)', () => {
+      // Standard chassis (< 7)
+      expect(getCombatSurvivabilitySummary({ hp: 5, maxHp: 5 }).chassisTier).toBe('STANDARD CHASSIS');
+      expect(getCombatSurvivabilitySummary({ hp: 6, maxHp: 6 }).chassisTier).toBe('STANDARD CHASSIS');
+
+      // Reinforced chassis (7..9)
+      expect(getCombatSurvivabilitySummary({ hp: 7, maxHp: 7 }).chassisTier).toBe('REINFORCED CHASSIS');
+      expect(getCombatSurvivabilitySummary({ hp: 8, maxHp: 8 }).chassisTier).toBe('REINFORCED CHASSIS');
+      expect(getCombatSurvivabilitySummary({ hp: 9, maxHp: 9 }).chassisTier).toBe('REINFORCED CHASSIS');
+
+      // Juggernaut tank (>= 10)
+      expect(getCombatSurvivabilitySummary({ hp: 10, maxHp: 10 }).chassisTier).toBe('JUGGERNAUT TANK');
+      expect(getCombatSurvivabilitySummary({ hp: 15, maxHp: 15 }).chassisTier).toBe('JUGGERNAUT TANK');
+    });
+
+    it('reflects active shield i-frames when invuln > 0 in summaryLine and flag', () => {
+      const playerWithShield: Partial<Player> = {
+        hp: 5,
+        maxHp: 7,
+        invuln: 0.8
+      };
+      const summary: CombatSurvivabilitySummary = getCombatSurvivabilitySummary(playerWithShield);
+
+      expect(summary.isInvulnerable).toBe(true);
+      expect(summary.chassisTier).toBe('REINFORCED CHASSIS');
+      expect(summary.hullStatus).toBe('DAMAGED HULL');
+      expect(summary.summaryLine).toBe(
+        'HULL: 5/7 (71% · DAMAGED HULL) // REINFORCED CHASSIS · SHIELD I-FRAMES ACTIVE'
+      );
+
+      // When invuln is 0 or negative
+      const playerZeroInvuln: Partial<Player> = { hp: 5, maxHp: 7, invuln: 0 };
+      expect(getCombatSurvivabilitySummary(playerZeroInvuln).isInvulnerable).toBe(false);
+      expect(getCombatSurvivabilitySummary(playerZeroInvuln).summaryLine).toBe(
+        'HULL: 5/7 (71% · DAMAGED HULL) // REINFORCED CHASSIS'
+      );
+
+      const playerNegInvuln: Partial<Player> = { hp: 5, maxHp: 7, invuln: -0.5 };
+      expect(getCombatSurvivabilitySummary(playerNegInvuln).isInvulnerable).toBe(false);
+    });
+
+    it('gracefully handles null, undefined, NaN, negative, overflow, and malformed inputs', () => {
+      // null player -> default maxHp=5, hp=5
+      const summaryNull = getCombatSurvivabilitySummary(null);
+      expect(summaryNull.hp).toBe(5);
+      expect(summaryNull.maxHp).toBe(5);
+      expect(summaryNull.hullPct).toBe(100);
+      expect(summaryNull.hullStatus).toBe('OPTIMAL HULL');
+      expect(summaryNull.chassisTier).toBe('STANDARD CHASSIS');
+      expect(summaryNull.isInvulnerable).toBe(false);
+      expect(summaryNull.summaryLine).toBe('HULL: 5/5 (100% · OPTIMAL HULL) // STANDARD CHASSIS');
+
+      // undefined player -> default
+      const summaryUndefined = getCombatSurvivabilitySummary(undefined);
+      expect(summaryUndefined.hp).toBe(5);
+      expect(summaryUndefined.maxHp).toBe(5);
+
+      // Empty object `{}` -> default
+      const summaryEmpty = getCombatSurvivabilitySummary({});
+      expect(summaryEmpty.hp).toBe(5);
+      expect(summaryEmpty.maxHp).toBe(5);
+
+      // NaN values fall back safely
+      const summaryNaN = getCombatSurvivabilitySummary({
+        hp: NaN,
+        maxHp: NaN,
+        invuln: NaN as any
+      });
+      expect(summaryNaN.hp).toBe(5);
+      expect(summaryNaN.maxHp).toBe(5);
+      expect(summaryNaN.isInvulnerable).toBe(false);
+
+      // Negative HP clamped to 0
+      const summaryNegHp = getCombatSurvivabilitySummary({ hp: -10, maxHp: 5 });
+      expect(summaryNegHp.hp).toBe(0);
+      expect(summaryNegHp.hullPct).toBe(0);
+      expect(summaryNegHp.hullStatus).toBe('CRITICAL HULL');
+
+      // Over-max HP clamped to maxHp
+      const summaryOverMax = getCombatSurvivabilitySummary({ hp: 999, maxHp: 8 });
+      expect(summaryOverMax.hp).toBe(8);
+      expect(summaryOverMax.hullPct).toBe(100);
+      expect(summaryOverMax.chassisTier).toBe('REINFORCED CHASSIS');
+
+      // Invalid or non-positive maxHp falls back to 5
+      const summaryInvalidMax = getCombatSurvivabilitySummary({ hp: 2, maxHp: -3 });
+      expect(summaryInvalidMax.maxHp).toBe(5);
+      expect(summaryInvalidMax.hp).toBe(2);
+      expect(summaryInvalidMax.hullPct).toBe(40);
+      expect(summaryInvalidMax.hullStatus).toBe('DAMAGED HULL');
+
+      // Floats floored
+      const summaryFloats = getCombatSurvivabilitySummary({ hp: 3.8, maxHp: 7.9 });
+      expect(summaryFloats.hp).toBe(3);
+      expect(summaryFloats.maxHp).toBe(7);
+      expect(summaryFloats.hullPct).toBe(43); // 3 / 7 = 42.857% -> 43%
+      expect(summaryFloats.chassisTier).toBe('REINFORCED CHASSIS');
     });
   });
 });

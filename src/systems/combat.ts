@@ -1746,6 +1746,9 @@ export function updateCombatPipeline(
 // ============================================================================
 
 export interface Player {
+  hp?: number;
+  maxHp?: number;
+  invuln?: number;
   weapon?: WeaponId | string;
   dmgMult?: number;
   fireRateMult?: number;
@@ -1808,3 +1811,59 @@ export function getCombatOffenseSummary(player: Player): CombatOffenseSummary {
     summaryLine
   };
 }
+
+// ============================================================================
+// 9. COMBAT SURVIVABILITY & HULL INTEGRITY ADVISOR
+// ============================================================================
+
+export interface CombatSurvivabilitySummary {
+  hp: number;
+  maxHp: number;
+  hullPct: number;
+  hullStatus: 'CRITICAL HULL' | 'DAMAGED HULL' | 'OPTIMAL HULL';
+  chassisTier: 'STANDARD CHASSIS' | 'REINFORCED CHASSIS' | 'JUGGERNAUT TANK';
+  isInvulnerable: boolean;
+  summaryLine: string;
+}
+
+/**
+ * Computes combat survivability, hull integrity percentage, chassis tier,
+ * and shield i-frames status for a player.
+ */
+export function getCombatSurvivabilitySummary(
+  player?: Partial<Player> | null
+): CombatSurvivabilitySummary {
+  const maxHp =
+    typeof player?.maxHp === 'number' && Number.isFinite(player.maxHp) && player.maxHp > 0
+      ? Math.max(1, Math.floor(player.maxHp))
+      : 5;
+  const rawHp =
+    typeof player?.hp === 'number' && Number.isFinite(player.hp)
+      ? Math.floor(player.hp)
+      : maxHp;
+  const hp = Math.max(0, Math.min(maxHp, rawHp));
+  const hullPct = Math.round((hp / maxHp) * 100);
+  const hullStatus: 'CRITICAL HULL' | 'DAMAGED HULL' | 'OPTIMAL HULL' =
+    hullPct <= 35 ? 'CRITICAL HULL' : hullPct < 80 ? 'DAMAGED HULL' : 'OPTIMAL HULL';
+  const chassisTier: 'STANDARD CHASSIS' | 'REINFORCED CHASSIS' | 'JUGGERNAUT TANK' =
+    maxHp >= 10 ? 'JUGGERNAUT TANK' : maxHp >= 7 ? 'REINFORCED CHASSIS' : 'STANDARD CHASSIS';
+  const rawInvuln =
+    typeof (player as any)?.invuln === 'number' && Number.isFinite((player as any).invuln)
+      ? (player as any).invuln
+      : 0;
+  const isInvulnerable = rawInvuln > 0;
+  const invulnTag = isInvulnerable ? ' · SHIELD I-FRAMES ACTIVE' : '';
+  const summaryLine =
+    'HULL: ' + hp + '/' + maxHp + ' (' + hullPct + '% · ' + hullStatus + ') // ' + chassisTier + invulnTag;
+
+  return {
+    hp,
+    maxHp,
+    hullPct,
+    hullStatus,
+    chassisTier,
+    isInvulnerable,
+    summaryLine
+  };
+}
+

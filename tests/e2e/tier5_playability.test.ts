@@ -78,12 +78,12 @@ import { generateDungeon, getFloorBountyContract } from '../../src/world/dungeon
 import { formatWeaponMasteryHint } from '../../src/ui/tooltip';
 import { MotoRogueApp } from '../../src/main';
 
-import { getHubNpcGreeting } from '@/world/dungeon';
+import { getHubNpcGreeting, getDungeonSectorSummary } from '@/world/dungeon';
 import { getModStackTierClass, HUDController } from '@/ui/hud';
-import { getPortalRiskAssessment, PORTAL_X, PORTAL_Y } from '@/ui/portalModal';
-import { getStashSalvageSummary } from '@/ui/garage';
+import { getPortalRiskAssessment, PORTAL_X, PORTAL_Y, PortalModalController, getPortalDescentSummary } from '@/ui/portalModal';
+import { getStashSalvageSummary, getLiveryCollectionSummary, BIKE_LIVERIES } from '@/ui/garage';
 import { formatDummyHitTelemetry } from '@/systems/combat';
-import { HubStationModalController, getWarRoomStationAdvisor } from '@/ui/hubStationModal';
+import { HubStationModalController, getWarRoomStationAdvisor, getSanctuaryHideoutOverview } from '@/ui/hubStationModal';
 import { META_UPGRADES, calcUpgradeCost, type MetaUpgradeId } from '@/data/upgrades';
 import { getFloorBountyContractStatus } from '@/core/state';
 
@@ -2923,6 +2923,478 @@ describe('Tier 5: Playability Verification & End-to-End Simulation', () => {
       expect(synList.getAttribute('data-bounty-contract-title')).toBe('THERMAL HUNTER');
       expect(synList.getAttribute('data-bounty-style-met')).toBe('true');
       expect(altSynList.getAttribute('data-bounty-style-met')).toBe('true');
+    });
+  });
+
+  describe('Sanctuary Hideout Overview, Portal Descent Summary & Garage Livery Telemetry Playability (M135)', () => {
+    it('verifies HubStationModalController updates data-sanctuary-readiness-pct, data-sanctuary-free-actions, and data-sanctuary-overview on #hub-station-overlay from 0% (2 free buffs pending) -> 35% (1 free buff pending) -> 70% (0 free buffs pending) -> 100% (ALL STATIONS OPTIMIZED) as the player equips 6 items, maxes tuning ranks, and claims both Sanctuary buffs in MotoRogueApp', () => {
+      document.body.innerHTML = `
+        <div id="app-layout">
+          <aside class="sidebar-col" id="left-sidebar">
+            <div id="hud-left"></div>
+            <span id="hp-text">6 / 6</span>
+            <canvas id="fuel-gauge" width="240" height="120"></canvas>
+            <div id="nos-fill"></div>
+            <strong id="coin-count">0 🪙</strong>
+            <strong id="scrap-count">0 ⚙️</strong>
+            <strong id="floor-num">1</strong>
+            <canvas id="minimap-canvas" width="240" height="150"></canvas>
+            <div id="save-status">Autosave: local storage</div>
+            <button id="btn-open-garage">[G] Garage &amp; Tuning</button>
+            <button id="btn-toggle-sound">🔊 [M]</button>
+          </aside>
+          <div id="game-wrapper">
+            <canvas id="canvas" width="720" height="720"></canvas>
+            <button type="button" id="hub-interact-banner" class="hub-interact-banner" hidden>
+              <span class="hub-interact-key">[PRESS E]</span>
+              <div class="hub-interact-copy">
+                <strong id="hub-interact-title">STATION</strong>
+                <span id="hub-interact-desc">Interact</span>
+              </div>
+            </button>
+            <div id="hub-station-overlay" aria-hidden="true">
+              <div class="hub-station-card">
+                <span id="hub-station-kicker">SANCTUARY</span>
+                <h2 id="hub-station-title">STATION</h2>
+                <div id="hub-station-speaker">NPC</div>
+                <blockquote id="hub-station-quote"></blockquote>
+                <div id="hub-station-purpose"></div>
+                <div id="hub-station-body"></div>
+                <div id="hub-station-feedback" hidden></div>
+                <button type="button" id="btn-hub-station-primary">[E] ACTIVATE</button>
+                <button type="button" id="btn-hub-station-secondary">CYCLE HEAT</button>
+                <button type="button" id="btn-hub-station-close">[ESC] CLOSE</button>
+              </div>
+            </div>
+            <div id="portal-confirm-overlay" aria-hidden="true">
+              <div class="portal-card">
+                <h2 id="portal-floor-label" class="portal-headline"></h2>
+                <p id="portal-warning" class="portal-warning"></p>
+                <div class="portal-actions">
+                  <button id="btn-portal-confirm" type="button" class="portal-btn"></button>
+                  <button id="btn-portal-cancel" type="button" class="portal-btn"></button>
+                </div>
+              </div>
+            </div>
+            <div id="shop-confirm-overlay">
+              <div class="shop-item-name" id="shop-modal-name">Item Name</div>
+              <div class="shop-item-desc" id="shop-modal-desc">Item Description</div>
+              <div class="shop-item-cost" id="shop-modal-cost">Cost: 15 Coins</div>
+              <button id="btn-confirm-buy">[E] Confirm Purchase</button>
+              <button id="btn-cancel-buy">[ESC] Cancel</button>
+            </div>
+            <div id="garage-overlay">
+              <h1 id="modal-title">MOTO-GARAGE</h1>
+              <p id="modal-subtitle">Sub</p>
+              <span id="modal-scrap">0</span>
+              <canvas id="bike-canvas" width="300" height="190"></canvas>
+              <div id="livery-bar"></div>
+              <div id="slots-left"></div>
+              <div id="slots-right"></div>
+              <div id="eq-totals"></div>
+              <div id="stash-list"></div>
+              <div id="unlock-list"></div>
+              <div id="meta-upgrade-list"></div>
+              <button id="btn-resume">Resume Run</button>
+              <button id="btn-new-run">Start Fresh Run</button>
+              <button id="btn-reset-save">Full Save Reset</button>
+            </div>
+          </div>
+          <aside class="sidebar-col" id="right-sidebar">
+            <div id="weapon-bar"></div>
+            <div id="stats-grid"></div>
+            <div id="items-list"></div>
+            <div id="hud-synergy-list"></div>
+            <div id="synergy-list"></div>
+          </aside>
+        </div>
+        <div id="tooltip"></div>
+      `;
+
+      const app = new MotoRogueApp();
+      app.enterHomeBase();
+
+      const meta = app.stateManager.metaSave;
+      meta.equipped = {};
+      meta.ranks = { dmg: 0, fireRate: 0, speed: 0, maxHp: 0 };
+      meta.scrap = 0;
+      app.stateManager.player.scannerBuff = false;
+      app.codexBuffClaimedInHub = false;
+      app.bountyClaimedInHub = false;
+
+      const overlayEl = document.getElementById('hub-station-overlay')!;
+      const hubRoom = app.getCurrentRoom()!;
+      expect(hubRoom).toBeDefined();
+
+      // Step 1: 0% readiness (2 free buffs pending: scanner & war room cache)
+      const codexNpc = hubRoom.pickups.find(p => (p as any).npcId === 'codex')!;
+      expect(codexNpc).toBeDefined();
+      app.stateManager.player.x = codexNpc.x;
+      app.stateManager.player.y = codexNpc.y;
+      app.update(0.016);
+      (app as any).handleHubInteract();
+
+      expect(overlayEl.classList.contains('visible')).toBe(true);
+      expect(overlayEl.getAttribute('data-sanctuary-readiness-pct')).toBe('0');
+      expect(overlayEl.getAttribute('data-sanctuary-free-actions')).toBe('2');
+      expect(overlayEl.getAttribute('data-sanctuary-overview')).toBe(
+        'SANCTUARY READINESS: 0% // FREE BUFFS PENDING: 2 // HEAT 0 // NEXT: INTEL SCANNER (FREE BUFF)'
+      );
+
+      // Step 2: Claim Tactical Scanner Buff -> 35% readiness (1 free buff pending)
+      const primaryBtn = document.getElementById('btn-hub-station-primary') as HTMLButtonElement;
+      expect(primaryBtn).not.toBeNull();
+      primaryBtn.click();
+
+      expect(app.codexBuffClaimedInHub).toBe(true);
+      expect(app.stateManager.player.scannerBuff).toBe(true);
+      expect(overlayEl.getAttribute('data-sanctuary-readiness-pct')).toBe('35');
+      expect(overlayEl.getAttribute('data-sanctuary-free-actions')).toBe('1');
+      expect(overlayEl.getAttribute('data-sanctuary-overview')).toBe(
+        'SANCTUARY READINESS: 35% // FREE BUFFS PENDING: 1 // HEAT 0 // NEXT: WAR ROOM (FREE CACHE)'
+      );
+
+      // Step 3: Close modal, move to War Room / Bounty station, and claim Cache -> 70% readiness (0 free buffs pending)
+      (app as any).hubStationModal.close();
+      const bountyNpc = hubRoom.pickups.find(p => (p as any).npcId === 'bounty')!;
+      expect(bountyNpc).toBeDefined();
+      app.stateManager.player.x = bountyNpc.x;
+      app.stateManager.player.y = bountyNpc.y;
+      app.update(0.016);
+      (app as any).handleHubInteract();
+
+      const cacheBtn = document.getElementById('btn-hub-claim-cache') as HTMLButtonElement;
+      expect(cacheBtn).not.toBeNull();
+      cacheBtn.click();
+
+      expect(app.bountyClaimedInHub).toBe(true);
+      expect(overlayEl.getAttribute('data-sanctuary-readiness-pct')).toBe('70');
+      expect(overlayEl.getAttribute('data-sanctuary-free-actions')).toBe('0');
+      expect(overlayEl.getAttribute('data-sanctuary-overview')).toBe(
+        'SANCTUARY READINESS: 70% // FREE BUFFS PENDING: 0 // HEAT 0 // ALL STATIONS OPTIMIZED'
+      );
+
+      // Step 4: Equip all 6 gear slots and max all permanent tuning ranks -> 100% readiness (ALL STATIONS OPTIMIZED)
+      (app as any).hubStationModal.close();
+      meta.equipped = {
+        tires: { slot: 'tires', rarity: 1, name: 'Slick Tires', stats: { speed: 10 } },
+        engine: { slot: 'engine', rarity: 1, name: 'Turbo V-Twin', stats: { speed: 15 } },
+        handlebars: { slot: 'handlebars', rarity: 1, name: 'Clip-On Bars', stats: { speed: 8 } },
+        exhaust: { slot: 'exhaust', rarity: 1, name: 'Titanium Exhaust', stats: { dmg: 6 } },
+        frame: { slot: 'frame', rarity: 1, name: 'Carbon Frame', stats: { hp: 12 } },
+        tank: { slot: 'tank', rarity: 1, name: 'Armored Tank', stats: { hp: 20 } }
+      };
+      meta.ranks = { dmg: 5, fireRate: 5, speed: 5, maxHp: 4 };
+      meta.scrap = 0;
+
+      const launchNpc = hubRoom.pickups.find(p => (p as any).npcId === 'launch')!;
+      expect(launchNpc).toBeDefined();
+      app.stateManager.player.x = launchNpc.x;
+      app.stateManager.player.y = launchNpc.y;
+      app.update(0.016);
+      (app as any).handleHubInteract();
+
+      expect(overlayEl.getAttribute('data-sanctuary-readiness-pct')).toBe('100');
+      expect(overlayEl.getAttribute('data-sanctuary-free-actions')).toBe('0');
+      expect(overlayEl.getAttribute('data-sanctuary-overview')).toBe(
+        'SANCTUARY READINESS: 100% // FREE BUFFS PENDING: 0 // HEAT 0 // ALL STATIONS OPTIMIZED'
+      );
+      expect(overlayEl.getAttribute('data-sanctuary-overview')).toContain('ALL STATIONS OPTIMIZED');
+
+      // Verify pure helper returns identical readiness telemetry
+      const overview = getSanctuaryHideoutOverview(meta, app.stateManager.player, true, true);
+      expect(overview.readinessPct).toBe(100);
+      expect(overview.pendingFreeActionsCount).toBe(0);
+      expect(overview.isOptimalForLaunch).toBe(true);
+
+      (app as any).hubStationModal.close();
+    });
+
+    it('verifies PortalModalController updates data-portal-next-floor, data-portal-boss, data-portal-low-hull, and data-portal-descent-summary on #portal-confirm-overlay across Floors 1–5 and critical vs. full player hull states', () => {
+      document.body.innerHTML = `
+        <div id="portal-confirm-overlay" aria-hidden="true">
+          <div class="portal-card">
+            <h2 id="portal-floor-label" class="portal-headline"></h2>
+            <p id="portal-warning" class="portal-warning"></p>
+            <div class="portal-actions">
+              <button id="btn-portal-confirm" type="button" class="portal-btn">CONFIRM</button>
+              <button id="btn-portal-cancel" type="button" class="portal-btn">CANCEL</button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      const portalModal = new PortalModalController();
+      const overlayEl = document.getElementById('portal-confirm-overlay')!;
+      expect(overlayEl).not.toBeNull();
+
+      // Floor 1 -> Critical Hull (2/10 = 20% <= 35%)
+      portalModal.open({ floorNum: 1, playerHp: 2, playerMaxHp: 10, heatLevel: 0 }, vi.fn(), vi.fn());
+      expect(overlayEl.getAttribute('data-portal-next-floor')).toBe('2');
+      expect(overlayEl.getAttribute('data-portal-boss')).toBe('SIEGE BEHEMOTH');
+      expect(overlayEl.getAttribute('data-portal-low-hull')).toBe('true');
+      expect(overlayEl.getAttribute('data-portal-descent-summary')).toBe(
+        'SECTOR 2: SMELTER FOUNDRY (BOSS: SIEGE BEHEMOTH · 1.55x) // HULL: ⚠️ CRITICAL HULL // HEAT 0 // STANDARD (+0% Bonus Scrap)'
+      );
+
+      // Floor 1 -> Full Hull (10/10 = 100%)
+      portalModal.render({ floorNum: 1, playerHp: 10, playerMaxHp: 10, heatLevel: 0 });
+      expect(overlayEl.getAttribute('data-portal-next-floor')).toBe('2');
+      expect(overlayEl.getAttribute('data-portal-boss')).toBe('SIEGE BEHEMOTH');
+      expect(overlayEl.getAttribute('data-portal-low-hull')).toBe('false');
+      expect(overlayEl.getAttribute('data-portal-descent-summary')).toBe(
+        'SECTOR 2: SMELTER FOUNDRY (BOSS: SIEGE BEHEMOTH · 1.55x) // HULL: ★ FULL INTEGRITY // HEAT 0 // STANDARD (+0% Bonus Scrap)'
+      );
+
+      // Floor 2 -> Sector 3: NEON CYBER-FREEWAY (Boss: OVERLORD HELION, Heat 1)
+      portalModal.open({ floorNum: 2, playerHp: 8, playerMaxHp: 8, heatLevel: 1 }, vi.fn(), vi.fn());
+      expect(overlayEl.getAttribute('data-portal-next-floor')).toBe('3');
+      expect(overlayEl.getAttribute('data-portal-boss')).toBe('OVERLORD HELION');
+      expect(overlayEl.getAttribute('data-portal-low-hull')).toBe('false');
+      expect(overlayEl.getAttribute('data-portal-descent-summary')).toBe(
+        'SECTOR 3: NEON CYBER-FREEWAY (BOSS: OVERLORD HELION · 2.40x) // HULL: ★ FULL INTEGRITY // HEAT 1 // OVERCLOCKED (+25% Bonus Scrap)'
+      );
+
+      // Floor 3 -> Sector 4: SUB-ZERO CRYO LAB (Boss: CRYO VALKYRIE, Heat 2, Critical Hull 1/6)
+      portalModal.open({ floorNum: 3, playerHp: 1, playerMaxHp: 6, heatLevel: 2 }, vi.fn(), vi.fn());
+      expect(overlayEl.getAttribute('data-portal-next-floor')).toBe('4');
+      expect(overlayEl.getAttribute('data-portal-boss')).toBe('CRYO VALKYRIE');
+      expect(overlayEl.getAttribute('data-portal-low-hull')).toBe('true');
+      expect(overlayEl.getAttribute('data-portal-descent-summary')).toBe(
+        'SECTOR 4: SUB-ZERO CRYO LAB (BOSS: CRYO VALKYRIE · 3.72x) // HULL: ⚠️ CRITICAL HULL // HEAT 2 // BLOOD PACT (+50% Bonus Scrap)'
+      );
+
+      // Floor 4 -> Sector 5: MAGMA CORE (Boss: INFERNO COLOSSUS, Heat 3, Mid Hull 5/10)
+      portalModal.open({ floorNum: 4, playerHp: 5, playerMaxHp: 10, heatLevel: 3 }, vi.fn(), vi.fn());
+      expect(overlayEl.getAttribute('data-portal-next-floor')).toBe('5');
+      expect(overlayEl.getAttribute('data-portal-boss')).toBe('INFERNO COLOSSUS');
+      expect(overlayEl.getAttribute('data-portal-low-hull')).toBe('false');
+      expect(overlayEl.getAttribute('data-portal-descent-summary')).toBe(
+        'SECTOR 5: MAGMA CORE (BOSS: INFERNO COLOSSUS · 5.77x) // HULL: ⚡ COMBAT READY // HEAT 3 // VALHALLA INFERNO (+75% Bonus Scrap)'
+      );
+
+      // Floor 5 -> Sector 6: CHROME CITADEL (Boss: OMEGA VALHALLA, Heat 0, Critical Hull 2/12)
+      portalModal.open({ floorNum: 5, playerHp: 2, playerMaxHp: 12, heatLevel: 0 }, vi.fn(), vi.fn());
+      expect(overlayEl.getAttribute('data-portal-next-floor')).toBe('6');
+      expect(overlayEl.getAttribute('data-portal-boss')).toBe('OMEGA VALHALLA');
+      expect(overlayEl.getAttribute('data-portal-low-hull')).toBe('true');
+      expect(overlayEl.getAttribute('data-portal-descent-summary')).toBe(
+        'SECTOR 6: CHROME CITADEL (BOSS: OMEGA VALHALLA · 8.95x) // HULL: ⚠️ CRITICAL HULL // HEAT 0 // STANDARD (+0% Bonus Scrap)'
+      );
+
+      // Direct helper verification
+      const descent = getPortalDescentSummary(5, 2, 12, 0);
+      expect(descent.nextFloor).toBe(6);
+      expect(descent.bossName).toBe('OMEGA VALHALLA');
+      expect(descent.isLowHullWarning).toBe(true);
+
+      portalModal.close();
+    });
+
+    it('verifies GarageController updates data-active-livery-id, data-active-livery-name, and data-livery-summary on #garage-overlay and #bike-canvas when clicking livery swatch buttons in #livery-bar', () => {
+      document.body.innerHTML = `
+        <div id="garage-overlay">
+          <h1 id="modal-title">MOTO-GARAGE</h1>
+          <p id="modal-subtitle">Sub</p>
+          <span id="modal-scrap">0</span>
+          <canvas id="bike-canvas" width="300" height="190"></canvas>
+          <div id="livery-bar"></div>
+          <div id="slots-left"></div>
+          <div id="slots-right"></div>
+          <div id="eq-totals"></div>
+          <div id="stash-list"></div>
+          <div id="unlock-list"></div>
+          <div id="meta-upgrade-list"></div>
+          <button id="btn-resume">Resume Run</button>
+          <button id="btn-new-run">Start Fresh Run</button>
+          <button id="btn-reset-save">Full Save Reset</button>
+        </div>
+      `;
+
+      const meta: MetaSaveState = createDefaultMetaSave();
+      meta.livery = 'crimson_kaneda';
+      const curPlayer = createDefaultPlayerState();
+      curPlayer.livery = 'crimson_kaneda';
+
+      const overlayEl = document.getElementById('garage-overlay')!;
+      const canvasEl = document.getElementById('bike-canvas') as HTMLCanvasElement;
+      const liveryBarEl = document.getElementById('livery-bar')!;
+
+      const callbacks: GarageCallbacks = {
+        onEquipItem: vi.fn(),
+        onUnequipSlot: vi.fn(),
+        onSellItem: vi.fn(),
+        onUnlockWeapon: vi.fn(),
+        onEquipWeapon: vi.fn(),
+        onBuyUpgrade: vi.fn(),
+        onResumeRun: vi.fn(),
+        onNewRun: vi.fn(),
+        onResetSave: vi.fn(),
+        onSelectLivery: vi.fn((livId) => {
+          meta.livery = livId;
+          curPlayer.livery = livId;
+        })
+      };
+
+      const garage = new GarageController(callbacks);
+      garage.open(false, 1, meta, curPlayer);
+
+      // Initial default livery state (KANEDA RED)
+      const initSummary = getLiveryCollectionSummary(meta);
+      expect(initSummary.activeLiveryId).toBe('crimson_kaneda');
+      expect(initSummary.activeLiveryName).toBe('KANEDA RED');
+      expect(initSummary.totalLiveries).toBe(5);
+
+      expect(overlayEl.getAttribute('data-active-livery-id')).toBe('crimson_kaneda');
+      expect(overlayEl.getAttribute('data-active-livery-name')).toBe('KANEDA RED');
+      expect(overlayEl.getAttribute('data-livery-summary')).toBe(
+        'LIVERY: KANEDA RED (#ff5c00 / #b33000) // 5 CUSTOM PAINTS AVAILABLE'
+      );
+
+      expect(canvasEl.getAttribute('data-active-livery-id')).toBe('crimson_kaneda');
+      expect(canvasEl.getAttribute('data-active-livery-name')).toBe('KANEDA RED');
+      expect(canvasEl.getAttribute('data-livery-summary')).toBe(
+        'LIVERY: KANEDA RED (#ff5c00 / #b33000) // 5 CUSTOM PAINTS AVAILABLE'
+      );
+
+      const buttons = Array.from(liveryBarEl.querySelectorAll<HTMLButtonElement>('.gx-livery-btn'));
+      expect(buttons.length).toBe(5);
+
+      // Sequentially click all 5 liveries in BIKE_LIVERIES and verify live telemetry updates
+      for (const liv of BIKE_LIVERIES) {
+        const btn = liveryBarEl.querySelector<HTMLButtonElement>(`.gx-livery-btn[data-livery-id="${liv.id}"]`);
+        expect(btn).not.toBeNull();
+        btn!.click();
+
+        expect(callbacks.onSelectLivery).toHaveBeenCalledWith(liv.id);
+        expect(meta.livery).toBe(liv.id);
+
+        const expectedSummary = `LIVERY: ${liv.name.toUpperCase()} (${liv.primary} / ${liv.secondary}) // 5 CUSTOM PAINTS AVAILABLE`;
+
+        expect(overlayEl.getAttribute('data-active-livery-id')).toBe(liv.id);
+        expect(overlayEl.getAttribute('data-active-livery-name')).toBe(liv.name);
+        expect(overlayEl.getAttribute('data-livery-summary')).toBe(expectedSummary);
+
+        expect(canvasEl.getAttribute('data-active-livery-id')).toBe(liv.id);
+        expect(canvasEl.getAttribute('data-active-livery-name')).toBe(liv.name);
+        expect(canvasEl.getAttribute('data-livery-summary')).toBe(expectedSummary);
+
+        const updatedBtn = liveryBarEl.querySelector<HTMLButtonElement>(`.gx-livery-btn[data-livery-id="${liv.id}"]`)!;
+        expect(updatedBtn.classList.contains('is-active')).toBe(true);
+        expect(updatedBtn.getAttribute('aria-checked')).toBe('true');
+      }
+
+      garage.close();
+    });
+
+    it('verifies getDungeonSectorSummary accurately tracks cleared room progression and remaining pickups as the player clears rooms across a generated Floor 1 dungeon in MotoRogueApp', () => {
+      document.body.innerHTML = `
+        <div id="app-layout">
+          <aside class="sidebar-col" id="left-sidebar">
+            <div id="hud-left"></div>
+            <span id="hp-text">6 / 6</span>
+            <canvas id="fuel-gauge" width="240" height="120"></canvas>
+            <div id="nos-fill"></div>
+            <strong id="coin-count">0 🪙</strong>
+            <strong id="scrap-count">0 ⚙️</strong>
+            <strong id="floor-num">1</strong>
+            <canvas id="minimap-canvas" width="240" height="150"></canvas>
+            <div id="save-status">Autosave: local storage</div>
+            <button id="btn-open-garage">[G] Garage &amp; Tuning</button>
+            <button id="btn-toggle-sound">🔊 [M]</button>
+          </aside>
+          <div id="game-wrapper">
+            <canvas id="canvas" width="720" height="720"></canvas>
+            <div id="hub-station-overlay" aria-hidden="true"></div>
+            <div id="portal-confirm-overlay" aria-hidden="true"></div>
+            <div id="shop-confirm-overlay"></div>
+            <div id="garage-overlay">
+              <div id="meta-upgrade-list"></div>
+            </div>
+          </div>
+          <aside class="sidebar-col" id="right-sidebar">
+            <div id="weapon-bar"></div>
+            <div id="stats-grid"></div>
+            <div id="items-list"></div>
+            <div id="hud-synergy-list"></div>
+            <div id="synergy-list"></div>
+          </aside>
+        </div>
+        <div id="tooltip"></div>
+      `;
+
+      const app = new MotoRogueApp();
+      app.startNewRun(false);
+
+      const dungeon = app.dungeon;
+      const rooms = Object.values(dungeon);
+      expect(rooms.length).toBeGreaterThanOrEqual(6);
+
+      // Phase 1: Initial state on Floor 1 entrance (start room, treasure room, and shop room are cleared)
+      let summary = getDungeonSectorSummary(dungeon, app.stateManager.floorNum, app.stateManager.metaSave.heatLevel);
+      const initialCleared = rooms.filter(r => r.cleared).length;
+      expect(summary.floorNum).toBe(1);
+      expect(summary.totalRooms).toBe(rooms.length);
+      expect(summary.clearedRooms).toBe(initialCleared);
+      expect(summary.combatRooms).toBeGreaterThan(0);
+      expect(summary.bossRooms).toBe(1);
+      expect(summary.heatLevel).toBe(0);
+      expect(summary.scrapBonusPct).toBe(0);
+      expect(summary.summaryLine).toContain(`SECTOR 1 (${initialCleared}/${rooms.length} CLEARED)`);
+      expect(summary.summaryLine).toContain(`${summary.remainingPickups} DROPS`);
+      expect(summary.summaryLine).toContain('HEAT +0%');
+
+      // Phase 2: Clear an uncleared room
+      const uncleared = rooms.find(r => !r.cleared);
+      expect(uncleared).toBeDefined();
+      uncleared!.cleared = true;
+
+      summary = getDungeonSectorSummary(dungeon, app.stateManager.floorNum, app.stateManager.metaSave.heatLevel);
+      expect(summary.clearedRooms).toBe(initialCleared + 1);
+      expect(summary.summaryLine).toContain(`SECTOR 1 (${initialCleared + 1}/${rooms.length} CLEARED)`);
+
+      // Phase 3: Pick up an item from a room
+      const roomWithPickups = rooms.find(r => r.pickups && r.pickups.length > 0);
+      expect(roomWithPickups).toBeDefined();
+      const initialDrops = summary.remainingPickups;
+      expect(initialDrops).toBeGreaterThan(0);
+
+      roomWithPickups!.pickups.pop();
+      summary = getDungeonSectorSummary(dungeon, app.stateManager.floorNum, app.stateManager.metaSave.heatLevel);
+      expect(summary.remainingPickups).toBe(initialDrops - 1);
+      expect(summary.summaryLine).toContain(`${initialDrops - 1} DROPS`);
+
+      // Phase 4: Full sector room clearance
+      for (const r of rooms) {
+        r.cleared = true;
+      }
+      summary = getDungeonSectorSummary(dungeon, app.stateManager.floorNum, app.stateManager.metaSave.heatLevel);
+      expect(summary.clearedRooms).toBe(rooms.length);
+      expect(summary.summaryLine).toContain(`SECTOR 1 (${rooms.length}/${rooms.length} CLEARED)`);
+
+      // Phase 5: Loot sweep (all pickups collected)
+      for (const r of rooms) {
+        r.pickups = [];
+      }
+      summary = getDungeonSectorSummary(dungeon, app.stateManager.floorNum, app.stateManager.metaSave.heatLevel);
+      expect(summary.remainingPickups).toBe(0);
+      expect(summary.summaryLine).toContain('LOOT: 0 DROPS');
+
+      // Phase 6: Heat Level scaling checks
+      const heat1 = getDungeonSectorSummary(dungeon, 1, 1);
+      expect(heat1.heatLevel).toBe(1);
+      expect(heat1.scrapBonusPct).toBe(25);
+      expect(heat1.summaryLine).toContain('HEAT +25%');
+
+      const heat2 = getDungeonSectorSummary(dungeon, 1, 2);
+      expect(heat2.heatLevel).toBe(2);
+      expect(heat2.scrapBonusPct).toBe(50);
+      expect(heat2.summaryLine).toContain('HEAT +50%');
+
+      const heat3 = getDungeonSectorSummary(dungeon, 1, 3);
+      expect(heat3.heatLevel).toBe(3);
+      expect(heat3.scrapBonusPct).toBe(75);
+      expect(heat3.summaryLine).toContain('HEAT +75%');
     });
   });
 });

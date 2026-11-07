@@ -3958,4 +3958,217 @@ describe('Render & UI Subsystems', () => {
       });
     });
   });
+
+  describe('M133: HUD Live Dungeon Sector Summary Telemetry (updateMinimap & updateSectorSummaryTelemetry)', () => {
+    const makeDoors = (d: Partial<Record<'N' | 'S' | 'E' | 'W', boolean>> = {}) => ({
+      N: false,
+      S: false,
+      E: false,
+      W: false,
+      ...d
+    });
+
+    const createSectorRoom = (overrides: Partial<Room> & { x: number; y: number; type: Room['type'] }): Room => ({
+      cleared: false,
+      visited: false,
+      doors: makeDoors(),
+      obstacles: [],
+      enemies: [],
+      pickups: [],
+      hazards: [],
+      skids: [],
+      trapdoor: false,
+      ...overrides
+    });
+
+    beforeEach(() => {
+      document.body.innerHTML = `
+        <div id="game-wrapper">
+          <div id="minimap-container">
+            <canvas id="minimap-canvas" width="240" height="150"></canvas>
+          </div>
+          <aside id="sidebar"></aside>
+        </div>
+      `;
+    });
+
+    it('accurately populates telemetry data attributes across all 6 floors (Floors 1-6)', () => {
+      const hud = new HUDController();
+      const container = document.getElementById('minimap-container')!;
+      const canvas = document.getElementById('minimap-canvas')!;
+      const sidebar = document.getElementById('sidebar')!;
+
+      const dungeon: Dungeon = {
+        '0,0': createSectorRoom({ x: 0, y: 0, type: 'combat', cleared: true }),
+        '1,0': createSectorRoom({ x: 1, y: 0, type: 'treasure', cleared: true }),
+        '0,1': createSectorRoom({ x: 0, y: 1, type: 'shop', cleared: true }),
+        '1,1': createSectorRoom({ x: 1, y: 1, type: 'boss', cleared: false })
+      };
+
+      for (let floor = 1; floor <= 6; floor++) {
+        hud.updateSectorSummaryTelemetry(dungeon, floor, 1);
+
+        for (const el of [container, canvas, sidebar]) {
+          expect(el.getAttribute('data-sector-floor')).toBe(String(floor));
+          expect(el.getAttribute('data-sector-cleared-rooms')).toBe('3');
+          expect(el.getAttribute('data-sector-total-rooms')).toBe('4');
+          expect(el.getAttribute('data-sector-heat-bonus')).toBe('25');
+          expect(el.getAttribute('data-sector-summary')).toContain(`SECTOR ${floor} (3/4 CLEARED)`);
+          expect(el.getAttribute('data-sector-summary')).toContain('// HEAT +25%');
+        }
+      }
+    });
+
+    it('accurately distinguishes cleared vs uncleared rooms (0%, partial, and 100% clearance)', () => {
+      const hud = new HUDController();
+      const container = document.getElementById('minimap-container')!;
+      const canvas = document.getElementById('minimap-canvas')!;
+      const sidebar = document.getElementById('sidebar')!;
+
+      // 0 cleared
+      const unclearedDungeon: Dungeon = {
+        '0,0': createSectorRoom({ x: 0, y: 0, type: 'combat', cleared: false }),
+        '1,0': createSectorRoom({ x: 1, y: 0, type: 'combat', cleared: false }),
+        '0,1': createSectorRoom({ x: 0, y: 1, type: 'treasure', cleared: false }),
+        '1,1': createSectorRoom({ x: 1, y: 1, type: 'boss', cleared: false })
+      };
+
+      hud.updateSectorSummaryTelemetry(unclearedDungeon, 2, 0);
+      expect(container.getAttribute('data-sector-cleared-rooms')).toBe('0');
+      expect(container.getAttribute('data-sector-total-rooms')).toBe('4');
+      expect(canvas.getAttribute('data-sector-cleared-rooms')).toBe('0');
+      expect(sidebar.getAttribute('data-sector-cleared-rooms')).toBe('0');
+      expect(container.getAttribute('data-sector-summary')).toContain('SECTOR 2 (0/4 CLEARED)');
+
+      // 4/4 100% cleared
+      const fullyClearedDungeon: Dungeon = {
+        '0,0': createSectorRoom({ x: 0, y: 0, type: 'combat', cleared: true }),
+        '1,0': createSectorRoom({ x: 1, y: 0, type: 'combat', cleared: true }),
+        '0,1': createSectorRoom({ x: 0, y: 1, type: 'treasure', cleared: true }),
+        '1,1': createSectorRoom({ x: 1, y: 1, type: 'boss', cleared: true })
+      };
+
+      hud.updateSectorSummaryTelemetry(fullyClearedDungeon, 2, 0);
+      expect(container.getAttribute('data-sector-cleared-rooms')).toBe('4');
+      expect(container.getAttribute('data-sector-total-rooms')).toBe('4');
+      expect(canvas.getAttribute('data-sector-cleared-rooms')).toBe('4');
+      expect(sidebar.getAttribute('data-sector-cleared-rooms')).toBe('4');
+      expect(container.getAttribute('data-sector-summary')).toContain('SECTOR 2 (4/4 CLEARED)');
+    });
+
+    it('accurately computes Heat Level 0..3 scrap bonuses (0%, 25%, 50%, 75%)', () => {
+      const hud = new HUDController();
+      const canvas = document.getElementById('minimap-canvas')!;
+
+      const dungeon: Dungeon = {
+        '0,0': createSectorRoom({ x: 0, y: 0, type: 'combat', cleared: true })
+      };
+
+      const heatExpected = [
+        { heat: 0, bonus: '0', tag: '+0%' },
+        { heat: 1, bonus: '25', tag: '+25%' },
+        { heat: 2, bonus: '50', tag: '+50%' },
+        { heat: 3, bonus: '75', tag: '+75%' }
+      ];
+
+      for (const { heat, bonus, tag } of heatExpected) {
+        hud.updateSectorSummaryTelemetry(dungeon, 3, heat);
+        expect(canvas.getAttribute('data-sector-heat-bonus')).toBe(bonus);
+        expect(canvas.getAttribute('data-sector-summary')).toContain(`HEAT ${tag}`);
+      }
+    });
+
+    it('invokes updateSectorSummaryTelemetry correctly through HUDController.updateMinimap', () => {
+      const hud = new HUDController();
+      const container = document.getElementById('minimap-container')!;
+      const canvas = document.getElementById('minimap-canvas')!;
+      const sidebar = document.getElementById('sidebar')!;
+
+      const dungeon: Dungeon = {
+        '0,0': createSectorRoom({ x: 0, y: 0, type: 'combat', cleared: true, pickups: [{ type: 'coin', x: 10, y: 10 } as any] }),
+        '1,0': createSectorRoom({ x: 1, y: 0, type: 'shop', cleared: true }),
+        '2,0': createSectorRoom({ x: 2, y: 0, type: 'boss', cleared: false })
+      };
+
+      // Calling updateMinimap with (dungeon, floorNum, heatLevel)
+      hud.updateMinimap(dungeon, 4, 2);
+
+      expect(container.getAttribute('data-sector-floor')).toBe('4');
+      expect(container.getAttribute('data-sector-cleared-rooms')).toBe('2');
+      expect(container.getAttribute('data-sector-total-rooms')).toBe('3');
+      expect(container.getAttribute('data-sector-heat-bonus')).toBe('50');
+      expect(container.getAttribute('data-sector-summary')).toContain('SECTOR 4 (2/3 CLEARED) // ROOMS: 1 COMBAT, 0 TREASURE, 1 SHOP, 1 BOSS // LOOT: 1 DROPS // HEAT +50%');
+
+      expect(canvas.getAttribute('data-sector-floor')).toBe('4');
+      expect(sidebar.getAttribute('data-sector-floor')).toBe('4');
+
+      // Calling updateMinimap with (dungeon, curX, curY, floorNum, heatLevel)
+      hud.updateMinimap(dungeon, 0, 0, 5, 3);
+      expect(container.getAttribute('data-sector-floor')).toBe('5');
+      expect(container.getAttribute('data-sector-heat-bonus')).toBe('75');
+      expect(container.getAttribute('data-sector-summary')).toContain('SECTOR 5 (2/3 CLEARED)');
+      expect(container.getAttribute('data-sector-summary')).toContain('HEAT +75%');
+    });
+
+    it('supports alternative DOM element IDs (#minimap-box, #minimap, #hud-sidebar)', () => {
+      document.body.innerHTML = `
+        <div id="minimap-box">
+          <canvas id="minimap" width="200" height="100"></canvas>
+        </div>
+        <aside id="hud-sidebar"></aside>
+      `;
+
+      const hud = new HUDController();
+      const box = document.getElementById('minimap-box')!;
+      const minimap = document.getElementById('minimap')!;
+      const hudSidebar = document.getElementById('hud-sidebar')!;
+
+      const dungeon: Dungeon = {
+        '0,0': createSectorRoom({ x: 0, y: 0, type: 'combat', cleared: true })
+      };
+
+      hud.updateMinimap(dungeon, 1, 0);
+
+      expect(box.getAttribute('data-sector-floor')).toBe('1');
+      expect(minimap.getAttribute('data-sector-floor')).toBe('1');
+      expect(hudSidebar.getAttribute('data-sector-floor')).toBe('1');
+      expect(box.getAttribute('data-sector-cleared-rooms')).toBe('1');
+      expect(box.getAttribute('data-sector-total-rooms')).toBe('1');
+      expect(box.getAttribute('data-sector-heat-bonus')).toBe('0');
+      expect(box.getAttribute('data-sector-summary')).toContain('SECTOR 1 (1/1 CLEARED)');
+    });
+
+    it('updates custom directly assigned sidebarEl and minimapCanvas references', () => {
+      document.body.innerHTML = '';
+      const hud = new HUDController();
+      const customSidebar = document.createElement('section');
+      const customCanvas = document.createElement('canvas');
+      hud.sidebarEl = customSidebar;
+      (hud as any).minimapCanvas = customCanvas;
+
+      const dungeon: Dungeon = {
+        '0,0': createSectorRoom({ x: 0, y: 0, type: 'combat', cleared: false })
+      };
+
+      hud.updateSectorSummaryTelemetry(dungeon, 6, 2);
+
+      expect(customSidebar.getAttribute('data-sector-floor')).toBe('6');
+      expect(customSidebar.getAttribute('data-sector-cleared-rooms')).toBe('0');
+      expect(customSidebar.getAttribute('data-sector-total-rooms')).toBe('1');
+      expect(customSidebar.getAttribute('data-sector-heat-bonus')).toBe('50');
+      expect(customCanvas.getAttribute('data-sector-floor')).toBe('6');
+      expect(customCanvas.getAttribute('data-sector-heat-bonus')).toBe('50');
+    });
+
+    it('safely handles empty or missing DOM and undefined dungeon without throwing errors', () => {
+      document.body.innerHTML = '';
+      const hud = new HUDController();
+
+      expect(() => {
+        hud.updateSectorSummaryTelemetry(null, 1, 0);
+        hud.updateSectorSummaryTelemetry(undefined, 2, 1);
+        hud.updateMinimap(null, 3, 2);
+      }).not.toThrow();
+    });
+  });
 });

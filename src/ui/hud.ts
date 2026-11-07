@@ -31,6 +31,7 @@ import {
 import { formatModDeckTooltipHint } from './tooltip';
 import { formatWeaponMasteryHint, formatStyleRankTooltip, formatWeaponEvolutionTooltipHint } from '@/ui/tooltip';
 import { getFloorBountyContract, getRoomHazardSummary, getFloorExplorationStatus, type RoomHazardSummary } from '@/world/dungeon';
+import { getDungeonSectorSummary } from '../world/dungeon';
 import { getCombatOffenseSummary } from '@/systems/combat';
 import { getRoomThreatAssessment, getBossEncounterBriefing } from '@/systems/enemyAI';
 import { getRiderMobilitySummary } from '@/systems/physics';
@@ -482,6 +483,83 @@ export class HUDController {
   }
 
   /**
+   * Evaluates live sector summary telemetry (clearance, room counts, loot drops, heat scrap bonus)
+   * and reflects data attributes on the minimap container, canvas, and sidebar.
+   */
+  public updateSectorSummaryTelemetry(
+    dungeon: any,
+    floorNum: number = 1,
+    heatLevel: number = 0
+  ): void {
+    const sector = getDungeonSectorSummary(dungeon, floorNum, heatLevel);
+
+    const minimapContainer = (typeof document !== 'undefined'
+      ? document.getElementById('minimap-container') || document.getElementById('minimap-box')
+      : null);
+    const minimapCanvas = this.minimapCanvas || (typeof document !== 'undefined'
+      ? document.getElementById('minimap') || document.getElementById('minimap-canvas')
+      : null);
+
+    if (!this.minimapCanvas && minimapCanvas && minimapCanvas instanceof HTMLCanvasElement) {
+      this.minimapCanvas = minimapCanvas;
+    }
+
+    const sidebar = this.sidebarEl || (typeof document !== 'undefined'
+      ? (document.getElementById('sidebar') || document.getElementById('hud-sidebar')) as HTMLElement | null
+      : null);
+    if (!this.sidebarEl && sidebar) {
+      this.sidebarEl = sidebar;
+    }
+
+    const targets = [minimapContainer, minimapCanvas, this.sidebarEl].filter(
+      (el, idx, arr) => Boolean(el) && arr.indexOf(el) === idx
+    ) as HTMLElement[];
+
+    for (const el of targets) {
+      el.setAttribute('data-sector-floor', String(sector.floorNum));
+      el.setAttribute('data-sector-cleared-rooms', String(sector.clearedRooms));
+      el.setAttribute('data-sector-total-rooms', String(sector.totalRooms));
+      el.setAttribute('data-sector-heat-bonus', String(sector.scrapBonusPct));
+      el.setAttribute('data-sector-summary', sector.summaryLine);
+    }
+  }
+
+  /**
+   * Updates minimap sector summary telemetry and optionally renders the holomap.
+   */
+  public updateMinimap(dungeon: any, floorNum?: number, heatLevel?: number): void;
+  public updateMinimap(dungeon: any, curX: number, curY: number, floorNum?: number, heatLevel?: number): void;
+  public updateMinimap(
+    dungeon?: any,
+    arg2: number = 1,
+    arg3: number = 0,
+    arg4?: number,
+    arg5: number = 0
+  ): void {
+    let fNum = 1;
+    let hLevel = 0;
+    let curX: number | undefined;
+    let curY: number | undefined;
+
+    if (arg4 !== undefined) {
+      curX = arg2;
+      curY = arg3;
+      fNum = arg4;
+      hLevel = arg5;
+    } else {
+      fNum = arg2;
+      hLevel = arg3;
+    }
+
+    this.updateSectorSummaryTelemetry(dungeon, fNum, hLevel);
+
+    if (dungeon && curX !== undefined && curY !== undefined) {
+      this.updateRoomHazardTelemetry(dungeon, curX, curY, fNum);
+      this.drawMinimap(dungeon, curX, curY, fNum);
+    }
+  }
+
+  /**
    * Renders the minimap and updates current room hazard telemetry attributes.
    */
   public renderMinimap(
@@ -491,8 +569,7 @@ export class HUDController {
     floorNum: number = 1
   ): void {
     this.lastFloorNum = floorNum;
-    this.updateRoomHazardTelemetry(dungeon, curX, curY, floorNum);
-    this.drawMinimap(dungeon, curX, curY, floorNum);
+    this.updateMinimap(dungeon, curX, curY, floorNum, 0);
   }
 
   /**
@@ -1635,7 +1712,7 @@ export class HUDController {
 
     // 7. Minimap & Automatic Boss Bar Sync
     if (dun && rx !== undefined && ry !== undefined) {
-      this.renderMinimap(dun, rx, ry, floorNum);
+      this.updateMinimap(dun, rx, ry, floorNum, player.heatLevel || 0);
       const curRoom = dun[`${rx},${ry}`];
       const activeBoss = curRoom?.enemies?.find((e): e is Boss => e.type === 'boss' && e.hp > 0) ?? null;
       this.updateBossBar(activeBoss, floorNum);
