@@ -1240,4 +1240,79 @@ export function getBossEncounterBriefing(
   };
 }
 
+// ============================================================================
+// 8. ROOM VISUAL CLUTTER & ARENA READABILITY AUDIT HELPER (M141)
+// ============================================================================
+
+export interface RoomVisualClutterAudit {
+  obstacleCount: number;
+  hazardObstacleCount: number;
+  biomeZoneCount: number;
+  activeEnemyCount: number;
+  clutterScore: number;
+  readabilityGrade: 'CLEAN' | 'MODERATE' | 'DENSE';
+  isCleanLayout: boolean;
+  layoutSummary: string;
+}
+
+/**
+ * Computes an arena readability audit assessing obstacles, hazard barrels, biome zones,
+ * and active hostiles to guarantee uncluttered combat arenas.
+ */
+export function getRoomVisualClutterAudit(
+  room: Partial<Room> | null | undefined,
+  floorNum: number = 1
+): RoomVisualClutterAudit {
+  const safeFloor = Math.max(1, Math.floor(Number.isFinite(floorNum) ? floorNum : 1));
+
+  const obstacleList = Array.isArray(room?.obstacles) ? room!.obstacles : [];
+  const obstacleCount = obstacleList.length;
+
+  let hazardObstacleCount = 0;
+  for (const ob of obstacleList) {
+    if (!ob) continue;
+    const type = (ob as any).type;
+    if (type === 'explosive_barrel' || type === 'cryo_barrel' || type === 'spikes') {
+      hazardObstacleCount++;
+    }
+  }
+
+  const biomeZoneList = Array.isArray(room?.biomeZones) ? room!.biomeZones : [];
+  const biomeZoneCount = biomeZoneList.length;
+
+  const enemyList = Array.isArray(room?.enemies) ? room!.enemies : [];
+  let activeEnemyCount = 0;
+  for (const e of enemyList) {
+    if (e && (e.hp ?? 0) > 0) {
+      activeEnemyCount++;
+    }
+  }
+
+  const clutterScore = obstacleCount * 2 + biomeZoneCount * 3 + activeEnemyCount;
+
+  let readabilityGrade: 'CLEAN' | 'MODERATE' | 'DENSE';
+  if (clutterScore <= 18) {
+    readabilityGrade = 'CLEAN';
+  } else if (clutterScore <= 30) {
+    readabilityGrade = 'MODERATE';
+  } else {
+    readabilityGrade = 'DENSE';
+  }
+
+  const isCleanLayout = obstacleCount <= 8 && biomeZoneCount <= 3;
+  const layoutSummary = `F${safeFloor} ${readabilityGrade} ARENA // ${obstacleCount} OBSTACLES · ${biomeZoneCount} ZONES · ${activeEnemyCount} HOSTILES`;
+
+  return {
+    obstacleCount,
+    hazardObstacleCount,
+    biomeZoneCount,
+    activeEnemyCount,
+    clutterScore,
+    readabilityGrade,
+    isCleanLayout,
+    layoutSummary
+  };
+}
+
+
 

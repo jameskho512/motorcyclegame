@@ -37,22 +37,22 @@
     0 0 0 4px var(--ink),
     12px 14px 0 rgba(0, 0, 0, 0.8),
     0 0 36px rgba(46, 230, 255, 0.25);
-  transform: skewX(var(--skew));
+  transform: none;
   animation: settings-enter 0.18s var(--ease-snap) both;
 }
 
 .settings-panel > * {
-  transform: skewX(calc(-1 * var(--skew)));
+  transform: none;
 }
 
 @keyframes settings-enter {
   from {
     opacity: 0;
-    transform: skewX(var(--skew)) scale(0.92) translateY(12px);
+    transform: scale(0.92) translateY(12px);
   }
   to {
     opacity: 1;
-    transform: skewX(var(--skew)) scale(1) translateY(0);
+    transform: scale(1) translateY(0);
   }
 }
 
@@ -68,7 +68,7 @@
   padding: 4px 16px;
   border: 2px solid var(--ink);
   box-shadow: 3px 3px 0 var(--ink);
-  transform: skewX(calc(-1 * var(--skew))) rotate(-2deg);
+  transform: none;
 }
 
 .settings-title {
@@ -123,7 +123,7 @@
 }
 
 .settings-hint {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted);
 }
 
@@ -163,7 +163,7 @@
 
 .settings-test {
   font-family: var(--font-display);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 1px;
   padding: 4px 8px;
   background: var(--ink);
@@ -232,7 +232,7 @@
 .settings-btn kbd {
   display: inline-block;
   font-family: var(--font-body);
-  font-size: 10px;
+  font-size: 12px;
   padding: 1px 4px;
   background: rgba(0, 0, 0, 0.35);
   color: inherit;

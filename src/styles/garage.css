@@ -103,7 +103,7 @@
   padding: 4px 34px 4px 18px;
   border: 3.5px solid var(--ink, #0a0b10);
   box-shadow: 5px 5px 0 var(--ink, #0a0b10);
-  transform: skewX(-12deg);
+  transform: none;
   transform-origin: 0 50%;
 }
 
@@ -137,7 +137,7 @@
   width: 5px;
   height: 100%;
   background: var(--red, #e5203a);
-  transform: skewX(-6deg);
+  transform: none;
 }
 
 /* SCRAP Counter Badge at Top-Right: Metallic gear + scrap count */
@@ -149,7 +149,7 @@
   padding: 3px 12px 3px 8px;
   border: 3px solid var(--ink, #0a0b10);
   box-shadow: 4px 4px 0 var(--ink, #0a0b10);
-  transform: skewX(-12deg);
+  transform: none;
 }
 
 .gx-scrap-icon {
@@ -213,7 +213,7 @@
     3px 3px 0 var(--ink, #0a0b10),
     0 5px 0 var(--red, #e5203a),
     0 8px 16px rgba(0, 0, 0, 0.85);
-  transform: skewX(-12deg) rotate(-4deg);
+  transform: none;
 }
 
 .gx-ko-sub {
@@ -225,7 +225,7 @@
   font-size: 14px;
   letter-spacing: 2px;
   padding: 3px 12px;
-  transform: skewX(-12deg);
+  transform: none;
   box-shadow: 3px 3px 0 var(--ink, #0a0b10);
   white-space: nowrap;
 }
@@ -433,7 +433,7 @@
 
 .gx-rank-txt {
   font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.6px;
   color: #adb5bd;
   text-transform: uppercase;
@@ -456,7 +456,7 @@
   color: var(--ink, #0a0b10);
   border: 2px solid var(--ink, #0a0b10);
   border-radius: 0;
-  transform: skewX(-12deg);
+  transform: none;
   box-shadow: 3px 3px 0 var(--ink, #0a0b10);
   font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
   font-style: italic;
@@ -472,12 +472,12 @@
 
 .btn.gx-upgrade-btn:hover:not(:disabled) {
   background: var(--yellow, #ffd60a);
-  transform: skewX(-12deg) translateY(-2px);
+  transform: translateY(-2px);
   box-shadow: 4px 4px 0 var(--ink, #0a0b10);
 }
 
 .btn.gx-upgrade-btn:active:not(:disabled) {
-  transform: skewX(-12deg) translate(2px, 2px);
+  transform: translate(2px, 2px);
   box-shadow: 1px 1px 0 var(--ink, #0a0b10);
 }
 
@@ -493,7 +493,7 @@
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .btn.gx-upgrade-btn .gx-gear,
@@ -572,7 +572,7 @@
   background: var(--ink, #0a0b10);
   border: 1px solid #555;
   color: var(--yellow, #ffd60a);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .unlock-item.gx-weapon .info span {
@@ -586,7 +586,7 @@
 .gx-weapon-mastery {
   display: inline-block;
   font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.04em;
   color: #94a3b8;
@@ -678,10 +678,10 @@
   font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
   font-style: italic;
   font-weight: 900;
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.5px;
   text-transform: uppercase;
-  transform: skewX(-12deg);
+  transform: none;
   border: 2px solid var(--ink, #0a0b10);
   box-shadow: 2px 2px 0 var(--ink, #0a0b10);
   cursor: pointer;
@@ -834,7 +834,7 @@
 .eq-slot .sl-name {
   display: block;
   max-width: 130px;
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 700;
   color: #e6ebf5;
   text-align: center;
@@ -849,7 +849,7 @@
   display: block;
   max-width: 132px;
   font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
-  font-size: 9px;
+  font-size: 12px;
   letter-spacing: 0.7px;
   color: var(--rar, #ffd60a);
   text-align: center;
@@ -914,16 +914,16 @@
   color: #c5cad8;
   font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
   font-style: italic;
-  font-size: 10.5px;
+  font-size: 12px;
   letter-spacing: 0.8px;
   text-transform: uppercase;
   cursor: pointer;
-  transform: skewX(-10deg);
+  transform: none;
   transition: transform 0.1s, border-color 0.1s, color 0.1s, box-shadow 0.1s;
 }
 
 .gx-livery-btn:hover {
-  transform: skewX(-10deg) translateY(-1px);
+  transform: translateY(-1px);
   color: #ffffff;
   border-color: var(--liv-col, #ffd60a);
 }
@@ -949,7 +949,7 @@
 .equip-bonus-summary {
   text-align: center;
   font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
-  font-size: 11.5px;
+  font-size: 12px;
   letter-spacing: 0.8px;
   color: var(--yellow, #ffd60a);
   text-shadow: 1px 1px 0 var(--ink, #0a0b10);
@@ -979,20 +979,20 @@
   border: 1px solid currentColor;
   text-transform: uppercase;
   font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
-  font-size: 11px;
+  font-size: 12px;
   box-shadow: 0 0 6px rgba(0, 0, 0, 0.45);
 }
 
 .gx-set-bonus {
   color: #00f5d4;
-  font-size: 11.5px;
+  font-size: 12px;
   letter-spacing: 0.6px;
   text-shadow: 0 0 8px rgba(0, 245, 212, 0.45);
 }
 
 .gx-legendary-passive {
   color: #ffd60a;
-  font-size: 11.5px;
+  font-size: 12px;
   letter-spacing: 0.6px;
   text-shadow: 0 0 8px rgba(255, 214, 10, 0.45);
 }
@@ -1001,7 +1001,7 @@
   color: #d8dde8;
   font-family: var(--font-body, 'Segoe UI', sans-serif);
   font-weight: normal;
-  font-size: 10.5px;
+  font-size: 12px;
 }
 
 .gx-tooltip-codex {
@@ -1133,7 +1133,7 @@
   border: 1px solid rgba(255, 214, 10, 0.45);
   border-radius: 3px;
   font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
-  font-size: 10px;
+  font-size: 12px;
   color: var(--yellow, #ffd60a);
   display: flex;
   align-items: center;
@@ -1155,7 +1155,7 @@
   background: rgba(10, 11, 16, 0.94);
   border-radius: 3px;
   font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 900;
   letter-spacing: 0.4px;
   line-height: 1.1;
@@ -1185,14 +1185,14 @@
 }
 
 .gx-stash-empty {
-  font-size: 11px;
+  font-size: 12px;
   color: #7d8294;
   grid-column: 1 / -1;
   align-self: center;
 }
 
 .gx-hint {
-  font-size: 9px;
+  font-size: 12px;
   color: #7d8294;
   margin: 1px 0 0;
   white-space: nowrap;
@@ -1219,7 +1219,7 @@
     0 0 16px rgba(255, 214, 10, 0.65),
     0 0 30px rgba(255, 107, 43, 0.35),
     5px 5px 0 var(--ink, #0a0b10);
-  transform: skewX(-12deg);
+  transform: none;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -1230,7 +1230,7 @@
 
 .btn.gx-btn-primary:hover {
   background: linear-gradient(180deg, #ff6a85 0%, #f22a45 50%, #c31530 100%);
-  transform: skewX(-12deg) translateY(-2px);
+  transform: translateY(-2px);
   box-shadow:
     0 0 24px rgba(255, 214, 10, 0.9),
     0 0 44px rgba(255, 107, 43, 0.6),
@@ -1238,7 +1238,7 @@
 }
 
 .btn.gx-btn-primary:active {
-  transform: skewX(-12deg) translate(2px, 2px);
+  transform: translate(2px, 2px);
   box-shadow: 2px 2px 0 var(--ink, #0a0b10);
 }
 
@@ -1270,7 +1270,7 @@
   background: var(--ink, #0a0b10);
   border: 3px solid var(--red, #e5203a);
   box-shadow: 4px 4px 0 var(--ink, #0a0b10);
-  transform: skewX(-12deg);
+  transform: none;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -1287,11 +1287,11 @@
 .btn.gx-btn-secondary:hover {
   background: #1e1924;
   border-color: #ff556d;
-  transform: skewX(-12deg) translateY(-2px);
+  transform: translateY(-2px);
 }
 
 .btn.gx-btn-secondary:active {
-  transform: skewX(-12deg) translate(2px, 2px);
+  transform: translate(2px, 2px);
   box-shadow: 2px 2px 0 var(--ink, #0a0b10);
 }
 
@@ -1303,8 +1303,8 @@
 
 .gx-actions-sub .btn {
   padding: 4px 8px;
-  font-size: 10px;
-  transform: skewX(-12deg);
+  font-size: 12px;
+  transform: none;
   border: 1.5px solid #444858;
 }
 

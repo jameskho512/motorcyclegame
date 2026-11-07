@@ -49,7 +49,7 @@ import {
 
 import { WEAPONS } from '@/data/weapons';
 import { getWeaponArsenalSummary } from '../../src/data/weapons';
-import { META_UPGRADES, calcUpgradeCost, RUN_MOD_POOL, DROP_ITEMS, DROP_ITEM_IDS } from '@/data/upgrades';
+import { META_UPGRADES, calcUpgradeCost, RUN_MOD_POOL, DROP_ITEMS, DROP_ITEM_IDS, getDropItemStackSummary } from '@/data/upgrades';
 import { EQUIP_SLOTS, RARITY, genLoot, itemScore } from '@/data/equipment';
 import {
   SafeLocalStorage,
@@ -72,7 +72,7 @@ import {
 } from '../../src/ui/hubStationModal';
 import { InputManager, KEY_WEAPON_MAP } from '@/core/input';
 import { SoundSynthesizer, calculateEngineParams } from '@/audio/sfx';
-import { generateDungeon, OBSTACLE_PATTERNS, createBoss, getFloorExplorationStatus } from '@/world/dungeon';
+import { generateDungeon, OBSTACLE_PATTERNS, createBoss, getFloorExplorationStatus, getFloorBountyContract } from '@/world/dungeon';
 import { formatWeaponEvolutionTooltipHint, formatModDeckTooltipHint } from '@/ui/tooltip';
 import { getShopBuildSynergyHint, getShopBudgetSummary, ShopModalController } from '@/ui/shopModal';
 import { getPortalHeatBriefing } from '@/ui/portalModal';
@@ -94,7 +94,8 @@ import {
   applyBruteArmor,
   applyTireIronBonus,
   rollCrit,
-  updatePlayerBullets
+  updatePlayerBullets,
+  getCombatSurvivabilitySummary
 } from '@/systems/combat';
 import {
   calcEnemyHp,
@@ -1826,6 +1827,415 @@ describe('Tier 1: Feature Coverage — 28 Features in Isolation', () => {
       expect(badgeHe.getAttribute('data-tip')).toContain('✓ DUO ACTIVE: THERMAL SHOCK');
 
       document.body.innerHTML = '';
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Feature 11: Clean UI Readability, Zero Outlaw Style, Zero Pre-Run Buffs & Survivability Telemetry (M142)
+  // --------------------------------------------------------------------------
+  describe('Feature 11: Clean UI Readability, Zero Outlaw Style, Zero Pre-Run Buffs & Survivability Telemetry (M142)', () => {
+    it('1. verifies Outlaw Style UI card (#style-rank-card) is explicitly hidden and suppressed by HUDController', () => {
+      document.body.innerHTML = `
+        <div id="game-wrapper">
+          <div id="fuel-bar"></div>
+          <div id="sidebar"></div>
+          <div id="hud-synergy-list"></div>
+          <div id="style-rank-card">STYLE RANK CARD</div>
+          <div id="synergy-tracker-card"></div>
+        </div>
+      `;
+
+      const hud = new HUDController();
+      const styleCard = document.getElementById('style-rank-card')!;
+      styleCard.hidden = false;
+      styleCard.style.display = 'block';
+
+      hud.updateSidebar(player, 1);
+
+      expect(styleCard.hidden).toBe(true);
+      expect(styleCard.style.display).toBe('none');
+
+      document.body.innerHTML = '';
+    });
+
+    it('2. verifies player styleScore and styleRank have zero mechanical impact on weapon combat, firing rate, and physics speed', () => {
+      const playerLow = createDefaultPlayerState();
+      playerLow.styleScore = 0;
+      playerLow.styleRank = 'D';
+
+      const playerHigh = createDefaultPlayerState();
+      playerHigh.styleScore = 100;
+      playerHigh.styleRank = 'SSS';
+
+      // 1. Effective speed is identical
+      const speedLow = calculateEffectiveSpeed(playerLow, false);
+      const speedHigh = calculateEffectiveSpeed(playerHigh, false);
+      expect(speedLow).toBe(speedHigh);
+
+      const speedNosLow = calculateEffectiveSpeed(playerLow, true);
+      const speedNosHigh = calculateEffectiveSpeed(playerHigh, true);
+      expect(speedNosLow).toBe(speedNosHigh);
+
+      // 2. Upgrade costs are unaffected by style
+      expect(calcUpgradeCost('dmg', 0)).toBe(25);
+      expect(calcUpgradeCost('maxHp', 0)).toBe(35);
+
+      // 3. Combat stats multipliers are pure
+      expect(playerLow.dmgMult).toBe(playerHigh.dmgMult);
+      expect(playerLow.fireRateMult).toBe(playerHigh.fireRateMult);
+      expect(playerLow.speedMult).toBe(playerHigh.speedMult);
+      expect(playerLow.projSpeedMult).toBe(playerHigh.projSpeedMult);
+    });
+
+    it('3. verifies Sanctuary Codex station renders dossier without pre-run buff claim buttons (#btn-hub-claim-cache and #btn-hub-autoclaim are null)', () => {
+      document.body.innerHTML = `
+        <div id="hub-station-overlay" aria-hidden="true">
+          <div class="hub-station-card">
+            <span id="hub-station-kicker"></span>
+            <h2 id="hub-station-title"></h2>
+            <div id="hub-station-speaker"></div>
+            <blockquote id="hub-station-quote"></blockquote>
+            <div id="hub-station-purpose"></div>
+            <div id="hub-station-body"></div>
+            <div id="hub-station-feedback" hidden></div>
+            <button type="button" id="btn-hub-station-primary">[E] ACTIVATE</button>
+            <button type="button" id="btn-hub-station-secondary">CYCLE</button>
+            <button type="button" id="btn-hub-station-close">[ESC] CLOSE</button>
+          </div>
+        </div>
+      `;
+
+      const modal = new HubStationModalController();
+      const meta = createDefaultMetaSave();
+      const onClaimScanner = vi.fn(() => ({ ok: true, message: '' }));
+
+      modal.open({
+        npcId: 'codex',
+        metaSave: meta,
+        player,
+        scannerClaimed: false,
+        bountyClaimed: false,
+        onReforge: vi.fn(() => ({ ok: true, message: '' })),
+        onClaimScanner,
+        onClaimBountyCache: vi.fn(() => ({ ok: true, message: '' })),
+        onSelectHeat: vi.fn(),
+        onLaunchRun: vi.fn(),
+        onClose: vi.fn()
+      });
+
+      expect(document.getElementById('btn-hub-claim-cache')).toBeNull();
+      expect(document.getElementById('btn-hub-autoclaim')).toBeNull();
+
+      const primaryBtn = document.getElementById('btn-hub-station-primary') as HTMLButtonElement;
+      expect(primaryBtn.textContent).toContain('CLOSE DOSSIER');
+
+      primaryBtn.click();
+      expect(onClaimScanner).not.toHaveBeenCalled();
+      expect(modal.isOpen()).toBe(false);
+
+      document.body.innerHTML = '';
+    });
+
+    it('4. verifies Sanctuary Bounty War Room station configures heat (0..3) with zero pre-run buff claim buttons', () => {
+      document.body.innerHTML = `
+        <div id="hub-station-overlay" aria-hidden="true">
+          <div class="hub-station-card">
+            <span id="hub-station-kicker"></span>
+            <h2 id="hub-station-title"></h2>
+            <div id="hub-station-speaker"></div>
+            <blockquote id="hub-station-quote"></blockquote>
+            <div id="hub-station-purpose"></div>
+            <div id="hub-station-body"></div>
+            <div id="hub-station-feedback" hidden></div>
+            <button type="button" id="btn-hub-station-primary">[E] ACTIVATE</button>
+            <button type="button" id="btn-hub-station-secondary">CYCLE</button>
+            <button type="button" id="btn-hub-station-close">[ESC] CLOSE</button>
+          </div>
+        </div>
+      `;
+
+      const modal = new HubStationModalController();
+      const meta = createDefaultMetaSave();
+      const onClaimBountyCache = vi.fn(() => ({ ok: true, message: '' }));
+      const onSelectHeat = vi.fn((heat: number) => { meta.heatLevel = heat; });
+
+      modal.open({
+        npcId: 'bounty',
+        metaSave: meta,
+        player,
+        scannerClaimed: false,
+        bountyClaimed: false,
+        onReforge: vi.fn(() => ({ ok: true, message: '' })),
+        onClaimScanner: vi.fn(() => ({ ok: true, message: '' })),
+        onClaimBountyCache,
+        onSelectHeat,
+        onLaunchRun: vi.fn(),
+        onClose: vi.fn()
+      });
+
+      expect(document.getElementById('btn-hub-claim-cache')).toBeNull();
+      expect(document.getElementById('btn-hub-autoclaim')).toBeNull();
+
+      const primaryBtn = document.getElementById('btn-hub-station-primary') as HTMLButtonElement;
+      expect(primaryBtn.textContent).toContain('CONFIRM WAR ROOM SETUP');
+
+      primaryBtn.click();
+      expect(onClaimBountyCache).not.toHaveBeenCalled();
+
+      document.body.innerHTML = '';
+    });
+
+    it('5. verifies Sanctuary Launch Gate station provides clean pre-flight checklist and zero buff claim buttons', () => {
+      document.body.innerHTML = `
+        <div id="hub-station-overlay" aria-hidden="true">
+          <div class="hub-station-card">
+            <span id="hub-station-kicker"></span>
+            <h2 id="hub-station-title"></h2>
+            <div id="hub-station-speaker"></div>
+            <blockquote id="hub-station-quote"></blockquote>
+            <div id="hub-station-purpose"></div>
+            <div id="hub-station-body"></div>
+            <div id="hub-station-feedback" hidden></div>
+            <button type="button" id="btn-hub-station-primary">[E] ACTIVATE</button>
+            <button type="button" id="btn-hub-station-secondary">CYCLE</button>
+            <button type="button" id="btn-hub-station-close">[ESC] CLOSE</button>
+          </div>
+        </div>
+      `;
+
+      const modal = new HubStationModalController();
+      const meta = createDefaultMetaSave();
+      const onLaunchRun = vi.fn();
+
+      modal.open({
+        npcId: 'launch',
+        metaSave: meta,
+        player,
+        scannerClaimed: false,
+        bountyClaimed: false,
+        onReforge: vi.fn(() => ({ ok: true, message: '' })),
+        onClaimScanner: vi.fn(() => ({ ok: true, message: '' })),
+        onClaimBountyCache: vi.fn(() => ({ ok: true, message: '' })),
+        onSelectHeat: vi.fn(),
+        onLaunchRun,
+        onClose: vi.fn()
+      });
+
+      expect(document.getElementById('btn-hub-claim-cache')).toBeNull();
+      expect(document.getElementById('btn-hub-autoclaim')).toBeNull();
+
+      const bodyEl = document.getElementById('hub-station-body')!;
+      expect(bodyEl.innerHTML).toContain('PRIMARY WEAPON');
+      expect(bodyEl.innerHTML).toContain('BOUNTY HEAT LEVEL');
+      expect(bodyEl.innerHTML).toContain('SECTOR 1 // RUSTYARD BUNKER');
+
+      const primaryBtn = document.getElementById('btn-hub-station-primary') as HTMLButtonElement;
+      expect(primaryBtn.textContent).toContain('DEPLOY TO SECTOR 1');
+
+      primaryBtn.click();
+      expect(onLaunchRun).toHaveBeenCalledTimes(1);
+      expect(player.coins).toBe(0);
+      expect(player.scannerBuff).toBeFalsy();
+
+      document.body.innerHTML = '';
+    });
+
+    it('6. verifies Floor 1 (NEON_DAREDEVIL), Floor 3 (THERMAL_HUNTER), Floor 5 (FORGE_EXECUTIONER), and Floor 6 (VALHALLA) bounty contracts require zero Style rank', () => {
+      const b1 = getFloorBountyContract(1);
+      expect(b1.title).toBe('NEON DAREDEVIL');
+      expect(b1.desc.toLowerCase()).not.toContain('style');
+      expect(b1.desc.toLowerCase()).not.toContain('rank s');
+      expect(b1.targetCount).toBe(3);
+
+      const b3 = getFloorBountyContract(3);
+      expect(b3.title).toBe('THERMAL HUNTER');
+      expect(b3.desc.toLowerCase()).not.toContain('style');
+      expect(b3.desc.toLowerCase()).not.toContain('rank s');
+      expect(b3.targetCount).toBe(6);
+
+      const b5 = getFloorBountyContract(5);
+      expect(b5.title).toBe('FORGE EXECUTIONER');
+      expect(b5.desc.toLowerCase()).not.toContain('style');
+      expect(b5.desc.toLowerCase()).not.toContain('rank s');
+      expect(b5.targetCount).toBe(5);
+
+      const b6 = getFloorBountyContract(6);
+      expect(b6.title).toBe('VALHALLA ASCENDANT');
+      expect(b6.desc.toLowerCase()).not.toContain('style');
+      expect(b6.desc.toLowerCase()).not.toContain('rank s');
+      expect(b6.targetCount).toBe(1);
+
+      // Check contract status generator
+      const status1 = getFloorBountyContractStatus(1, { styleScore: 0, styleRank: 'D' });
+      expect(status1.contractTitle).toBe('NEON DAREDEVIL');
+      expect(status1.summaryLine).toContain('BOUNTY [F1] NEON DAREDEVIL');
+
+      const status3 = getFloorBountyContractStatus(3, { styleScore: 0, styleRank: 'D' });
+      expect(status3.contractTitle).toBe('THERMAL HUNTER');
+      expect(status3.summaryLine).toContain('BOUNTY [F3] THERMAL HUNTER');
+
+      const status5 = getFloorBountyContractStatus(5, { styleScore: 0, styleRank: 'D' });
+      expect(status5.contractTitle).toBe('APEX INTERCEPTOR');
+      expect(status5.summaryLine).toContain('BOUNTY [F5] APEX INTERCEPTOR');
+
+      const status6 = getFloorBountyContractStatus(6, { styleScore: 0, styleRank: 'D' });
+      expect(status6.contractTitle).toBe('VALHALLA CONQUEROR');
+      expect(status6.summaryLine).toContain('BOUNTY [F6] VALHALLA CONQUEROR');
+    });
+
+    it('7. verifies HUD survivability telemetry populates effective HP, hull % tier, and chassis tier on DOM elements', () => {
+      document.body.innerHTML = `
+        <div id="fuel-bar"></div>
+        <div id="sidebar"></div>
+        <div id="hud-synergy-list"></div>
+      `;
+
+      const hud = new HUDController();
+
+      // OPTIMAL tier (100%)
+      player.hp = 5;
+      player.maxHp = 5;
+      hud.updateSurvivabilityTelemetry(player);
+
+      const fuelEl = document.getElementById('fuel-bar')!;
+      const sidebarEl = document.getElementById('sidebar')!;
+      const synergyEl = document.getElementById('hud-synergy-list')!;
+
+      for (const el of [fuelEl, sidebarEl, synergyEl]) {
+        expect(el.getAttribute('data-hull-pct')).toBe('100');
+        expect(el.getAttribute('data-hull-status')).toBe('OPTIMAL HULL');
+        expect(el.getAttribute('data-chassis-tier')).toBe('STANDARD CHASSIS');
+        expect(el.getAttribute('data-hull-invulnerable')).toBe('false');
+        expect(el.getAttribute('data-survivability-summary')).toBe('HULL: 5/5 (100% · OPTIMAL HULL) // STANDARD CHASSIS');
+      }
+
+      // DAMAGED tier (50%)
+      player.hp = 3;
+      player.maxHp = 6;
+      hud.updateSurvivabilityTelemetry(player);
+      for (const el of [fuelEl, sidebarEl, synergyEl]) {
+        expect(el.getAttribute('data-hull-pct')).toBe('50');
+        expect(el.getAttribute('data-hull-status')).toBe('DAMAGED HULL');
+        expect(el.getAttribute('data-survivability-summary')).toBe('HULL: 3/6 (50% · DAMAGED HULL) // STANDARD CHASSIS');
+      }
+
+      // CRITICAL tier (20%)
+      player.hp = 1;
+      player.maxHp = 5;
+      hud.updateSurvivabilityTelemetry(player);
+      for (const el of [fuelEl, sidebarEl, synergyEl]) {
+        expect(el.getAttribute('data-hull-pct')).toBe('20');
+        expect(el.getAttribute('data-hull-status')).toBe('CRITICAL HULL');
+        expect(el.getAttribute('data-survivability-summary')).toBe('HULL: 1/5 (20% · CRITICAL HULL) // STANDARD CHASSIS');
+      }
+
+      document.body.innerHTML = '';
+    });
+
+    it('8. verifies chassis tier scaling (STANDARD -> REINFORCED -> JUGGERNAUT) and shield invulnerability i-frames telemetry', () => {
+      document.body.innerHTML = `<div id="fuel-bar"></div>`;
+      const hud = new HUDController();
+      const fuelEl = document.getElementById('fuel-bar')!;
+
+      // STANDARD CHASSIS (< 7)
+      player.maxHp = 6;
+      player.hp = 6;
+      hud.updateSurvivabilityTelemetry(player);
+      expect(fuelEl.getAttribute('data-chassis-tier')).toBe('STANDARD CHASSIS');
+      expect(fuelEl.getAttribute('data-survivability-summary')).toContain('// STANDARD CHASSIS');
+
+      // REINFORCED CHASSIS (7..9)
+      player.maxHp = 8;
+      player.hp = 8;
+      hud.updateSurvivabilityTelemetry(player);
+      expect(fuelEl.getAttribute('data-chassis-tier')).toBe('REINFORCED CHASSIS');
+      expect(fuelEl.getAttribute('data-survivability-summary')).toContain('// REINFORCED CHASSIS');
+
+      // JUGGERNAUT TANK (>= 10)
+      player.maxHp = 12;
+      player.hp = 12;
+      hud.updateSurvivabilityTelemetry(player);
+      expect(fuelEl.getAttribute('data-chassis-tier')).toBe('JUGGERNAUT TANK');
+      expect(fuelEl.getAttribute('data-survivability-summary')).toContain('// JUGGERNAUT TANK');
+
+      // Invulnerability i-frames active
+      player.invuln = 1.2;
+      hud.updateSurvivabilityTelemetry(player);
+      expect(fuelEl.getAttribute('data-hull-invulnerable')).toBe('true');
+      expect(fuelEl.getAttribute('data-survivability-summary')).toContain('· SHIELD I-FRAMES ACTIVE');
+
+      // Invulnerability expired
+      player.invuln = 0;
+      hud.updateSurvivabilityTelemetry(player);
+      expect(fuelEl.getAttribute('data-hull-invulnerable')).toBe('false');
+      expect(fuelEl.getAttribute('data-survivability-summary')).not.toContain('· SHIELD I-FRAMES ACTIVE');
+
+      document.body.innerHTML = '';
+    });
+
+    it('9. verifies getDropItemStackSummary computes RoR2 crate drop counts, unique ratios, and top stacked item labels', () => {
+      // 1. Empty player state
+      const emptySummary = getDropItemStackSummary({});
+      expect(emptySummary.totalItemDrops).toBe(0);
+      expect(emptySummary.uniqueItemTypes).toBe(0);
+      expect(emptySummary.topItemId).toBeNull();
+      expect(emptySummary.topItemName).toBeNull();
+      expect(emptySummary.topItemCount).toBe(0);
+      expect(emptySummary.summaryLine).toBe('CRATES: 0 STACKS (0/12 TYPES) // TOP: NONE');
+
+      // 2. Single item type stacked
+      const singleSummary = getDropItemStackSummary({
+        itemStacks: { nitro_syringe: 4 }
+      });
+      expect(singleSummary.totalItemDrops).toBe(4);
+      expect(singleSummary.uniqueItemTypes).toBe(1);
+      expect(singleSummary.topItemId).toBe('nitro_syringe');
+      expect(singleSummary.topItemName).toBe('Nitro Syringe');
+      expect(singleSummary.topItemCount).toBe(4);
+      expect(singleSummary.summaryLine).toBe('CRATES: 4 STACKS (1/12 TYPES) // TOP: NITRO SYRINGE x4');
+
+      // 3. Multi-item collection with clear top stack
+      const multiSummary = getDropItemStackSummary({
+        itemStacks: {
+          reactive_plating: 5,
+          gasoline: 2,
+          tire_iron: 1
+        }
+      });
+      expect(multiSummary.totalItemDrops).toBe(8);
+      expect(multiSummary.uniqueItemTypes).toBe(3);
+      expect(multiSummary.topItemId).toBe('reactive_plating');
+      expect(multiSummary.topItemName).toBe('Reactive Plating');
+      expect(multiSummary.topItemCount).toBe(5);
+      expect(multiSummary.summaryLine).toBe('CRATES: 8 STACKS (3/12 TYPES) // TOP: REACTIVE PLATING x5');
+    });
+
+    it('10. verifies robust defensive handling of null, negative, NaN, and corrupted data in survivability and crate telemetry', () => {
+      const deadPlayer: any = { hp: -99, maxHp: 0, invuln: NaN };
+      const surv = getCombatSurvivabilitySummary(deadPlayer);
+      expect(surv.hp).toBe(0);
+      expect(surv.maxHp).toBe(5);
+      expect(surv.hullPct).toBe(0);
+      expect(surv.hullStatus).toBe('CRITICAL HULL');
+      expect(surv.chassisTier).toBe('STANDARD CHASSIS');
+      expect(surv.isInvulnerable).toBe(false);
+
+      const nullPlayerSurv = getCombatSurvivabilitySummary(null);
+      expect(nullPlayerSurv.hp).toBe(5);
+      expect(nullPlayerSurv.maxHp).toBe(5);
+      expect(nullPlayerSurv.hullPct).toBe(100);
+
+      const corruptDrop = getDropItemStackSummary({
+        itemStacks: {
+          hollow_point: -3,
+          armor_plate: NaN as any,
+          unknown_id: 10 as any
+        }
+      });
+      expect(corruptDrop.totalItemDrops).toBe(0);
+      expect(corruptDrop.uniqueItemTypes).toBe(0);
+      expect(corruptDrop.topItemId).toBeNull();
+      expect(corruptDrop.summaryLine).toBe('CRATES: 0 STACKS (0/12 TYPES) // TOP: NONE');
     });
   });
 });

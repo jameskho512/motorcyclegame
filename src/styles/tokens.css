@@ -28,12 +28,12 @@
 
   /* Typography */
   --font-display: 'Impact', 'Haettenschweiler', 'Arial Narrow Bold', 'Arial Black', 'Segoe UI Black', sans-serif;
-  --font-body: 'Segoe UI', 'Arial', sans-serif;
+  --font-body: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   /* Thick black outline for display text */
   --stroke-text: -2px -2px 0 var(--ink), 2px -2px 0 var(--ink), -2px 2px 0 var(--ink), 2px 2px 0 var(--ink), 0 3px 0 var(--ink);
 
   /* Shape language */
-  --skew: -12deg;
+  --skew: 0deg;
   --clip-para: polygon(6% 0, 100% 0, 94% 100%, 0 100%);      /* parallelogram */
   --clip-hex: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%);
   --border-ink: 3px solid var(--ink);

@@ -214,7 +214,7 @@ canvas#canvas {
   flex-direction: column;
   gap: 10px;
   padding: 6px 12px 8px 18px;
-  transform: skewX(-15deg) rotate(-3deg);
+  transform: none;
   transform-origin: left center;
 }
 
@@ -454,7 +454,7 @@ canvas#fuel-gauge {
 .hud-boss {
   top: 12px;
   left: 50%;
-  transform: translateX(-50%) skewX(-12deg);
+  transform: translateX(-50%);
   width: min(670px, calc(100vw - 740px));
   min-width: 320px;
   z-index: 25;
@@ -524,7 +524,7 @@ canvas#fuel-gauge {
 }
 
 .boss-hud-sub {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.8px;
   color: #ffd60a;
@@ -603,7 +603,7 @@ canvas#fuel-gauge {
 
 /* Trapezoidal / Tilted Comic Minimap Frame (Matches Concept Art) */
 .hud-map {
-  transform: skewX(-6deg);
+  transform: none;
   transform-origin: center;
   width: 100%;
   box-sizing: border-box;
@@ -668,7 +668,7 @@ canvas#fuel-gauge {
 .hud-map-legend {
   display: flex;
   justify-content: space-around;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 800;
   padding: 5px 8px;
   background: rgba(10, 11, 16, 0.95);
@@ -697,7 +697,7 @@ canvas#fuel-gauge {
   position: absolute;
   top: 22px;
   left: 50%;
-  transform: translateX(-50%) skewX(-12deg) translateY(-18px);
+  transform: translateX(-50%) translateY(-18px);
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -716,11 +716,11 @@ canvas#fuel-gauge {
 
 .hud-toast.is-visible {
   opacity: 1;
-  transform: translateX(-50%) skewX(-12deg) translateY(0);
+  transform: translateX(-50%) translateY(0);
 }
 
 body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
-  transform: translateX(-50%) skewX(-12deg) translateY(58px);
+  transform: translateX(-50%) translateY(58px);
 }
 
 #game-wrapper:has(#shop-confirm-overlay.visible, #portal-confirm-overlay.visible, #settings-overlay.visible, #garage-overlay.visible, #hub-station-overlay.visible) .hud-toast {
@@ -731,7 +731,7 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
   background: var(--toast-accent, #00f5d4);
   color: #0a0b10;
   font-family: var(--font-display, 'Impact', sans-serif);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 900;
   letter-spacing: 1.4px;
   padding: 2px 7px;
@@ -753,7 +753,7 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
 
 /* Slanted Currency Counters (Matches Concept Art Crimson COINS & Cyan SCRAP Plates) */
 .hud-counter {
-  transform: skewX(-6deg);
+  transform: none;
   transform-origin: center;
   width: 100%;
   box-sizing: border-box;
@@ -837,7 +837,7 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
 .hud-btn {
   flex: 1;
   text-align: center;
-  transform: skewX(-6deg);
+  transform: none;
   background: #16141c;
   border: 2.5px solid #55516a;
   color: #eeeeee;
@@ -856,17 +856,17 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
   background: #2ee6ff;
   color: #0a0b10;
   border-color: #2ee6ff;
-  transform: skewX(-12deg) translateY(-2px);
+  transform: translateY(-2px);
   box-shadow: 2px 4px 0 #0a0b10;
 }
 
 .hud-btn:active {
-  transform: skewX(-12deg) translateY(1px);
+  transform: translateY(1px);
   box-shadow: 1px 1px 0 #0a0b10;
 }
 
 #save-status {
-  font-size: 9px;
+  font-size: 12px;
   color: #726d82;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -898,7 +898,7 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
 
 .wcard,
 .weapon-slot {
-  transform: skewX(-11deg);
+  transform: none;
   transform-origin: center bottom;
   width: clamp(90px, 6.6vw, 110px);
   height: clamp(102px, 10.5vh, 122px);
@@ -924,7 +924,7 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
 }
 
 .wcard:hover:not(.locked) {
-  transform: skewX(-11deg) translateY(-6px);
+  transform: translateY(-6px);
   box-shadow:
     4px 9px 0 #0a0b10,
     0 8px 20px rgba(0, 0, 0, 0.8);
@@ -960,7 +960,7 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
   background: #ffd60a;
   color: #0a0b10;
   font-family: var(--font-display, 'Impact', sans-serif);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 900;
   padding: 1px 4px;
   border-radius: 2px;
@@ -988,7 +988,7 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
   background: #0a0b10;
   color: #ffffff;
   font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
-  font-size: 11px;
+  font-size: 12px;
   font-style: italic;
   text-align: center;
   padding: 3.5px 2px;
@@ -1012,7 +1012,7 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
   justify-content: center;
   color: #ffd60a;
   font-family: var(--font-display, 'Impact', sans-serif);
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 900;
   z-index: 4;
   border-radius: 3px;
@@ -1052,7 +1052,7 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
   right: 3px;
   background: #00f5d4;
   color: #0a0b10;
-  font-size: 8.5px;
+  font-size: 12px;
   font-weight: 900;
   padding: 1px 4px;
   border: 1.5px solid #0a0b10;
@@ -1062,7 +1062,7 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
 /* Active Weapon Card: Enlarged with Roaring Anime Flame Border (Mockup Parity) */
 .wcard.active,
 .wcard.is-active {
-  transform: skewX(-11deg) scale(1.14) translateY(-9px);
+  transform: scale(1.14) translateY(-9px);
   z-index: 25;
   border-color: #fff699;
   box-shadow:
@@ -1507,7 +1507,7 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
   }
   .hud-stats .stat-item {
     padding: 4px 8px;
-    font-size: 11px;
+    font-size: 12px;
   }
   .hud-stats .stat-item strong {
     font-size: 14px;
@@ -1546,7 +1546,7 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
     height: 38px;
   }
   .wcard-name {
-    font-size: 9.5px;
+    font-size: 12px;
   }
   .hud-items {
     right: 14px;
@@ -1622,14 +1622,14 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
   }
   .wcard.active,
   .wcard.is-active {
-    transform: skewX(-11deg) scale(1.1) translateY(-5px);
+    transform: scale(1.1) translateY(-5px);
   }
   .wcard-icon svg {
     width: 58px;
     height: 36px;
   }
   .wcard-name {
-    font-size: 9.5px;
+    font-size: 12px;
     padding: 2px;
   }
   .hud-items {
@@ -1719,7 +1719,7 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
   border-radius: 4px;
   padding: 1px 6px;
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   font-style: normal;
 }
@@ -1734,7 +1734,7 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
 }
 
 .style-rank-kicker {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 900;
   letter-spacing: 1.4px;
   color: #a69fb8;
@@ -1792,7 +1792,7 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
 }
 
 .style-rank-sub {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.7px;
   color: #cfd6e6;
@@ -1805,7 +1805,7 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
   background: rgba(0, 0, 0, 0.45);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-left: 3px solid #00f5d4;
-  font-size: 9.5px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.4px;
   color: #a6e3e9;
@@ -1816,7 +1816,7 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 800;
   padding: 2px 6px;
   background: rgba(255, 214, 10, 0.12);
@@ -1881,7 +1881,7 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
 }
 
 .synergy-pill small {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   color: var(--syn-color, #ffd60a);
   letter-spacing: 0.3px;
@@ -1895,7 +1895,7 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
 }
 
 .synergy-pill-desc {
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 600;
   color: #dbe4f3;
   line-height: 1.4;
@@ -1952,7 +1952,7 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
 
 .wing-telemetry-label {
   font-weight: 700;
-  font-size: 11.5px;
+  font-size: 12px;
   letter-spacing: 0.4px;
   color: #cbd5e1;
 }
@@ -2013,7 +2013,7 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
   border: 2px solid #0a0b10;
   box-shadow: 3px 3px 0 #0a0b10;
   color: #ffffff;
-  transform: skewX(-8deg);
+  transform: none;
   transition: transform 0.15s ease-out, box-shadow 0.15s ease-out;
 }
 
@@ -2123,7 +2123,7 @@ body:has(#boss-hud:not([hidden])) .hud-toast.is-visible {
   margin-top: 8px;
   padding: 4px 12px;
   font-family: var(--font-display, 'Impact', 'Arial Black', sans-serif);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 900;
   font-style: italic;
   text-transform: uppercase;

@@ -71,7 +71,8 @@ import {
 import {
   createCombatState,
   fireWeapon,
-  calcOverkillBonus
+  calcOverkillBonus,
+  getCombatSurvivabilitySummary
 } from '../../src/systems/combat';
 
 import { generateDungeon, getFloorBountyContract } from '../../src/world/dungeon';
@@ -84,7 +85,7 @@ import { getPortalRiskAssessment, PORTAL_X, PORTAL_Y, PortalModalController, get
 import { getStashSalvageSummary, getLiveryCollectionSummary, BIKE_LIVERIES } from '@/ui/garage';
 import { formatDummyHitTelemetry } from '@/systems/combat';
 import { HubStationModalController, getWarRoomStationAdvisor, getSanctuaryHideoutOverview } from '@/ui/hubStationModal';
-import { META_UPGRADES, calcUpgradeCost, type MetaUpgradeId } from '@/data/upgrades';
+import { META_UPGRADES, calcUpgradeCost, type MetaUpgradeId, getDropItemStackSummary } from '@/data/upgrades';
 import { getFloorBountyContractStatus } from '@/core/state';
 
 describe('Tier 5: Playability Verification & End-to-End Simulation', () => {
@@ -3340,6 +3341,321 @@ describe('Tier 5: Playability Verification & End-to-End Simulation', () => {
       expect(heat3.heatLevel).toBe(3);
       expect(heat3.scrapBonusPct).toBe(75);
       expect(heat3.summaryLine).toContain('HEAT +75%');
+    });
+  });
+
+  // ==========================================================================
+  // Wave 39 Playability: Uncluttered Sanctuary Launch, Bounty Contracts & Survivability HUD (M142)
+  // ==========================================================================
+  describe('Wave 39 Playability: Uncluttered Sanctuary Launch, Bounty Contracts & Survivability HUD (M142)', () => {
+    function setupWave39Dom() {
+      document.body.innerHTML = `
+        <div id="app-layout">
+          <aside class="sidebar-col" id="left-sidebar">
+            <div id="hud-left"></div>
+            <div id="fuel-bar"></div>
+            <span id="hp-text">5 / 5</span>
+            <canvas id="fuel-gauge" width="240" height="120"></canvas>
+            <div id="nos-fill"></div>
+            <div id="hud-lv-badge">LV. 1</div>
+            <strong id="coin-count">0 🪙</strong>
+            <strong id="scrap-count">0 🔩</strong>
+            <strong id="floor-num">1</strong>
+            <canvas id="minimap-canvas" width="240" height="150"></canvas>
+            <div id="save-status">Autosave: local storage</div>
+            <button id="btn-open-garage">[G] Garage &amp; Tuning</button>
+            <button id="btn-toggle-sound">🔊 [M]</button>
+          </aside>
+          <div id="game-wrapper">
+            <canvas id="canvas" width="720" height="720"></canvas>
+            <button type="button" id="hub-interact-banner" class="hub-interact-banner" hidden>
+              <span class="hub-interact-key">[PRESS E]</span>
+              <div class="hub-interact-copy">
+                <strong id="hub-interact-title">STATION</strong>
+                <span id="hub-interact-desc">Interact</span>
+              </div>
+            </button>
+            <div id="hub-station-overlay" aria-hidden="true">
+              <div class="hub-station-card">
+                <span id="hub-station-kicker">SANCTUARY</span>
+                <h2 id="hub-station-title">STATION</h2>
+                <div id="hub-station-speaker">NPC</div>
+                <blockquote id="hub-station-quote"></blockquote>
+                <div id="hub-station-purpose"></div>
+                <div id="hub-station-body"></div>
+                <div id="hub-station-feedback" hidden></div>
+                <button type="button" id="btn-hub-station-primary">[E] ACTIVATE</button>
+                <button type="button" id="btn-hub-station-secondary">CYCLE HEAT</button>
+                <button type="button" id="btn-hub-station-close">[ESC] CLOSE</button>
+              </div>
+            </div>
+            <div id="portal-confirm-overlay" aria-hidden="true">
+              <div class="portal-card">
+                <h2 id="portal-floor-label" class="portal-headline"></h2>
+                <p id="portal-warning" class="portal-warning"></p>
+                <div class="portal-actions">
+                  <button id="btn-portal-confirm" type="button" class="portal-btn"></button>
+                  <button id="btn-portal-cancel" type="button" class="portal-btn"></button>
+                </div>
+              </div>
+            </div>
+            <div id="shop-confirm-overlay">
+              <div class="shop-item-name" id="shop-modal-name">Item Name</div>
+              <div class="shop-item-desc" id="shop-modal-desc">Item Description</div>
+              <div class="shop-item-cost" id="shop-modal-cost">Cost: 15 Coins</div>
+              <button id="btn-confirm-buy">[E] Confirm Purchase</button>
+              <button id="btn-cancel-buy">[ESC] Cancel</button>
+            </div>
+            <div id="garage-overlay">
+              <div id="meta-upgrade-list"></div>
+            </div>
+            <div id="style-rank-card">STYLE RANK CARD</div>
+            <div id="synergy-tracker-card"></div>
+          </div>
+          <aside class="sidebar-col" id="right-sidebar">
+            <div id="sidebar"></div>
+            <div id="weapon-bar"></div>
+            <div id="stats-grid"></div>
+            <div id="items-list"></div>
+            <div id="hud-mods-bar"></div>
+            <div id="hud-synergy-list"></div>
+            <div id="synergy-list"></div>
+          </aside>
+        </div>
+        <div id="tooltip"></div>
+      `;
+    }
+
+    it('1. verifies Sanctuary Hub stations (codex, bounty, launch) have zero pre-run buff claim buttons and keep Outlaw Style UI hidden', () => {
+      setupWave39Dom();
+      const app = new MotoRogueApp();
+      app.enterHomeBase();
+
+      const hubRoom = app.getCurrentRoom()!;
+      expect(hubRoom).toBeDefined();
+
+      const styleCard = document.getElementById('style-rank-card');
+      expect(styleCard?.hidden || styleCard?.style.display === 'none').toBe(true);
+
+      // Station 1: Codex
+      const codexNpc = hubRoom.pickups.find((p) => (p as any).npcId === 'codex')!;
+      expect(codexNpc).toBeDefined();
+      app.stateManager.player.x = codexNpc.x;
+      app.stateManager.player.y = codexNpc.y;
+      app.update(0.016);
+      (app as any).handleHubInteract();
+
+      expect((app as any).hubStationModal.isOpen()).toBe(true);
+      expect(document.getElementById('btn-hub-claim-cache')).toBeNull();
+      expect(document.getElementById('btn-hub-autoclaim')).toBeNull();
+      expect(styleCard?.hidden || styleCard?.style.display === 'none').toBe(true);
+      (app as any).hubStationModal.close();
+
+      // Station 2: Bounty
+      const bountyNpc = hubRoom.pickups.find((p) => (p as any).npcId === 'bounty')!;
+      expect(bountyNpc).toBeDefined();
+      app.stateManager.player.x = bountyNpc.x;
+      app.stateManager.player.y = bountyNpc.y;
+      app.update(0.016);
+      (app as any).handleHubInteract();
+
+      expect((app as any).hubStationModal.isOpen()).toBe(true);
+      expect(document.getElementById('btn-hub-claim-cache')).toBeNull();
+      expect(document.getElementById('btn-hub-autoclaim')).toBeNull();
+      expect(styleCard?.hidden || styleCard?.style.display === 'none').toBe(true);
+      (app as any).hubStationModal.close();
+
+      // Station 3: Launch
+      const launchNpc = hubRoom.pickups.find((p) => (p as any).npcId === 'launch')!;
+      expect(launchNpc).toBeDefined();
+      app.stateManager.player.x = launchNpc.x;
+      app.stateManager.player.y = launchNpc.y;
+      app.update(0.016);
+      (app as any).handleHubInteract();
+
+      expect((app as any).hubStationModal.isOpen()).toBe(true);
+      expect(document.getElementById('btn-hub-claim-cache')).toBeNull();
+      expect(document.getElementById('btn-hub-autoclaim')).toBeNull();
+      expect(styleCard?.hidden || styleCard?.style.display === 'none').toBe(true);
+      (app as any).hubStationModal.close();
+    });
+
+    it('2. verifies launching a run from Sanctuary Gate starts with clean baseline coins (0) and no scannerBuff carry-over', () => {
+      setupWave39Dom();
+      const app = new MotoRogueApp();
+      app.enterHomeBase();
+
+      // Intentionally pollute pre-run state with stale coins and buffs
+      app.stateManager.player.coins = 999;
+      app.stateManager.player.scannerBuff = true;
+      app.codexBuffClaimedInHub = true;
+      app.bountyClaimedInHub = true;
+
+      const hubRoom = app.getCurrentRoom()!;
+      const launchNpc = hubRoom.pickups.find((p) => (p as any).npcId === 'launch')!;
+      app.stateManager.player.x = launchNpc.x;
+      app.stateManager.player.y = launchNpc.y;
+      app.update(0.016);
+      (app as any).handleHubInteract();
+
+      expect((app as any).hubStationModal.isOpen()).toBe(true);
+
+      // Deploy to Sector 1
+      const primaryBtn = document.getElementById('btn-hub-station-primary') as HTMLButtonElement;
+      expect(primaryBtn.textContent).toContain('DEPLOY TO SECTOR 1');
+      primaryBtn.click();
+
+      // Verify run initialized cleanly
+      expect(app.inHomeBase).toBe(false);
+      expect(app.stateManager.floorNum).toBe(1);
+      expect(app.stateManager.player.coins).toBe(0);
+      expect(app.stateManager.player.scannerBuff).toBeFalsy();
+      expect(app.dungeon['0,0']).toBeDefined();
+      expect(app.curRoomX).toBe(0);
+      expect(app.curRoomY).toBe(0);
+    });
+
+    it('3. verifies Floor 1 (NEON DAREDEVIL) bounty contract is tracked in HUD synergy card without Style rank requirements', () => {
+      setupWave39Dom();
+      const app = new MotoRogueApp();
+      app.startNewRun(false);
+
+      expect(app.stateManager.floorNum).toBe(1);
+
+      // Check contract definition
+      const contract = getFloorBountyContract(1);
+      expect(contract.title).toBe('NEON DAREDEVIL');
+      expect(contract.desc).toContain('Dodge 3 enemy projectiles or clear Floor 1 Boss');
+      expect(contract.targetCount).toBe(3);
+      expect(contract.desc.toLowerCase()).not.toContain('style');
+
+      app.updateHUD();
+
+      const synergyList = document.getElementById('hud-synergy-list') || document.getElementById('synergy-list');
+      expect(synergyList).not.toBeNull();
+      expect(synergyList!.getAttribute('data-bounty-contract-title')).toBe('NEON DAREDEVIL');
+      expect(synergyList!.getAttribute('data-bounty-summary')).toContain('BOUNTY [F1] NEON DAREDEVIL');
+      expect(synergyList!.getAttribute('data-bounty-summary')).toContain('+8 SCRAP');
+      expect(synergyList!.getAttribute('data-bounty-summary')).toContain('+10 COINS');
+
+      // Style score variations do not alter bounty contract or requirements
+      app.stateManager.player.styleScore = 95;
+      app.stateManager.player.styleRank = 'SSS';
+      app.updateHUD();
+
+      expect(synergyList!.getAttribute('data-bounty-contract-title')).toBe('NEON DAREDEVIL');
+      expect(synergyList!.getAttribute('data-bounty-summary')).toContain('BOUNTY [F1] NEON DAREDEVIL');
+    });
+
+    it('4. verifies Floor 3 (THERMAL HUNTER), Floor 5 (FORGE EXECUTIONER), and Floor 6 (VALHALLA) contracts have zero Style rank prerequisites', () => {
+      setupWave39Dom();
+      const app = new MotoRogueApp();
+      app.startNewRun(false);
+
+      const synergyList = document.getElementById('hud-synergy-list')!;
+
+      // Floor 3: THERMAL HUNTER
+      app.stateManager.floorNum = 3;
+      app.updateHUD();
+      const b3 = getFloorBountyContract(3);
+      expect(b3.title).toBe('THERMAL HUNTER');
+      expect(b3.desc).toContain('Eliminate 6 hostiles or clear Floor 3 Boss');
+      expect(b3.desc.toLowerCase()).not.toContain('style');
+      expect(synergyList.getAttribute('data-bounty-contract-title')).toBe('THERMAL HUNTER');
+
+      // Floor 5: FORGE EXECUTIONER / APEX INTERCEPTOR
+      app.stateManager.floorNum = 5;
+      app.updateHUD();
+      const b5 = getFloorBountyContract(5);
+      expect(b5.title).toBe('FORGE EXECUTIONER');
+      expect(b5.desc).toContain('Achieve a 5x Rampage Killstreak or clear Floor 5 Boss');
+      expect(b5.desc.toLowerCase()).not.toContain('style');
+
+      // Floor 6: VALHALLA
+      app.stateManager.floorNum = 6;
+      app.updateHUD();
+      const b6 = getFloorBountyContract(6);
+      expect(b6.title).toBe('VALHALLA ASCENDANT');
+      expect(b6.desc).toContain('Defeat the Sector Boss to claim Valhalla bounty');
+      expect(b6.desc.toLowerCase()).not.toContain('style');
+    });
+
+    it('5. verifies live HUD reactive survivability telemetry during damage and healing cycles in MotoRogueApp', () => {
+      setupWave39Dom();
+      const app = new MotoRogueApp();
+      app.startNewRun(false);
+
+      const fuelEl = document.getElementById('fuel-bar')!;
+      const sidebarEl = document.getElementById('sidebar')!;
+
+      // 1. Initial full hull: 6/6 -> OPTIMAL HULL (100%)
+      const surv = getCombatSurvivabilitySummary(app.stateManager.player);
+      expect(surv.hullStatus).toBe('OPTIMAL HULL');
+      expect(surv.chassisTier).toBe('STANDARD CHASSIS');
+      expect(surv.summaryLine).toBe('HULL: 6/6 (100% · OPTIMAL HULL) // STANDARD CHASSIS');
+
+      app.updateHUD();
+      expect(fuelEl.getAttribute('data-hull-pct')).toBe('100');
+      expect(fuelEl.getAttribute('data-hull-status')).toBe('OPTIMAL HULL');
+      expect(fuelEl.getAttribute('data-chassis-tier')).toBe('STANDARD CHASSIS');
+      expect(fuelEl.getAttribute('data-survivability-summary')).toBe('HULL: 6/6 (100% · OPTIMAL HULL) // STANDARD CHASSIS');
+      expect(sidebarEl.getAttribute('data-hull-status')).toBe('OPTIMAL HULL');
+
+      // 2. Take damage to 3/6 -> DAMAGED HULL (50%)
+      app.stateManager.player.hp = 3;
+      app.updateHUD();
+      expect(fuelEl.getAttribute('data-hull-pct')).toBe('50');
+      expect(fuelEl.getAttribute('data-hull-status')).toBe('DAMAGED HULL');
+      expect(fuelEl.getAttribute('data-survivability-summary')).toBe('HULL: 3/6 (50% · DAMAGED HULL) // STANDARD CHASSIS');
+
+      // 3. Take critical damage to 1/6 -> CRITICAL HULL (17%) + is-low-hull wrapper class
+      app.stateManager.player.hp = 1;
+      app.updateHUD();
+      expect(fuelEl.getAttribute('data-hull-pct')).toBe('17');
+      expect(fuelEl.getAttribute('data-hull-status')).toBe('CRITICAL HULL');
+      expect(fuelEl.getAttribute('data-survivability-summary')).toBe('HULL: 1/6 (17% · CRITICAL HULL) // STANDARD CHASSIS');
+      expect(document.getElementById('game-wrapper')?.classList.contains('is-low-hull')).toBe(true);
+
+      // 4. Recover hull to 5/6 -> OPTIMAL HULL (83%)
+      app.stateManager.player.hp = 5;
+      app.updateHUD();
+      expect(fuelEl.getAttribute('data-hull-pct')).toBe('83');
+      expect(fuelEl.getAttribute('data-hull-status')).toBe('OPTIMAL HULL');
+      expect(fuelEl.getAttribute('data-survivability-summary')).toBe('HULL: 5/6 (83% · OPTIMAL HULL) // STANDARD CHASSIS');
+      expect(document.getElementById('game-wrapper')?.classList.contains('is-low-hull')).toBe(false);
+    });
+
+    it('6. verifies in-run RoR2 drop item stack progression via getDropItemStackSummary and live HUD mod bar integration', () => {
+      setupWave39Dom();
+      const app = new MotoRogueApp();
+      app.startNewRun(false);
+
+      // 1. Initial empty item stacks
+      let summary = getDropItemStackSummary(app.stateManager.player);
+      expect(summary.totalItemDrops).toBe(0);
+      expect(summary.uniqueItemTypes).toBe(0);
+      expect(summary.topItemId).toBeNull();
+      expect(summary.summaryLine).toBe('CRATES: 0 STACKS (0/12 TYPES) // TOP: NONE');
+
+      // 2. Collect crate drops
+      app.stateManager.player.itemStacks = {
+        nitro_syringe: 3,
+        gasoline: 2,
+        reactive_plating: 5
+      };
+
+      summary = getDropItemStackSummary(app.stateManager.player);
+      expect(summary.totalItemDrops).toBe(10);
+      expect(summary.uniqueItemTypes).toBe(3);
+      expect(summary.topItemId).toBe('reactive_plating');
+      expect(summary.topItemName).toBe('Reactive Plating');
+      expect(summary.topItemCount).toBe(5);
+      expect(summary.summaryLine).toBe('CRATES: 10 STACKS (3/12 TYPES) // TOP: REACTIVE PLATING x5');
+
+      // 3. HUD sidebar update renders cleanly and keeps style rank card suppressed
+      app.updateHUD();
+      const styleCard = document.getElementById('style-rank-card');
+      expect(styleCard?.hidden || styleCard?.style.display === 'none').toBe(true);
     });
   });
 });

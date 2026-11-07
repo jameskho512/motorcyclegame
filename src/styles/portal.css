@@ -62,19 +62,19 @@
     8px 8px 0 var(--ink),
     0 0 0 3px var(--magenta),
     0 0 48px rgba(46, 230, 255, 0.35);
-  transform: skewX(-4deg) rotate(-1deg);
+  transform: none;
   animation: portal-pop 260ms var(--ease-snap) both;
 }
 
 .portal-card > * {
-  transform: skewX(4deg);
+  transform: none;
 }
 
 .portal-banner {
   position: absolute;
   top: -18px;
   left: 50%;
-  transform: translateX(-50%) rotate(-4deg) skewX(var(--skew));
+  transform: translateX(-50%);
   padding: 6px 22px;
   background: var(--magenta);
   border: var(--border-ink);
@@ -84,7 +84,7 @@
 
 .portal-banner span {
   display: inline-block;
-  transform: skewX(12deg);
+  transform: none;
   font-family: var(--font-display);
   font-size: 1rem;
   letter-spacing: 0.18em;
@@ -133,7 +133,7 @@
   letter-spacing: 0.08em;
   cursor: pointer;
   border: var(--border-ink);
-  transform: skewX(var(--skew));
+  transform: none;
   transition: transform 90ms ease-out, box-shadow 90ms ease-out, filter 90ms ease-out;
 }
 
@@ -163,7 +163,7 @@
 
 .portal-btn:hover {
   filter: brightness(1.1);
-  transform: skewX(var(--skew)) translate(-2px, -2px);
+  transform: translate(-2px, -2px);
 }
 
 .portal-btn--primary:hover {
@@ -171,7 +171,7 @@
 }
 
 .portal-btn:active {
-  transform: skewX(var(--skew)) translate(3px, 3px);
+  transform: translate(3px, 3px);
   box-shadow: 2px 2px 0 var(--ink);
 }
 
@@ -185,8 +185,8 @@
 }
 
 @keyframes portal-pop {
-  from { opacity: 0; transform: skewX(-4deg) rotate(-1deg) scale(0.6); }
-  to   { opacity: 1; transform: skewX(-4deg) rotate(-1deg) scale(1); }
+  from { opacity: 0; transform: scale(0.6); }
+  to   { opacity: 1; transform: scale(1); }
 }
 
 @keyframes portal-spin {

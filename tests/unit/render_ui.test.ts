@@ -33,6 +33,7 @@ import { getRunModDeckSummary } from '../../src/data/upgrades';
 import { parseColor, drawObstacle } from '../../src/render/vectorArt';
 import { TooltipManager, formatModDeckTooltipHint } from '../../src/ui/tooltip';
 import { ShopModalController } from '../../src/ui/shopModal';
+import { DropModalController, getDropItemStackSummary } from '../../src/ui/dropModal';
 import { FilterManager } from '../../src/render/shaders';
 import { StageManager, getFloorMoteColor, getEliteAffixColor } from '../../src/render/stage';
 import { Pickup, MetaSaveState, PlayerState, Obstacle, Dungeon, Room, EquipmentItem, Enemy } from '../../src/types/game';
@@ -4369,6 +4370,166 @@ describe('Render & UI Subsystems', () => {
       // Standalone helper
       updateSurvivabilityTelemetry(player);
       expect(fuelEl.getAttribute('data-hull-pct')).toBe('20');
+    });
+  });
+
+  describe('DropModalController live stack telemetry wiring (M140)', () => {
+    beforeEach(() => {
+      document.body.innerHTML = '';
+    });
+
+    it('sets data-drop-* telemetry attributes on #drop-overlay for a mix of NEW, STACK_2, and EVO_READY drops', () => {
+      document.body.innerHTML = `
+        <div id="drop-overlay" class="hidden">
+          <div id="drop-choices"></div>
+        </div>
+      `;
+
+      const player: Partial<PlayerState> = {
+        itemStacks: {
+          nitro_syringe: 0,
+          tire_iron: 1,
+          gasoline: 2
+        }
+      };
+
+      const choices = ['nitro_syringe', 'tire_iron', 'gasoline'];
+      const modal = new DropModalController();
+      modal.open(choices, player);
+
+      const overlay = document.getElementById('drop-overlay')!;
+      expect(overlay.getAttribute('data-drop-new-count')).toBe('1');
+      expect(overlay.getAttribute('data-drop-stack-upgrade-count')).toBe('1');
+      expect(overlay.getAttribute('data-drop-evo-ready-count')).toBe('1');
+      expect(overlay.getAttribute('data-drop-summary')).toContain('3 CHOICES');
+      expect(overlay.getAttribute('data-drop-summary')).toContain('1 NEW');
+      expect(overlay.getAttribute('data-drop-summary')).toContain('1 UPGRADE');
+      expect(overlay.getAttribute('data-drop-summary')).toContain('1 EVO-READY');
+
+      const cards = document.querySelectorAll('.drop-choice-card');
+      expect(cards.length).toBe(3);
+
+      expect(cards[0].getAttribute('data-choice-stack-tier')).toBe('NEW');
+      expect(cards[0].getAttribute('data-choice-current-stacks')).toBe('0');
+      expect(cards[0].getAttribute('data-choice-next-stacks')).toBe('1');
+
+      expect(cards[1].getAttribute('data-choice-stack-tier')).toBe('STACK_2');
+      expect(cards[1].getAttribute('data-choice-current-stacks')).toBe('1');
+      expect(cards[1].getAttribute('data-choice-next-stacks')).toBe('2');
+
+      expect(cards[2].getAttribute('data-choice-stack-tier')).toBe('EVO_READY');
+      expect(cards[2].getAttribute('data-choice-current-stacks')).toBe('2');
+      expect(cards[2].getAttribute('data-choice-next-stacks')).toBe('3');
+    });
+
+    it('identifies OVERSTACK tier when item stack is already >= 3 on pre-existing DOM cards', () => {
+      document.body.innerHTML = `
+        <div id="drop-overlay">
+          <div class="drop-choice-card"></div>
+          <div class="drop-choice-card"></div>
+        </div>
+      `;
+
+      const player: Partial<PlayerState> = {
+        itemStacks: {
+          racing_slicks: 3,
+          oil_infusion: 5
+        }
+      };
+
+      const choices = ['racing_slicks', 'oil_infusion'];
+      const modal = new DropModalController();
+      modal.open(choices, player);
+
+      const overlay = document.getElementById('drop-overlay')!;
+      expect(overlay.getAttribute('data-drop-new-count')).toBe('0');
+      expect(overlay.getAttribute('data-drop-stack-upgrade-count')).toBe('2');
+      expect(overlay.getAttribute('data-drop-evo-ready-count')).toBe('0');
+
+      const cards = document.querySelectorAll('.drop-choice-card');
+      expect(cards.length).toBe(2);
+
+      expect(cards[0].getAttribute('data-choice-stack-tier')).toBe('OVERSTACK');
+      expect(cards[0].getAttribute('data-choice-current-stacks')).toBe('3');
+      expect(cards[0].getAttribute('data-choice-next-stacks')).toBe('4');
+
+      expect(cards[1].getAttribute('data-choice-stack-tier')).toBe('OVERSTACK');
+      expect(cards[1].getAttribute('data-choice-current-stacks')).toBe('5');
+      expect(cards[1].getAttribute('data-choice-next-stacks')).toBe('6');
+    });
+
+    it('handles freshly initialized player with no existing itemStacks (all choices NEW)', () => {
+      document.body.innerHTML = `
+        <div id="drop-overlay" class="hidden">
+          <div id="drop-choices"></div>
+        </div>
+      `;
+
+      const player: Partial<PlayerState> = {
+        itemStacks: {}
+      };
+
+      const choices = ['titanium_spikes', 'magnet_coil', 'chrome_lens'];
+      const modal = new DropModalController();
+      modal.open(choices, player);
+
+      const overlay = document.getElementById('drop-overlay')!;
+      expect(overlay.getAttribute('data-drop-new-count')).toBe('3');
+      expect(overlay.getAttribute('data-drop-stack-upgrade-count')).toBe('0');
+      expect(overlay.getAttribute('data-drop-evo-ready-count')).toBe('0');
+
+      const cards = document.querySelectorAll('.drop-choice-card');
+      expect(cards.length).toBe(3);
+      cards.forEach((card) => {
+        expect(card.getAttribute('data-choice-stack-tier')).toBe('NEW');
+        expect(card.getAttribute('data-choice-current-stacks')).toBe('0');
+        expect(card.getAttribute('data-choice-next-stacks')).toBe('1');
+      });
+    });
+
+    it('executes onSelect callback and closes modal when a choice card is clicked or selected', () => {
+      document.body.innerHTML = `
+        <div id="drop-overlay" class="hidden">
+          <div id="drop-choices"></div>
+        </div>
+      `;
+
+      const onSelect = vi.fn();
+      const choices = ['nitro_syringe', 'tire_iron'];
+      const modal = new DropModalController();
+
+      modal.open(choices, null, onSelect);
+      expect(modal.isOpen()).toBe(true);
+
+      const cards = document.querySelectorAll('.drop-choice-card');
+      expect(cards.length).toBe(2);
+
+      (cards[1] as HTMLElement).click();
+      expect(onSelect).toHaveBeenCalledTimes(1);
+      expect(onSelect).toHaveBeenCalledWith('tire_iron', 1);
+      expect(modal.isOpen()).toBe(false);
+      expect(document.getElementById('drop-overlay')!.classList.contains('hidden')).toBe(true);
+    });
+
+    it('handles empty choices array gracefully without crashing and exposes static pure helper', () => {
+      document.body.innerHTML = `
+        <div id="drop-overlay" class="hidden"></div>
+      `;
+
+      const modal = new DropModalController();
+      modal.open([]);
+
+      const overlay = document.getElementById('drop-overlay')!;
+      expect(overlay.getAttribute('data-drop-new-count')).toBe('0');
+      expect(overlay.getAttribute('data-drop-stack-upgrade-count')).toBe('0');
+      expect(overlay.getAttribute('data-drop-evo-ready-count')).toBe('0');
+      expect(overlay.getAttribute('data-drop-summary')).toBe('DROPS: NO ITEMS AVAILABLE');
+
+      // Static pure helper parity check
+      const summary = getDropItemStackSummary(['gasoline'], { itemStacks: { gasoline: 2 } });
+      expect(summary.evoReadyCount).toBe(1);
+      expect(summary.choiceBreakdown[0].nextTier).toBe('EVO_READY');
+      expect(DropModalController.getDropItemStackSummary).toBe(getDropItemStackSummary);
     });
   });
 });

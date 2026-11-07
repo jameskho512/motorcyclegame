@@ -34,7 +34,9 @@ import {
   getBossEncounterBriefing,
   type BossEncounterBriefing,
   getBossVariantProfile,
-  type BossVariantProfile
+  type BossVariantProfile,
+  getRoomVisualClutterAudit,
+  type RoomVisualClutterAudit
 } from '../../src/systems/enemyAI';
 import { handleEnemyDeath, createCombatState } from '../../src/systems/combat';
 import type {
@@ -1573,6 +1575,156 @@ describe('Systems: EnemyAI — Boss Encounter Tactical Briefing & Phase Readines
     expect(invalidFloorProfile.title).toBe('SCRAP GOLIATH');
   });
 });
+
+describe('getRoomVisualClutterAudit (M141)', () => {
+  it('handles null, undefined, or empty room objects with safe defaults', () => {
+    const defaultAuditNull = getRoomVisualClutterAudit(null);
+    expect(defaultAuditNull).toEqual({
+      obstacleCount: 0,
+      hazardObstacleCount: 0,
+      biomeZoneCount: 0,
+      activeEnemyCount: 0,
+      clutterScore: 0,
+      readabilityGrade: 'CLEAN',
+      isCleanLayout: true,
+      layoutSummary: 'F1 CLEAN ARENA // 0 OBSTACLES · 0 ZONES · 0 HOSTILES'
+    });
+
+    const defaultAuditUndefined = getRoomVisualClutterAudit(undefined);
+    expect(defaultAuditUndefined).toEqual(defaultAuditNull);
+
+    const defaultAuditEmpty = getRoomVisualClutterAudit({});
+    expect(defaultAuditEmpty).toEqual(defaultAuditNull);
+  });
+
+  it('sanitizes and clamps non-finite or negative floor numbers', () => {
+    const auditNaN = getRoomVisualClutterAudit(null, NaN);
+    expect(auditNaN.layoutSummary).toBe('F1 CLEAN ARENA // 0 OBSTACLES · 0 ZONES · 0 HOSTILES');
+
+    const auditNeg = getRoomVisualClutterAudit(null, -10);
+    expect(auditNeg.layoutSummary).toBe('F1 CLEAN ARENA // 0 OBSTACLES · 0 ZONES · 0 HOSTILES');
+
+    const auditInf = getRoomVisualClutterAudit(null, Infinity);
+    expect(auditInf.layoutSummary).toBe('F1 CLEAN ARENA // 0 OBSTACLES · 0 ZONES · 0 HOSTILES');
+
+    const auditDecimal = getRoomVisualClutterAudit(null, 4.9);
+    expect(auditDecimal.layoutSummary).toBe('F4 CLEAN ARENA // 0 OBSTACLES · 0 ZONES · 0 HOSTILES');
+  });
+
+  it('evaluates clean combat rooms within uncluttered limits', () => {
+    const room: Partial<Room> = {
+      obstacles: [
+        { x: 100, y: 100, size: 24, type: 'rock' as any, hp: 10 },
+        { x: 200, y: 200, size: 24, type: 'rock' as any, hp: 10 },
+        { x: 300, y: 300, size: 24, type: 'rock' as any, hp: 10 }
+      ],
+      biomeZones: [
+        { x: 250, y: 250, radius: 60, type: 'oil_slick' }
+      ],
+      enemies: [
+        { id: 1, hp: 50 } as any,
+        { id: 2, hp: 40 } as any,
+        { id: 3, hp: 30 } as any,
+        { id: 4, hp: 20 } as any
+      ]
+    };
+
+    const audit: RoomVisualClutterAudit = getRoomVisualClutterAudit(room, 2);
+    // clutterScore = 3 * 2 + 1 * 3 + 4 = 13 (<= 18 -> CLEAN)
+    expect(audit.obstacleCount).toBe(3);
+    expect(audit.hazardObstacleCount).toBe(0);
+    expect(audit.biomeZoneCount).toBe(1);
+    expect(audit.activeEnemyCount).toBe(4);
+    expect(audit.clutterScore).toBe(13);
+    expect(audit.readabilityGrade).toBe('CLEAN');
+    expect(audit.isCleanLayout).toBe(true);
+    expect(audit.layoutSummary).toBe('F2 CLEAN ARENA // 3 OBSTACLES · 1 ZONES · 4 HOSTILES');
+  });
+
+  it('accurately detects and tallies hazard obstacles (explosive_barrel, cryo_barrel, spikes)', () => {
+    const room: Partial<Room> = {
+      obstacles: [
+        { x: 100, y: 100, size: 24, type: 'rock' as any, hp: 10 },
+        { x: 150, y: 100, size: 24, type: 'explosive_barrel' as any, hp: 10 },
+        { x: 200, y: 100, size: 24, type: 'cryo_barrel' as any, hp: 10 },
+        { x: 250, y: 100, size: 24, type: 'spikes' as any, hp: 10 },
+        { x: 300, y: 100, size: 24, type: 'rock' as any, hp: 10 }
+      ],
+      enemies: [
+        { id: 1, hp: 50 } as any,
+        { id: 2, hp: 0 } as any, // Inactive / dead
+        { id: 3, hp: 25 } as any
+      ]
+    };
+
+    const audit = getRoomVisualClutterAudit(room, 1);
+    expect(audit.obstacleCount).toBe(5);
+    expect(audit.hazardObstacleCount).toBe(3);
+    expect(audit.biomeZoneCount).toBe(0);
+    expect(audit.activeEnemyCount).toBe(2);
+    expect(audit.clutterScore).toBe(5 * 2 + 0 * 3 + 2); // 12
+    expect(audit.readabilityGrade).toBe('CLEAN');
+    expect(audit.isCleanLayout).toBe(true);
+    expect(audit.layoutSummary).toBe('F1 CLEAN ARENA // 5 OBSTACLES · 0 ZONES · 2 HOSTILES');
+  });
+
+  it('evaluates moderate clutter threshold (clutterScore between 19 and 30)', () => {
+    // 8 obstacles (8 * 2 = 16), 2 biome zones (2 * 3 = 6), 6 enemies (6) -> 16 + 6 + 6 = 28
+    const room: Partial<Room> = {
+      obstacles: new Array(8).fill({ x: 0, y: 0, size: 20, type: 'rock', hp: 5 }),
+      biomeZones: [
+        { x: 100, y: 100, radius: 40, type: 'boost_strip' },
+        { x: 200, y: 200, radius: 40, type: 'ice_patch' }
+      ],
+      enemies: new Array(6).fill(null).map((_, i) => ({ id: i, hp: 30 } as any))
+    };
+
+    const audit = getRoomVisualClutterAudit(room, 3);
+    expect(audit.obstacleCount).toBe(8);
+    expect(audit.biomeZoneCount).toBe(2);
+    expect(audit.activeEnemyCount).toBe(6);
+    expect(audit.clutterScore).toBe(28);
+    expect(audit.readabilityGrade).toBe('MODERATE');
+    expect(audit.isCleanLayout).toBe(true); // 8 <= 8 and 2 <= 3
+    expect(audit.layoutSummary).toBe('F3 MODERATE ARENA // 8 OBSTACLES · 2 ZONES · 6 HOSTILES');
+  });
+
+  it('evaluates dense readability grade and flags non-clean layouts when exceeding thresholds', () => {
+    // 10 obstacles (10 * 2 = 20), 4 biome zones (4 * 3 = 12), 8 enemies (8) -> 20 + 12 + 8 = 40
+    const room: Partial<Room> = {
+      obstacles: new Array(10).fill({ x: 0, y: 0, size: 20, type: 'rock', hp: 5 }),
+      biomeZones: new Array(4).fill({ x: 100, y: 100, radius: 40, type: 'lava_vent' }),
+      enemies: new Array(8).fill(null).map((_, i) => ({ id: i, hp: 50 } as any))
+    };
+
+    const audit = getRoomVisualClutterAudit(room, 5);
+    expect(audit.obstacleCount).toBe(10);
+    expect(audit.biomeZoneCount).toBe(4);
+    expect(audit.activeEnemyCount).toBe(8);
+    expect(audit.clutterScore).toBe(40);
+    expect(audit.readabilityGrade).toBe('DENSE');
+    expect(audit.isCleanLayout).toBe(false); // obstacleCount > 8 and biomeZoneCount > 3
+    expect(audit.layoutSummary).toBe('F5 DENSE ARENA // 10 OBSTACLES · 4 ZONES · 8 HOSTILES');
+  });
+
+  it('filters out dead, negative, or undefined HP enemies from activeEnemyCount', () => {
+    const room: Partial<Room> = {
+      enemies: [
+        { id: 1, hp: 100 } as any,
+        { id: 2, hp: 0 } as any,
+        { id: 3, hp: -20 } as any,
+        { id: 4 } as any // hp is undefined
+      ]
+    };
+
+    const audit = getRoomVisualClutterAudit(room, 1);
+    expect(audit.activeEnemyCount).toBe(1);
+    expect(audit.clutterScore).toBe(1);
+    expect(audit.readabilityGrade).toBe('CLEAN');
+    expect(audit.isCleanLayout).toBe(true);
+  });
+});
+
 
 
 

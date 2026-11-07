@@ -94,9 +94,9 @@
 }
 
 @keyframes shopPanelIn {
-  0% { transform: translateX(40%) skewX(-10deg); opacity: 0; }
-  70% { transform: translateX(-2%) skewX(2deg); opacity: 1; }
-  100% { transform: translateX(0) skewX(0); opacity: 1; }
+  0% { transform: translateX(40%); opacity: 0; }
+  70% { transform: translateX(-2%); opacity: 1; }
+  100% { transform: translateX(0); opacity: 1; }
 }
 
 /* ---- Tilted "ARMORY & SUPPLY" banner + shopkeeper ---- */
@@ -241,7 +241,7 @@
   box-shadow:
     5px 5px 0 var(--ink, #0a0b10),
     inset 0 0 0 2px color-mix(in srgb, var(--shop-art-accent, #ffd60a) 75%, #ffffff);
-  transform: rotate(-4deg) skewX(-6deg);
+  transform: rotate(-4deg);
   flex-shrink: 0;
 }
 
@@ -541,7 +541,7 @@
   z-index: -1;
   background: var(--paper);
   border: 3px solid var(--ink);
-  transform: skewX(-5deg);
+  transform: none;
 }
 
 /* Comic speech tail pointing toward cursor */
@@ -556,7 +556,7 @@
   background: var(--paper);
   border-left: 3px solid var(--ink);
   border-top: 3px solid var(--ink);
-  transform: rotate(45deg) skewX(-5deg);
+  transform: rotate(45deg);
 }
 
 #tooltip.tip-flip-x::after {
@@ -613,10 +613,10 @@
   background: var(--ink);
   color: var(--tip-accent, var(--yellow)) !important;
   font-family: var(--font-display);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  transform: skewX(var(--skew));
+  transform: none;
 }
 
 #tooltip .tip-cost {
@@ -656,7 +656,7 @@
   position: absolute;
   bottom: 24px;
   left: 50%;
-  transform: translateX(-50%) skewX(-6deg);
+  transform: translateX(-50%);
   z-index: 45;
   display: flex;
   align-items: center;
@@ -676,7 +676,7 @@
 }
 
 .hub-interact-banner:hover {
-  transform: translateX(-50%) skewX(-6deg) translateY(-2px);
+  transform: translateX(-50%) translateY(-2px);
   box-shadow:
     6px 6px 0 #0a0b10,
     0 0 24px var(--banner-accent, var(--cyan, #2ee6ff));
@@ -699,7 +699,7 @@
   padding: 4px 9px;
   border: 1.5px solid #0a0b10;
   box-shadow: 2px 2px 0 #0a0b10;
-  transform: skewX(6deg);
+  transform: none;
   white-space: nowrap;
 }
 
@@ -707,7 +707,7 @@
   display: flex;
   flex-direction: column;
   gap: 1px;
-  transform: skewX(6deg);
+  transform: none;
 }
 
 .hub-interact-copy strong {
@@ -721,7 +721,7 @@
 
 .hub-interact-copy span {
   font-family: var(--font-body, system-ui, sans-serif);
-  font-size: 11px;
+  font-size: 12px;
   color: #cfd6e6;
   max-width: 380px;
   white-space: nowrap;
@@ -828,7 +828,7 @@
   background: #ffd60a;
   color: #0a0b10;
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.6px;
   padding: 4px 10px;
@@ -917,7 +917,7 @@
 }
 
 .hub-stat-label {
-  font-size: 9.5px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: 1px;
   color: #8c96a8;
@@ -952,7 +952,7 @@
 }
 
 .hub-forge-slot {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: 1.2px;
   color: #00f5d4;
@@ -973,7 +973,7 @@
 .hub-tier-badge {
   padding: 3px 8px;
   font-family: var(--font-display, 'Impact', sans-serif);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 900;
   letter-spacing: 0.8px;
   background: rgba(0, 0, 0, 0.6);
@@ -1023,7 +1023,7 @@
 }
 
 .hub-dossier-label {
-  font-size: 9.5px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: 1px;
   color: #8c96a8;
@@ -1065,7 +1065,7 @@
 }
 
 .hub-scanner-status-pill {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 900;
   padding: 2px 6px;
   background: rgba(255, 214, 10, 0.2);
@@ -1081,13 +1081,13 @@
 
 .hub-scanner-desc {
   margin: 0;
-  font-size: 11.5px;
+  font-size: 12px;
   color: #aeb9cc;
   line-height: 1.35;
 }
 
 .hub-scanner-status-note {
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 700;
   color: #00f5d4;
 }
@@ -1116,7 +1116,7 @@
 }
 
 .hub-status-tag {
-  font-size: 9.5px;
+  font-size: 12px;
   font-weight: 900;
   padding: 1px 6px;
   letter-spacing: 0.8px;
@@ -1245,7 +1245,7 @@
 
 .hub-contract-copy {
   margin: 0;
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.35;
   color: #cfd6e6;
 }
@@ -1264,7 +1264,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 11.5px;
+  font-size: 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   padding-bottom: 4px;
 }
@@ -1277,7 +1277,7 @@
 .hub-check-label {
   color: #8c96a8;
   font-weight: 800;
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.8px;
 }
 
@@ -1302,7 +1302,7 @@
 
 .hub-autoclaim-note {
   margin: 0;
-  font-size: 11px;
+  font-size: 12px;
   color: #ffd60a;
 }
 
@@ -1316,7 +1316,7 @@
   border: 1.5px solid #00f5d4;
   color: #00f5d4;
   font-weight: 800;
-  font-size: 11.5px;
+  font-size: 12px;
   padding: 8px 12px;
   text-align: center;
 }
@@ -1344,7 +1344,7 @@
 
 .hub-garage-card p {
   margin: 0;
-  font-size: 11.5px;
+  font-size: 12px;
   color: #cfd6e6;
   line-height: 1.35;
 }
@@ -1371,7 +1371,7 @@
 .hub-career-rank-badge {
   background: #ffd60a;
   color: #0a0b10;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 900;
   letter-spacing: 0.8px;
   padding: 2px 6px;
@@ -1388,7 +1388,7 @@
   gap: 3px;
   padding: 1px 6px;
   font-family: var(--font-display, 'Impact', sans-serif);
-  font-size: 9.5px;
+  font-size: 12px;
   font-style: normal;
   letter-spacing: 0.8px;
   background: rgba(255, 214, 10, 0.12);
@@ -1408,7 +1408,7 @@
 
 .style-rank-howto {
   display: block;
-  font-size: 8.5px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.6px;
   color: #00f5d4;
