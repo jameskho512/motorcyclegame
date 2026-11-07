@@ -394,10 +394,23 @@ export class ShopModalController {
     }
     if (this.costEl) {
       this.costEl.textContent = `${cost}`;
-      this.costEl.setAttribute('aria-label', `Cost: ${cost} coins`);
+      this.costEl.setAttribute('aria-label', cost === 0 ? 'Cost: Free' : `Cost: ${cost} coins`);
     }
     if (this.typeEl) this.typeEl.textContent = kind;
-    if (this.quoteEl) this.quoteEl.textContent = insufficient ? BROKE_LINE : SHOPKEEPER_LINES[kind];
+    if (this.quoteEl) {
+      this.quoteEl.textContent = insufficient
+        ? BROKE_LINE
+        : ((singlePickup as any)?.choiceGroup ? 'CHOOSE WISELY — THE OTHER MOD DESPAWNS!' : SHOPKEEPER_LINES[kind]);
+    }
+    if (this.confirmBtn && this.confirmBtn.querySelector('kbd')) {
+      this.confirmBtn.innerHTML = cost === 0 ? '<kbd>E</kbd> CLAIM MOD' : '<kbd>E</kbd> BUY';
+    }
+    const headerSpan = this.overlay?.querySelector<HTMLElement>('.shop-confirm-title span');
+    if (headerSpan) {
+      headerSpan.textContent = (singlePickup as any)?.choiceGroup
+        ? 'MOD CHOICE ROOM'
+        : (cost === 0 ? 'MOD PEDESTAL' : 'ARMORY & SUPPLY');
+    }
 
     if (typeof document !== 'undefined') {
       const panel =

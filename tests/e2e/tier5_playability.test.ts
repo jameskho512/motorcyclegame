@@ -988,7 +988,7 @@ describe('Tier 5: Playability Verification & End-to-End Simulation', () => {
       app.inputManager.destroy();
     });
 
-    it('creates 2 linked choiceGroup pedestals in the Treasure room and despawns sibling on pickup', () => {
+    it('creates 2 linked choiceGroup pedestals in the Treasure room, requires confirmation, and despawns sibling on confirm', () => {
       setupAppDom();
       const app = new MotoRogueApp();
       app.startNewRun(false);
@@ -1010,6 +1010,13 @@ describe('Tier 5: Playability Verification & End-to-End Simulation', () => {
       app.stateManager.player.y = choicePedestals[0].y;
 
       app.update(0.016);
+
+      // Requires confirmation before claiming: modal opens and both pedestals are still present
+      expect(app.shopModal.isOpen()).toBe(true);
+      expect(treasureRoom.pickups.filter(p => (p as any).choiceGroup === 'treasure_choice')).toHaveLength(2);
+
+      // Confirm choice
+      app.shopModal.confirm();
 
       // Both the claimed pedestal and its sibling must be despawned
       const remainingChoice = treasureRoom.pickups.filter(

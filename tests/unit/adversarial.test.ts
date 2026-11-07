@@ -1271,7 +1271,7 @@ describe('MotoRogueApp openDropChoiceModal live stack telemetry (M144)', () => {
     expect(() => (app as any).openDropChoiceModal(validPickup)).not.toThrow();
   });
 
-  it('P1 Regression: picking up either mod pedestal in the Mod Room (treasure choiceGroup) never throws or freezes the update loop', () => {
+  it('P1 Regression: picking up either mod pedestal in the Mod Room (treasure choiceGroup) requires confirmation and never throws or freezes the update loop', () => {
     // Case 1: Picking up the right-hand pedestal (index 1) when choiceGroup despawns index 0
     const app1 = new MotoRogueApp();
     app1.startNewRun(false);
@@ -1290,6 +1290,9 @@ describe('MotoRogueApp openDropChoiceModal live stack telemetry (M144)', () => {
     app1.stateManager.player.y = rightPedestal.y;
 
     expect(() => app1.update(0.016)).not.toThrow();
+    expect(app1.shopModal.isOpen()).toBe(true);
+    expect(treasureRoom1.pickups.length).toBe(2);
+    expect(() => app1.shopModal.confirm()).not.toThrow();
     expect(treasureRoom1.pickups.length).toBe(0);
     expect(app1.stateManager.player.items.length).toBe(1);
 
@@ -1312,8 +1315,102 @@ describe('MotoRogueApp openDropChoiceModal live stack telemetry (M144)', () => {
     app2.stateManager.player.y = leftPedestal.y;
 
     expect(() => app2.update(0.016)).not.toThrow();
+    expect(app2.shopModal.isOpen()).toBe(true);
+    expect(() => app2.shopModal.confirm()).not.toThrow();
     expect(treasureRoom2.pickups.length).toBe(1);
     expect(treasureRoom2.pickups[0].type).toBe('heart');
     expect(app2.stateManager.player.items.length).toBe(1);
+  });
+
+  it('freezes enemy movement and attacks upon entering a new room until the player moves or attacks', () => {
+    const app = new MotoRogueApp();
+    app.startNewRun(false);
+    app.inHomeBase = false;
+
+    const combatEntry = Object.entries(app.dungeon).find(
+      ([, r]) => r.type === 'combat' && !r.cleared && r.enemies.length > 0
+    );
+    expect(combatEntry).toBeDefined();
+    const [coord, combatRoom] = combatEntry!;
+    const [cx, cy] = coord.split(',').map(Number);
+
+    // Enter the combat room
+    app.curRoomX = cx;
+    app.curRoomY = cy;
+    app.stateManager.player.vx = 0;
+    app.stateManager.player.vy = 0;
+
+    const initialPositions = combatRoom.enemies.map(e => ({ x: e.x, y: e.y }));
+
+    // Simulate 10 frames with no player movement or attack
+    for (let f = 0; f < 10; f++) {
+      app.update(0.016);
+    }
+
+    expect(app.roomEnemiesFrozen).toBe(true);
+    expect(app.combatState.enemyBullets.length).toBe(0);
+    expect(app.combatState.enemyBombs.length).toBe(0);
+    combatRoom.enemies.forEach((e, idx) => {
+      expect(e.x).toBe(initialPositions[idx].x);
+      expect(e.y).toBe(initialPositions[idx].y);
+    });
+
+    // Now player moves/attacks -> enemies unfreeze immediately
+    app.stateManager.player.vx = 120;
+    app.update(0.016);
+    expect(app.roomEnemiesFrozen).toBe(false);
+  });
+
+  it('renders the minimap in the same top-down orthogonal perspective as the game camera (not rotated 45 degrees)', () => {
+    document.body.innerHTML = '<canvas id="minimap-canvas" width="240" height="150"></canvas>';
+    const canvas = document.getElementById('minimap-canvas') as HTMLCanvasElement;
+    canvas.getContext = (() => ({
+      setTransform: () => {},
+      clearRect: () => {},
+      fillRect: () => {},
+       save: () => {},
+      restore: () => {},
+      beginPath: () => {},
+      moveTo: () => {},
+      lineTo: () => {},
+      closePath: () => {},
+      stroke: () => {},
+      fill: () => {},
+      arc: () => {},
+      rect: () => {},
+      roundRect: () => {},
+      fillText: () => {},
+      strokeText: () => {},
+      measureText: (t: string) => ({ width: t.length * 6 })
+    })) as any;
+
+    const app = new MotoRogueApp();
+    app.startNewRun(false);
+
+    // Construct a controlled dungeon with Center (0,0), East (1,0), and North (0,-1) rooms
+    const room00 = app.dungeon['0,0'];
+    const testDungeon = {
+      '0,0': { ...room00, x: 0, y: 0, visited: true, cleared: true, doors: { N: true, S: false, E: true, W: false } },
+      '1,0': { ...room00, x: 1, y: 0, visited: true, cleared: true, doors: { N: false, S: false, E: false, W: true } },
+      '0,-1': { ...room00, x: 0, y: -1, visited: true, cleared: true, doors: { N: false, S: true, E: false, W: false } }
+    } as any;
+
+    app.hud.drawMinimap(testDungeon, 0, 0, 1);
+    const hitboxes: Array<{ x: number; y: number; rx: number; ry: number }> = (app.hud as any).minimapRoomHitboxes;
+    const hbCenter = hitboxes.find(h => h.rx === 0 && h.ry === 0)!;
+    const hbEast = hitboxes.find(h => h.rx === 1 && h.ry === 0)!;
+    const hbNorth = hitboxes.find(h => h.rx === 0 && h.ry === -1)!;
+
+    expect(hbCenter).toBeDefined();
+    expect(hbEast).toBeDefined();
+    expect(hbNorth).toBeDefined();
+
+    // Orthogonal top-down perspective: East room (1,0) shares the same Y as (0,0) and has strictly greater X
+    expect(hbEast.y).toBeCloseTo(hbCenter.y, 5);
+    expect(hbEast.x).toBeGreaterThan(hbCenter.x);
+
+    // North room (0,-1) shares the same X as (0,0) and has strictly smaller Y (higher on screen)
+    expect(hbNorth.x).toBeCloseTo(hbCenter.x, 5);
+    expect(hbNorth.y).toBeLessThan(hbCenter.y);
   });
 });

@@ -90,6 +90,8 @@ export class MotoRogueApp {
 
   public curRoomX: number = 0;
   public curRoomY: number = 0;
+  public roomEnemiesFrozen: boolean = false;
+  private lastTrackedRoomKey: string = '0,0';
   public dungeon: ReturnType<typeof generateDungeon>['rooms'] = {};
   public combatState = createCombatState();
 
@@ -320,6 +322,8 @@ export class MotoRogueApp {
       if (!targetRoom || !targetRoom.visited) return;
       this.curRoomX = rx;
       this.curRoomY = ry;
+      this.lastTrackedRoomKey = `${rx},${ry}`;
+      this.roomEnemiesFrozen = Boolean(!targetRoom.cleared && targetRoom.enemies.some(e => !e.isDummy && e.hp > 0));
       this.stateManager.player.x = ARENA_WIDTH / 2;
       this.stateManager.player.y = ARENA_HEIGHT / 2;
       this.stateManager.player.vx = 0;
@@ -396,6 +400,8 @@ export class MotoRogueApp {
     this.dungeon = dungeonGraph.rooms;
     this.curRoomX = 0;
     this.curRoomY = 0;
+    this.roomEnemiesFrozen = false;
+    this.lastTrackedRoomKey = '0,0';
 
     const startRoom = this.dungeon['0,0'];
     if (startRoom) {
@@ -605,7 +611,25 @@ export class MotoRogueApp {
     const isMoving = inputState.up || inputState.down || inputState.left || inputState.right;
     this.audio.updateEngine(speedRatio, isShiftHeld && isMoving, isPaused);
 
+    const curRoomKey = `${this.curRoomX},${this.curRoomY}`;
+    if (curRoomKey !== this.lastTrackedRoomKey) {
+      this.lastTrackedRoomKey = curRoomKey;
+      this.roomEnemiesFrozen = Boolean(room && !room.cleared && room.enemies.some(e => !e.isDummy && e.hp > 0));
+    }
+
     if (isPaused || !room) return;
+
+    if (
+      this.roomEnemiesFrozen &&
+      (isMoving ||
+        inputState.fire ||
+        Math.hypot(player.vx, player.vy) > 5 ||
+        this.combatState.bullets.length > 0 ||
+        this.combatState.grenades.length > 0 ||
+        room.enemies.some(e => !e.isDummy && e.hp < e.maxHp))
+    ) {
+      this.roomEnemiesFrozen = false;
+    }
 
     if (this.deathTimer > 0) {
       this.deathTimer = Math.max(0, this.deathTimer - dt);
@@ -760,6 +784,9 @@ export class MotoRogueApp {
       this.curRoomY += transition.dy;
       player.x = transition.newX;
       player.y = transition.newY;
+      player.vx = 0;
+      player.vy = 0;
+      this.inputManager.reset();
 
       // Clear projectiles upon transitioning
       this.combatState.bullets = [];
@@ -771,6 +798,8 @@ export class MotoRogueApp {
       if (nextRoom) {
         nextRoom.visited = true;
       }
+      this.lastTrackedRoomKey = `${this.curRoomX},${this.curRoomY}`;
+      this.roomEnemiesFrozen = Boolean(nextRoom && !nextRoom.cleared && nextRoom.enemies.some(e => !e.isDummy && e.hp > 0));
       if (nextRoom && nextRoom.type === 'boss' && !nextRoom.cleared && !nextRoom.bossIntroShown) {
         const boss = nextRoom.enemies.find((e): e is Boss => e.type === 'boss');
         if (boss) {
@@ -839,6 +868,11 @@ export class MotoRogueApp {
         en.y = 545 + (en.y - 545) * Math.pow(0.2, dt);
         continue;
       }
+      if (this.roomEnemiesFrozen) {
+        en.vx = 0;
+        en.vy = 0;
+        continue;
+      }
       updateEnemyAI({
         room,
         enemy: en,
@@ -855,6 +889,7 @@ export class MotoRogueApp {
     if (activeBoss && activeBoss.hp > 0 && activeBoss.hp <= activeBoss.maxHp * 0.5 && !activeBoss.enrageAnnounced) {
       activeBoss.enrageAnnounced = true;
       activeBoss.enraged = true;
+      activeBoss.phase = 2;
       (activeBoss as any).enablePhase2ExtraProjectiles = true;
       this.combatState.screenShake = Math.max(this.combatState.screenShake, 14);
       this.audio.phaseEnrage?.();
@@ -1051,51 +1086,16 @@ export class MotoRogueApp {
             }
           }
           this.updateHUD();
-        } else if (p.type === 'mod_pedestal' && p.cost === 0) {
-          // Free mod (or Choice-of-2 Treasure Pedestal)
-          const wasEvo = isWeaponEvolved(player.weapon, player);
-          const prevDuos = new Set(getActiveDuoSynergies(player).map(d => d.id));
-          const choiceGroup = p.choiceGroup;
-          p.mod.apply(player);
-          player.items.push(p.mod.name);
-          this.audio.pickupItem();
-          const idxNow = room.pickups.indexOf(p);
-          if (idxNow >= 0) {
-            room.pickups.splice(idxNow, 1);
-          }
-          if (choiceGroup) {
-            this.audio.choiceLock?.();
-            for (let k = room.pickups.length - 1; k >= 0; k--) {
-              if ((room.pickups[k] as any)?.choiceGroup === choiceGroup) {
-                room.pickups.splice(k, 1);
-              }
-            }
-            this.combatState.damageNumbers.push({
-              x: p.x,
-              y: p.y - 28,
-              text: '⚖️ CHOICE LOCKED!',
-              color: '#ffd60a',
-              life: 1.1,
-              maxLife: 1.1
-            });
-          }
-          i = Math.min(i, room.pickups.length);
-          if (!wasEvo && isWeaponEvolved(player.weapon, player)) {
-            this.hud.showToast('OVERCLOCK EVOLUTION', `⚡ ${WEAPON_EVOLUTIONS[player.weapon].evolvedName} ONLINE!`, '#ffd60a', 2600);
-          } else {
-            const newDuo = getActiveDuoSynergies(player).find(d => !prevDuos.has(d.id));
-            if (newDuo) {
-              this.hud.showToast('✦ DUO SYNERGY ONLINE', `${newDuo.name.toUpperCase()} ACTIVATED!`, newDuo.color, 2500);
-            }
-          }
-          this.updateHUD();
         } else if (p.type === 'shop_heart' || p.type === 'mod_pedestal' || p.type === 'run_weapon') {
-          // Do not re-prompt if the player explicitly cancelled this purchase until they step away
+          // Do not re-prompt if the player explicitly cancelled this choice/purchase until they step away
           if (this.dismissedPickup === p) {
             continue;
           }
-          // Proximity shop prompt confirmation
+          // Proximity confirmation prompt (Mod Choice Room pedestals & Shop items)
           if (!this.shopModal.isOpen()) {
+            player.vx = 0;
+            player.vy = 0;
+            this.inputManager.reset();
             this.shopModal.open(
               p,
               () => {
@@ -1103,8 +1103,13 @@ export class MotoRogueApp {
                 if (player.coins >= p.cost) {
                   const wasEvo = isWeaponEvolved(player.weapon, player);
                   const prevDuos = new Set(getActiveDuoSynergies(player).map(d => d.id));
-                  player.coins -= p.cost;
-                  this.audio.shopBuy();
+                  if (p.cost > 0) {
+                    player.coins -= p.cost;
+                    this.audio.shopBuy();
+                  } else {
+                    this.audio.pickupItem();
+                  }
+                  const choiceGroup = p.type === 'mod_pedestal' ? p.choiceGroup : undefined;
                   if (p.type === 'shop_heart') {
                     player.hp = Math.min(player.maxHp, player.hp + 2);
                   } else if (p.type === 'mod_pedestal') {
@@ -1116,6 +1121,22 @@ export class MotoRogueApp {
                   }
                   const pIdx = room.pickups.indexOf(p);
                   if (pIdx >= 0) room.pickups.splice(pIdx, 1);
+                  if (choiceGroup) {
+                    this.audio.choiceLock?.();
+                    for (let k = room.pickups.length - 1; k >= 0; k--) {
+                      if ((room.pickups[k] as any)?.choiceGroup === choiceGroup) {
+                        room.pickups.splice(k, 1);
+                      }
+                    }
+                    this.combatState.damageNumbers.push({
+                      x: p.x,
+                      y: p.y - 28,
+                      text: '⚖️ CHOICE LOCKED!',
+                      color: '#ffd60a',
+                      life: 1.1,
+                      maxLife: 1.1
+                    });
+                  }
                   if (!wasEvo && isWeaponEvolved(player.weapon, player)) {
                     this.hud.showToast('OVERCLOCK EVOLUTION', `⚡ ${WEAPON_EVOLUTIONS[player.weapon].evolvedName} ONLINE!`, '#ffd60a', 2600);
                   } else {

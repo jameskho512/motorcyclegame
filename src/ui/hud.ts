@@ -665,43 +665,41 @@ export class HUDController {
     this.lastCurRoomY = curRoomY;
 
     const rooms = Object.values(dungeon);
-    // Compute isometric bounding box in grid coordinates u = (x - y), v = (x + y)
-    let minU = 0;
-    let maxU = 0;
-    let minV = 0;
-    let maxV = 0;
+    // Compute orthogonal top-down bounding box in grid coordinates (x = West..East, y = North..South)
+    let minX = 0;
+    let maxX = 0;
+    let minY = 0;
+    let maxY = 0;
     if (rooms.length > 0) {
-      minU = Infinity;
-      maxU = -Infinity;
-      minV = Infinity;
-      maxV = -Infinity;
+      minX = Infinity;
+      maxX = -Infinity;
+      minY = Infinity;
+      maxY = -Infinity;
       for (const r of rooms) {
-        const u = r.x - r.y;
-        const v = r.x + r.y;
-        if (u < minU) minU = u;
-        if (u > maxU) maxU = u;
-        if (v < minV) minV = v;
-        if (v > maxV) maxV = v;
+        if (r.x < minX) minX = r.x;
+        if (r.x > maxX) maxX = r.x;
+        if (r.y < minY) minY = r.y;
+        if (r.y > maxY) maxY = r.y;
       }
     }
-    const centerU = (minU + maxU) / 2;
-    const centerV = (minV + maxV) / 2;
-    const spanU = Math.max(2.5, maxU - minU + 1.6);
-    const spanV = Math.max(2.5, maxV - minV + 1.8);
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+    const spanX = Math.max(2.5, maxX - minX + 1.6);
+    const spanY = Math.max(2.2, maxY - minY + 1.6);
 
     const cx = mw / 2;
     const cy = mh / 2 + 4;
 
-    // Isometric tile dimensions & grid step auto-fitted so the entire floor map stays inside the frame
+    // Top-down tile dimensions & grid step auto-fitted so the entire floor map stays inside the frame
     const baseScale = Math.min(mw / 250, mh / 155);
-    const fitScaleU = (mw - 64) / (spanU * 31);
-    const fitScaleV = (mh - 52) / (spanV * 19.5);
-    const scale = Math.max(0.72, Math.min(baseScale, fitScaleU, fitScaleV));
-    const tileW = Math.max(14, Math.round(21 * scale));
-    const tileH = Math.max(9, Math.round(13 * scale));
-    const stepX = Math.round(tileW * 1.48);
-    const stepY = Math.round(tileH * 1.48);
-    const lipDepth = Math.max(3, Math.round(4.5 * scale));
+    const fitScaleX = (mw - 52) / (spanX * 36);
+    const fitScaleY = (mh - 46) / (spanY * 28);
+    const scale = Math.max(0.68, Math.min(baseScale, fitScaleX, fitScaleY));
+    const tileW = Math.max(10, Math.round(13 * scale));
+    const tileH = Math.max(8, Math.round(10 * scale));
+    const stepX = Math.round(tileW * 2.55);
+    const stepY = Math.round(tileH * 2.55);
+    const lipDepth = Math.max(2, Math.round(3.5 * scale));
 
     const CURRENT_YELLOW = '#ffd60a';
     const CLEARED_CYAN = '#2ee6ff';
@@ -710,42 +708,36 @@ export class HUDController {
     const SHOP_GREEN = '#00f59b';
     const MOD_GOLD = '#ffbe0b';
 
-    // 1. Subtle dark isometric background grid lines (matching concept art)
+    // 1. Subtle dark top-down orthogonal background grid lines (matching game perspective)
     g.save();
-    g.strokeStyle = 'rgba(110, 86, 148, 0.10)';
+    g.strokeStyle = 'rgba(110, 86, 148, 0.12)';
     g.lineWidth = 1;
-    const slope = stepY / stepX;
-    for (let i = -8; i <= 8; i++) {
-      const offset = i * stepY * 2;
-      // Down-right iso lines
+    for (let gx = cx % stepX; gx < mw; gx += stepX) {
       g.beginPath();
-      g.moveTo(0, cy + offset - cx * slope);
-      g.lineTo(mw, cy + offset + (mw - cx) * slope);
+      g.moveTo(gx, 0);
+      g.lineTo(gx, mh);
       g.stroke();
-      // Up-right iso lines
+    }
+    for (let gy = cy % stepY; gy < mh; gy += stepY) {
       g.beginPath();
-      g.moveTo(0, cy + offset + cx * slope);
-      g.lineTo(mw, cy + offset - (mw - cx) * slope);
+      g.moveTo(0, gy);
+      g.lineTo(mw, gy);
       g.stroke();
     }
     g.restore();
 
-    const projectIso = (rx: number, ry: number): { x: number; y: number } => {
-      const u = rx - ry - centerU;
-      const v = rx + ry - centerV;
-      return {
-        x: cx + u * stepX,
-        y: cy + v * stepY
-      };
-    };
+    const projectTopDown = (rx: number, ry: number): { x: number; y: number } => ({
+      x: cx + (rx - centerX) * stepX,
+      y: cy + (ry - centerY) * stepY
+    });
 
-    // Sort rooms back-to-front by (x + y) so isometric 2.5D lips layer cleanly
-    rooms.sort((a, b) => (a.x + a.y) - (b.x + b.y));
+    // Sort rooms top-to-bottom by y (then x) so 2.5D bottom lips layer cleanly
+    rooms.sort((a, b) => a.y - b.y || a.x - b.x);
 
-    // 2. First pass: Draw isometric corridor bridges between rooms
+    // 2. First pass: Draw top-down orthogonal corridor bridges between rooms
     for (const r of rooms) {
       if (!r.doors) continue;
-      const p1 = projectIso(r.x, r.y);
+      const p1 = projectTopDown(r.x, r.y);
       if (p1.x < -tileW || p1.x > mw + tileW || p1.y < -tileH || p1.y > mh + tileH) continue;
 
       const neighbors: Array<{ dir: 'N' | 'S' | 'E' | 'W'; nx: number; ny: number }> = [
@@ -760,7 +752,7 @@ export class HUDController {
         // Draw each undirected edge once
         if (nb.dir === 'N' || nb.dir === 'W') continue;
         const target = dungeon[`${nb.nx},${nb.ny}`];
-        const p2 = projectIso(nb.nx, nb.ny);
+        const p2 = projectTopDown(nb.nx, nb.ny);
 
         let corrColor = '#7b61a8';
         if (r.type === 'boss' || target?.type === 'boss') {
@@ -778,7 +770,7 @@ export class HUDController {
         g.save();
         // Dark corridor backing
         g.strokeStyle = '#120e1c';
-        g.lineWidth = Math.max(4, tileH * 0.55);
+        g.lineWidth = Math.max(4, tileH * 0.65);
         g.lineCap = 'round';
         g.beginPath();
         g.moveTo(p1.x, p1.y);
@@ -798,14 +790,14 @@ export class HUDController {
       }
     }
 
-    // 3. Second pass: Draw 2.5D Isometric Diamond Room Tiles + Vector Icons
+    // 3. Second pass: Draw Top-Down Orthogonal Room Tiles + Vector Icons
     this.minimapRoomHitboxes = [];
     for (const r of rooms) {
-      const { x: isoX, y: isoY } = projectIso(r.x, r.y);
-      if (isoX < -tileW * 0.8 || isoX > mw + tileW * 0.8 || isoY < -tileH * 0.8 || isoY > mh + tileH * 0.8) {
+      const { x: mapX, y: mapY } = projectTopDown(r.x, r.y);
+      if (mapX < -tileW * 0.8 || mapX > mw + tileW * 0.8 || mapY < -tileH * 0.8 || mapY > mh + tileH * 0.8) {
         continue;
       }
-      this.minimapRoomHitboxes.push({ x: isoX, y: isoY, rx: r.x, ry: r.y, visited: !!r.visited });
+      this.minimapRoomHitboxes.push({ x: mapX, y: mapY, rx: r.x, ry: r.y, visited: !!r.visited });
 
       const isCurrent = r.x === curRoomX && r.y === curRoomY;
       let stroke: string;
@@ -840,14 +832,12 @@ export class HUDController {
 
       g.save();
 
-      // 3A. 3D Bottom Thickness Lip
+      // 3A. 3D Bottom Thickness Lip (Top-Down Perspective)
       g.beginPath();
-      g.moveTo(isoX - tileW, isoY);
-      g.lineTo(isoX, isoY + tileH);
-      g.lineTo(isoX + tileW, isoY);
-      g.lineTo(isoX + tileW, isoY + lipDepth);
-      g.lineTo(isoX, isoY + tileH + lipDepth);
-      g.lineTo(isoX - tileW, isoY + lipDepth);
+      g.moveTo(mapX - tileW, mapY + tileH);
+      g.lineTo(mapX + tileW, mapY + tileH);
+      g.lineTo(mapX + tileW, mapY + tileH + lipDepth);
+      g.lineTo(mapX - tileW, mapY + tileH + lipDepth);
       g.closePath();
       g.fillStyle = lipFill;
       g.fill();
@@ -855,13 +845,13 @@ export class HUDController {
       g.lineWidth = 1.2;
       g.stroke();
 
-      // 3B. Top Isometric Diamond Platform
+      // 3B. Top Orthogonal Room Platform (same perspective as game arena)
       g.beginPath();
-      g.moveTo(isoX, isoY - tileH);
-      g.lineTo(isoX + tileW, isoY);
-      g.lineTo(isoX, isoY + tileH);
-      g.lineTo(isoX - tileW, isoY);
-      g.closePath();
+      if (typeof (g as any).roundRect === 'function') {
+        (g as any).roundRect(mapX - tileW, mapY - tileH, tileW * 2, tileH * 2, 3);
+      } else {
+        g.rect(mapX - tileW, mapY - tileH, tileW * 2, tileH * 2);
+      }
 
       g.shadowColor = stroke;
       g.shadowBlur = isCurrent ? 14 : 7;
@@ -875,20 +865,20 @@ export class HUDController {
       g.stroke();
       g.shadowBlur = 0;
 
-      // Outer pulsing diamond halo if current room
+      // Outer pulsing rectangular halo if current room
       if (isCurrent) {
         const time = typeof performance !== 'undefined' ? performance.now() : Date.now();
         const pulse = 0.65 + 0.35 * Math.sin(time / 160);
-        const haloW = tileW + 3.5 + 2 * pulse;
-        const haloH = tileH + 2.2 + 1.2 * pulse;
+        const haloW = tileW + 3 + 1.8 * pulse;
+        const haloH = tileH + 2.5 + 1.5 * pulse;
 
         g.save();
         g.beginPath();
-        g.moveTo(isoX, isoY - haloH);
-        g.lineTo(isoX + haloW, isoY);
-        g.lineTo(isoX, isoY + haloH);
-        g.lineTo(isoX - haloW, isoY);
-        g.closePath();
+        if (typeof (g as any).roundRect === 'function') {
+          (g as any).roundRect(mapX - haloW, mapY - haloH, haloW * 2, haloH * 2, 4);
+        } else {
+          g.rect(mapX - haloW, mapY - haloH, haloW * 2, haloH * 2);
+        }
         g.strokeStyle = CURRENT_YELLOW;
         g.shadowColor = CURRENT_YELLOW;
         g.shadowBlur = 10 * pulse;
@@ -896,15 +886,15 @@ export class HUDController {
         g.stroke();
         g.restore();
       } else if (this.hoveredMinimapRoom && this.hoveredMinimapRoom.rx === r.x && this.hoveredMinimapRoom.ry === r.y) {
-        const haloW = tileW + 4;
-        const haloH = tileH + 2.5;
+        const haloW = tileW + 3.5;
+        const haloH = tileH + 3;
         g.save();
         g.beginPath();
-        g.moveTo(isoX, isoY - haloH);
-        g.lineTo(isoX + haloW, isoY);
-        g.lineTo(isoX, isoY + haloH);
-        g.lineTo(isoX - haloW, isoY);
-        g.closePath();
+        if (typeof (g as any).roundRect === 'function') {
+          (g as any).roundRect(mapX - haloW, mapY - haloH, haloW * 2, haloH * 2, 4);
+        } else {
+          g.rect(mapX - haloW, mapY - haloH, haloW * 2, haloH * 2);
+        }
         g.strokeStyle = '#ffffff';
         g.shadowColor = CLEARED_CYAN;
         g.shadowBlur = 10;
@@ -913,15 +903,11 @@ export class HUDController {
         g.restore();
       }
 
-      // 3C. Inner Isometric Frame Line (matches concept art double-lined rooms)
+      // 3C. Inner Orthogonal Frame Line
       const iw = tileW * 0.72;
       const ih = tileH * 0.72;
       g.beginPath();
-      g.moveTo(isoX, isoY - ih);
-      g.lineTo(isoX + iw, isoY);
-      g.lineTo(isoX, isoY + ih);
-      g.lineTo(isoX - iw, isoY);
-      g.closePath();
+      g.rect(mapX - iw, mapY - ih, iw * 2, ih * 2);
       g.strokeStyle = isCurrent ? 'rgba(255, 255, 255, 0.65)' : 'rgba(255, 255, 255, 0.18)';
       g.lineWidth = 0.9;
       g.stroke();
@@ -929,12 +915,12 @@ export class HUDController {
       // 3D. Crisp Special Room Badges + Pill Labels OR Rider Beacon
       if (r.type === 'boss' || r.type === 'treasure' || r.type === 'shop') {
         const badgeColor = r.type === 'boss' ? BOSS_RED : (r.type === 'shop' ? SHOP_GREEN : MOD_GOLD);
-        const badgeR = Math.max(7, Math.round(tileH * 0.72));
+        const badgeR = Math.max(6.5, Math.round(tileH * 0.78));
 
         // Circular dark badge with 2px colored border
         g.save();
         g.beginPath();
-        g.arc(isoX, isoY, badgeR, 0, Math.PI * 2);
+        g.arc(mapX, mapY, badgeR, 0, Math.PI * 2);
         g.fillStyle = '#0a0b10';
         g.shadowColor = badgeColor;
         g.shadowBlur = 6;
@@ -952,17 +938,17 @@ export class HUDController {
         g.textAlign = 'center';
         g.textBaseline = 'middle';
         g.fillStyle = iconColor;
-        g.fillText(icon, isoX, isoY + (icon === '★' ? -0.5 : 0.5));
+        g.fillText(icon, mapX, mapY + (icon === '★' ? -0.5 : 0.5));
         g.restore();
 
-        // Crisp mini pill label right above the diamond
+        // Crisp mini pill label right above the room tile
         const pillText = r.type === 'boss' ? 'BOSS' : (r.type === 'shop' ? 'SHOP' : 'MOD');
         const pillFontSize = Math.max(8, Math.round(8.5 * scale));
         g.save();
         g.font = `900 ${pillFontSize}px sans-serif`;
         g.textAlign = 'center';
         g.textBaseline = 'middle';
-        const pillY = isoY - tileH - 6;
+        const pillY = mapY - tileH - 6;
         const textMetrics = g.measureText(pillText);
         const pillPadX = 3.5;
         const pillW = textMetrics.width + pillPadX * 2;
@@ -970,9 +956,9 @@ export class HUDController {
 
         g.beginPath();
         if (typeof (g as any).roundRect === 'function') {
-          (g as any).roundRect(isoX - pillW / 2, pillY - pillH / 2, pillW, pillH, 3);
+          (g as any).roundRect(mapX - pillW / 2, pillY - pillH / 2, pillW, pillH, 3);
         } else {
-          g.rect(isoX - pillW / 2, pillY - pillH / 2, pillW, pillH);
+          g.rect(mapX - pillW / 2, pillY - pillH / 2, pillW, pillH);
         }
         g.fillStyle = '#0a0b10';
         g.fill();
@@ -983,9 +969,9 @@ export class HUDController {
         // Label text with dark stroke outline
         g.strokeStyle = '#0a0b10';
         g.lineWidth = 2.5;
-        g.strokeText(pillText, isoX, pillY);
+        g.strokeText(pillText, mapX, pillY);
         g.fillStyle = badgeColor;
-        g.fillText(pillText, isoX, pillY);
+        g.fillText(pillText, mapX, pillY);
         g.restore();
       } else if (isCurrent) {
         // Glowing yellow/white rider beacon marker in current room
@@ -993,7 +979,7 @@ export class HUDController {
         g.shadowColor = CURRENT_YELLOW;
         g.shadowBlur = 8;
         g.beginPath();
-        g.arc(isoX, isoY - 1, Math.max(3.2, tileH * 0.36), 0, Math.PI * 2);
+        g.arc(mapX, mapY, Math.max(3.2, tileH * 0.42), 0, Math.PI * 2);
         g.fill();
         g.strokeStyle = '#0a0b10';
         g.lineWidth = 1.4;
