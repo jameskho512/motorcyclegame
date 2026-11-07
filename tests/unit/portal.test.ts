@@ -31,7 +31,9 @@ import {
   getShopItemAppraisal,
   ShopItemAppraisal,
   getShopBuildSynergyHint,
-  ShopBuildSynergyHint
+  ShopBuildSynergyHint,
+  getShopBudgetSummary,
+  ShopBudgetSummary
 } from '../../src/ui/shopModal';
 import {
   HubStationModalController,
@@ -3057,6 +3059,291 @@ describe('HubStationModalController & getHubStationPromptInfo (Wave 14-15)', () 
       const controller = new HubStationModalController();
       expect(controller.getArmoryStationAdvisor(meta, player)).toEqual(
         getArmoryStationAdvisor(meta, player)
+      );
+    });
+  });
+
+  describe('getShopBudgetSummary pure helper (M125)', () => {
+    it('returns empty/sold-out summary when pickups array is empty, null, or undefined', () => {
+      const soldOutEmpty: ShopBudgetSummary = getShopBudgetSummary([], 50);
+      expect(soldOutEmpty).toEqual({
+        playerCoins: 50,
+        totalItems: 0,
+        affordableCount: 0,
+        cheapestCost: null,
+        totalBuyoutCost: 0,
+        canBuyoutAll: false,
+        summaryLine: 'BUDGET: 50 COINS 🪙 // SHOP SOLD OUT'
+      });
+
+      const soldOutNull = getShopBudgetSummary(null, 15);
+      expect(soldOutNull).toEqual({
+        playerCoins: 15,
+        totalItems: 0,
+        affordableCount: 0,
+        cheapestCost: null,
+        totalBuyoutCost: 0,
+        canBuyoutAll: false,
+        summaryLine: 'BUDGET: 15 COINS 🪙 // SHOP SOLD OUT'
+      });
+
+      const soldOutUndef = getShopBudgetSummary(undefined, 0);
+      expect(soldOutUndef).toEqual({
+        playerCoins: 0,
+        totalItems: 0,
+        affordableCount: 0,
+        cheapestCost: null,
+        totalBuyoutCost: 0,
+        canBuyoutAll: false,
+        summaryLine: 'BUDGET: 0 COINS 🪙 // SHOP SOLD OUT'
+      });
+    });
+
+    it('returns broke state (0 coins) with affordableCount = 0 and canBuyoutAll = false', () => {
+      const stockItems = [{ cost: 15 }, { cost: 30 }, { cost: 50 }];
+      const brokeSummary: ShopBudgetSummary = getShopBudgetSummary(stockItems, 0);
+
+      expect(brokeSummary).toEqual({
+        playerCoins: 0,
+        totalItems: 3,
+        affordableCount: 0,
+        cheapestCost: 15,
+        totalBuyoutCost: 95,
+        canBuyoutAll: false,
+        summaryLine: 'BUDGET: 0 COINS 🪙 // AFFORDABLE: 0/3 ITEMS // BUYOUT: 95 🪙'
+      });
+
+      // Free item (cost = 0) with 0 coins is affordable (0 >= 0)
+      const freeItemSummary = getShopBudgetSummary([{ cost: 0 }, { cost: 20 }], 0);
+      expect(freeItemSummary.affordableCount).toBe(1);
+      expect(freeItemSummary.cheapestCost).toBe(0);
+      expect(freeItemSummary.totalBuyoutCost).toBe(20);
+      expect(freeItemSummary.canBuyoutAll).toBe(false);
+      expect(freeItemSummary.summaryLine).toBe(
+        'BUDGET: 0 COINS 🪙 // AFFORDABLE: 1/2 ITEMS // BUYOUT: 20 🪙'
+      );
+    });
+
+    it('returns partial affordability when player can afford some but not all items', () => {
+      const stockItems = [{ cost: 10 }, { cost: 25 }, { cost: 45 }];
+      const partialSummary: ShopBudgetSummary = getShopBudgetSummary(stockItems, 30);
+
+      expect(partialSummary).toEqual({
+        playerCoins: 30,
+        totalItems: 3,
+        affordableCount: 2,
+        cheapestCost: 10,
+        totalBuyoutCost: 80,
+        canBuyoutAll: false,
+        summaryLine: 'BUDGET: 30 COINS 🪙 // AFFORDABLE: 2/3 ITEMS // BUYOUT: 80 🪙'
+      });
+    });
+
+    it('returns full buyout affordability when player has enough coins to buyout the entire shop', () => {
+      const stockItems = [{ cost: 10 }, { cost: 25 }, { cost: 45 }];
+      const surplusSummary: ShopBudgetSummary = getShopBudgetSummary(stockItems, 100);
+
+      expect(surplusSummary).toEqual({
+        playerCoins: 100,
+        totalItems: 3,
+        affordableCount: 3,
+        cheapestCost: 10,
+        totalBuyoutCost: 80,
+        canBuyoutAll: true,
+        summaryLine: 'BUDGET: 100 COINS 🪙 // AFFORDABLE: 3/3 ITEMS // BUYOUT: 80 🪙'
+      });
+
+      // Exact match buyout (coins === totalBuyoutCost)
+      const exactSummary = getShopBudgetSummary([{ cost: 15 }, { cost: 35 }], 50);
+      expect(exactSummary.canBuyoutAll).toBe(true);
+      expect(exactSummary.affordableCount).toBe(2);
+      expect(exactSummary.totalBuyoutCost).toBe(50);
+      expect(exactSummary.summaryLine).toBe(
+        'BUDGET: 50 COINS 🪙 // AFFORDABLE: 2/2 ITEMS // BUYOUT: 50 🪙'
+      );
+    });
+
+    it('handles malformed, negative, NaN, floating point, and non-array inputs gracefully', () => {
+      // Negative coins sanitized to 0
+      const negativeCoins = getShopBudgetSummary([{ cost: 10 }], -50);
+      expect(negativeCoins.playerCoins).toBe(0);
+      expect(negativeCoins.affordableCount).toBe(0);
+
+      // NaN and Infinity coins sanitized to 0
+      const nanCoins = getShopBudgetSummary([{ cost: 10 }], NaN);
+      expect(nanCoins.playerCoins).toBe(0);
+
+      const infCoins = getShopBudgetSummary([{ cost: 10 }], Infinity);
+      expect(infCoins.playerCoins).toBe(0);
+
+      // String / non-number coins sanitized to 0
+      const stringCoins = getShopBudgetSummary([{ cost: 10 }], '99' as any);
+      expect(stringCoins.playerCoins).toBe(0);
+
+      // Floating coins floored
+      const floatCoins = getShopBudgetSummary([{ cost: 20 }], 25.9);
+      expect(floatCoins.playerCoins).toBe(25);
+      expect(floatCoins.affordableCount).toBe(1);
+
+      // Malformed items: negative costs sanitized to 0, float costs floored, NaN costs sanitized to 0
+      const malformedItems = [
+        null,
+        { cost: -15 },
+        undefined,
+        { cost: 20.8 },
+        { cost: NaN },
+        { cost: 'invalid' as any },
+        {}
+      ];
+      const malformedSummary = getShopBudgetSummary(malformedItems as any, 10);
+      // Valid filtered items: {cost: -15} -> 0, {cost: 20.8} -> 20, {cost: NaN} -> 0, {cost: 'invalid'} -> 0, {} -> 0
+      expect(malformedSummary.totalItems).toBe(5);
+      expect(malformedSummary.cheapestCost).toBe(0);
+      expect(malformedSummary.totalBuyoutCost).toBe(20);
+      // coins = 10, so items with cost 0 (4 items) are affordable, cost 20 is not -> affordableCount = 4
+      expect(malformedSummary.affordableCount).toBe(4);
+      expect(malformedSummary.canBuyoutAll).toBe(false);
+
+      // Non-array pickups
+      const nonArray = getShopBudgetSummary('not-an-array' as any, 30);
+      expect(nonArray.totalItems).toBe(0);
+      expect(nonArray.cheapestCost).toBeNull();
+      expect(nonArray.summaryLine).toBe('BUDGET: 30 COINS 🪙 // SHOP SOLD OUT');
+    });
+
+    it('is accessible via ShopModalController static and instance methods', () => {
+      const items = [{ cost: 15 }, { cost: 35 }];
+      expect(ShopModalController.getShopBudgetSummary(items, 40)).toEqual(
+        getShopBudgetSummary(items, 40)
+      );
+
+      const controller = new ShopModalController();
+      expect(controller.getShopBudgetSummary(items, 40)).toEqual(
+        getShopBudgetSummary(items, 40)
+      );
+    });
+  });
+
+  describe('ShopModalController economy budget DOM attributes (M125)', () => {
+    const SHOP_MARKUP = `
+      <div id="shop-confirm-overlay" aria-hidden="true">
+        <div class="shop-confirm-card">
+          <div class="shop-name-panel">
+            <div id="shop-modal-name"></div>
+          </div>
+          <div id="shop-modal-desc"></div>
+          <div id="shop-modal-cost"></div>
+          <div id="shop-modal-type"></div>
+          <div id="shop-modal-quote"></div>
+          <button id="btn-confirm-buy" type="button">Confirm</button>
+          <button id="btn-cancel-buy" type="button">Cancel</button>
+        </div>
+      </div>
+    `;
+
+    let modal: ShopModalController;
+    let overlay: HTMLElement;
+
+    beforeEach(() => {
+      document.body.innerHTML = SHOP_MARKUP;
+      overlay = document.getElementById('shop-confirm-overlay')!;
+      modal = new ShopModalController();
+    });
+
+    afterEach(() => {
+      modal.close();
+      document.body.innerHTML = '';
+    });
+
+    it('sets budget attributes on overlay when open is called with a single Pickup', () => {
+      const pickup: Pickup = {
+        x: 100,
+        y: 100,
+        radius: 20,
+        type: 'shop_heart',
+        name: 'Discount Patch',
+        cost: 12
+      };
+
+      modal.open(pickup, vi.fn(), undefined, 30);
+
+      expect(overlay.getAttribute('data-shop-affordable-count')).toBe('1');
+      expect(overlay.getAttribute('data-shop-buyout-cost')).toBe('12');
+      expect(overlay.getAttribute('data-shop-budget-summary')).toBe(
+        'BUDGET: 30 COINS 🪙 // AFFORDABLE: 1/1 ITEMS // BUYOUT: 12 🪙'
+      );
+    });
+
+    it('sets budget attributes on overlay when open is called with an array of pickups', () => {
+      const pickups: any[] = [
+        { type: 'shop_heart', name: 'Patch 1', cost: 10 },
+        { type: 'shop_heart', name: 'Patch 2', cost: 25 },
+        { type: 'shop_heart', name: 'Patch 3', cost: 50 }
+      ];
+
+      modal.open(pickups as any, vi.fn(), undefined, 30);
+
+      expect(overlay.getAttribute('data-shop-affordable-count')).toBe('2');
+      expect(overlay.getAttribute('data-shop-buyout-cost')).toBe('85');
+      expect(overlay.getAttribute('data-shop-budget-summary')).toBe(
+        'BUDGET: 30 COINS 🪙 // AFFORDABLE: 2/3 ITEMS // BUYOUT: 85 🪙'
+      );
+    });
+
+    it('sets budget attributes when allPickups array is passed as 6th argument', () => {
+      const activeItem: Pickup = {
+        x: 100,
+        y: 100,
+        radius: 20,
+        type: 'shop_heart',
+        name: 'Main Item',
+        cost: 15
+      };
+      const roomPickups: any[] = [
+        activeItem,
+        { type: 'shop_heart', name: 'Second Item', cost: 35 }
+      ];
+
+      modal.open(activeItem, vi.fn(), undefined, 20, null, roomPickups as any);
+
+      expect(overlay.getAttribute('data-shop-affordable-count')).toBe('1');
+      expect(overlay.getAttribute('data-shop-buyout-cost')).toBe('50');
+      expect(overlay.getAttribute('data-shop-budget-summary')).toBe(
+        'BUDGET: 20 COINS 🪙 // AFFORDABLE: 1/2 ITEMS // BUYOUT: 50 🪙'
+      );
+    });
+
+    it('updates DOM attributes when render() is called directly', () => {
+      const pickups = [{ cost: 12 }, { cost: 18 }];
+      modal.render(pickups, 30);
+
+      expect(overlay.getAttribute('data-shop-affordable-count')).toBe('2');
+      expect(overlay.getAttribute('data-shop-buyout-cost')).toBe('30');
+      expect(overlay.getAttribute('data-shop-budget-summary')).toBe(
+        'BUDGET: 30 COINS 🪙 // AFFORDABLE: 2/2 ITEMS // BUYOUT: 30 🪙'
+      );
+
+      // Sold out render
+      modal.render([], 50);
+      expect(overlay.getAttribute('data-shop-affordable-count')).toBe('0');
+      expect(overlay.getAttribute('data-shop-buyout-cost')).toBe('0');
+      expect(overlay.getAttribute('data-shop-budget-summary')).toBe(
+        'BUDGET: 50 COINS 🪙 // SHOP SOLD OUT'
+      );
+    });
+
+    it('supports overlayEl getter and setter', () => {
+      expect(modal.overlayEl).toBe(overlay);
+
+      const customOverlay = document.createElement('div');
+      modal.overlayEl = customOverlay;
+      expect(modal.overlayEl).toBe(customOverlay);
+
+      modal.render([{ cost: 5 }, { cost: 15 }], 10);
+      expect(customOverlay.getAttribute('data-shop-affordable-count')).toBe('1');
+      expect(customOverlay.getAttribute('data-shop-buyout-cost')).toBe('20');
+      expect(customOverlay.getAttribute('data-shop-budget-summary')).toBe(
+        'BUDGET: 10 COINS 🪙 // AFFORDABLE: 1/2 ITEMS // BUYOUT: 20 🪙'
       );
     });
   });

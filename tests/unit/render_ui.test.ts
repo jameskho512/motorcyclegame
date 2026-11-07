@@ -29,7 +29,7 @@ import {
 } from '../../src/ui/hud';
 import { getRunModDeckSummary } from '../../src/data/upgrades';
 import { parseColor, drawObstacle } from '../../src/render/vectorArt';
-import { TooltipManager } from '../../src/ui/tooltip';
+import { TooltipManager, formatModDeckTooltipHint } from '../../src/ui/tooltip';
 import { ShopModalController } from '../../src/ui/shopModal';
 import { FilterManager } from '../../src/render/shaders';
 import { StageManager, getFloorMoteColor, getEliteAffixColor } from '../../src/render/stage';
@@ -3431,6 +3431,207 @@ describe('Render & UI Subsystems', () => {
       expect(() => {
         hud.updateModDeckTelemetry(player);
       }).not.toThrow();
+    });
+  });
+
+  describe('HUD Mod Badge Tooltip Duo Synergy & Overclock Readiness Wiring (M124)', () => {
+    type TestPlayer = PlayerState & { modStacks?: Record<string, number> };
+    const createTestPlayer = (overrides?: Partial<PlayerState> & { modStacks?: Record<string, number> }): TestPlayer => ({
+      hp: 6,
+      maxHp: 6,
+      coins: 20,
+      nos: 100,
+      nosMax: 100,
+      nosLock: false,
+      items: [],
+      itemStacks: {},
+      modStacks: {},
+      weapon: 'pistol',
+      runWeapons: {},
+      dmgMult: 1.0,
+      fireRateMult: 1.0,
+      speedMult: 1.0,
+      multiShot: 1,
+      pierce: 0,
+      bounce: 0,
+      vampChance: 0,
+      killCount: 0,
+      ...overrides
+    } as unknown as TestPlayer);
+
+    it('renders .mod-badge elements in #hud-mods-bar with 1/3 stack overclock evolution hints in data-tip and data-mod-evo-hint', () => {
+      document.body.innerHTML = `
+        <div id="hud-mods-bar"></div>
+        <div id="hud-synergy-list"></div>
+      `;
+
+      const hud = new HUDController();
+      const player = createTestPlayer({
+        modStacks: {
+          armor_plate: 1
+        }
+      });
+
+      const expectedHint = formatModDeckTooltipHint('armor_plate', player);
+      expect(expectedHint).toContain('1/3');
+      expect(expectedHint).toContain('FOR OVERCLOCK EVO');
+
+      hud.updateSidebar(player, 1);
+
+      const badge = document.querySelector('#hud-mods-bar .mod-badge') as HTMLElement;
+      expect(badge).not.toBeNull();
+      expect(badge.classList.contains('mod-badge')).toBe(true);
+      expect(badge.getAttribute('data-mod-id')).toBe('armor_plate');
+      expect(badge.getAttribute('data-mod-evo-hint')).toBe(expectedHint);
+      expect(badge.getAttribute('data-tip')).toContain(expectedHint);
+      expect(badge.getAttribute('data-tip')).toContain('1/3');
+    });
+
+    it('renders .mod-badge elements with 2/3 stack near-evo hints (+1 STACK FOR OVERCLOCK EVO) in data-tip and data-mod-evo-hint', () => {
+      document.body.innerHTML = `
+        <div id="hud-mods-bar"></div>
+      `;
+
+      const hud = new HUDController();
+      const player = createTestPlayer({
+        modStacks: {
+          hollow_point: 2
+        }
+      });
+
+      const expectedHint = formatModDeckTooltipHint('hollow_point', player);
+      expect(expectedHint).toContain('2/3 STACKS');
+      expect(expectedHint).toContain('+1 STACK FOR OVERCLOCK EVO');
+
+      hud.updateMods(player);
+
+      const badge = document.querySelector('#hud-mods-bar .mod-badge') as HTMLElement;
+      expect(badge).not.toBeNull();
+      expect(badge.getAttribute('data-mod-evo-hint')).toBe(expectedHint);
+      expect(badge.getAttribute('data-tip')).toContain(expectedHint);
+      expect(badge.getAttribute('data-tip')).toContain('+1 STACK FOR OVERCLOCK EVO');
+    });
+
+    it('renders .mod-badge elements with 3+ stack generic overclock ready state (GENERIC OVERCLOCK READY) in data-tip and data-mod-evo-hint', () => {
+      document.body.innerHTML = `
+        <div id="hud-mods-bar"></div>
+      `;
+
+      const hud = new HUDController();
+      const player = createTestPlayer({
+        modStacks: {
+          hair_trigger: 3,
+          turbo_charger: 4
+        }
+      });
+
+      hud.updateSidebar(player, 1);
+
+      const badges = document.querySelectorAll('#hud-mods-bar .mod-badge');
+      expect(badges.length).toBe(2);
+
+      const htBadge = Array.from(badges).find(b => b.getAttribute('data-mod-id') === 'hair_trigger') as HTMLElement;
+      const tcBadge = Array.from(badges).find(b => b.getAttribute('data-mod-id') === 'turbo_charger') as HTMLElement;
+
+      expect(htBadge).not.toBeUndefined();
+      expect(tcBadge).not.toBeUndefined();
+
+      const expectedHtHint = formatModDeckTooltipHint('hair_trigger', player);
+      const expectedTcHint = formatModDeckTooltipHint('turbo_charger', player);
+
+      expect(expectedHtHint).toContain('3+ STACKS: GENERIC OVERCLOCK READY');
+      expect(expectedTcHint).toContain('3+ STACKS: GENERIC OVERCLOCK READY');
+
+      expect(htBadge.getAttribute('data-mod-evo-hint')).toBe(expectedHtHint);
+      expect(htBadge.getAttribute('data-tip')).toContain(expectedHtHint);
+      expect(htBadge.getAttribute('data-tip')).toContain('GENERIC OVERCLOCK READY');
+
+      expect(tcBadge.getAttribute('data-mod-evo-hint')).toBe(expectedTcHint);
+      expect(tcBadge.getAttribute('data-tip')).toContain(expectedTcHint);
+      expect(tcBadge.getAttribute('data-tip')).toContain('GENERIC OVERCLOCK READY');
+    });
+
+    it('renders active Duo Synergy states and updates data-tip and data-mod-evo-hint on both component .mod-badge elements', () => {
+      document.body.innerHTML = `
+        <div id="hud-mods-bar"></div>
+      `;
+
+      const hud = new HUDController();
+      // thermal_shock duo requires cryo_rounds and high_explosive
+      const player = createTestPlayer({
+        modStacks: {
+          cryo_rounds: 1,
+          high_explosive: 2
+        }
+      });
+
+      hud.updateSidebar(player, 1);
+
+      const cryoBadge = document.querySelector('#hud-mods-bar [data-mod-id="cryo_rounds"]') as HTMLElement;
+      const heBadge = document.querySelector('#hud-mods-bar [data-mod-id="high_explosive"]') as HTMLElement;
+
+      expect(cryoBadge).not.toBeNull();
+      expect(heBadge).not.toBeNull();
+
+      const expectedCryoHint = formatModDeckTooltipHint('cryo_rounds', player);
+      const expectedHeHint = formatModDeckTooltipHint('high_explosive', player);
+
+      expect(expectedCryoHint).toContain('✓ DUO ACTIVE: THERMAL SHOCK');
+      expect(expectedHeHint).toContain('✓ DUO ACTIVE: THERMAL SHOCK');
+
+      expect(cryoBadge.getAttribute('data-mod-evo-hint')).toBe(expectedCryoHint);
+      expect(cryoBadge.getAttribute('data-tip')).toContain(expectedCryoHint);
+      expect(cryoBadge.getAttribute('data-tip')).toContain('✓ DUO ACTIVE: THERMAL SHOCK');
+
+      expect(heBadge.getAttribute('data-mod-evo-hint')).toBe(expectedHeHint);
+      expect(heBadge.getAttribute('data-tip')).toContain(expectedHeHint);
+      expect(heBadge.getAttribute('data-tip')).toContain('✓ DUO ACTIVE: THERMAL SHOCK');
+      expect(heBadge.getAttribute('data-tip')).toContain('+1 STACK FOR OVERCLOCK EVO');
+    });
+
+    it('appends evoHint to title if title is set and updates pre-existing .mod-badge elements via updateModDeckTelemetry', () => {
+      document.body.innerHTML = `
+        <div id="hud-mods-bar">
+          <span class="mod-badge" data-mod-id="armor_plate" title="Armor Plating" data-tip="Armor Plating Description"></span>
+        </div>
+      `;
+
+      const hud = new HUDController();
+      const player = createTestPlayer({
+        modStacks: {
+          armor_plate: 3
+        }
+      });
+
+      const expectedHint = formatModDeckTooltipHint('armor_plate', player);
+      hud.updateModDeckTelemetry(player);
+
+      const badge = document.querySelector('#hud-mods-bar .mod-badge') as HTMLElement;
+      expect(badge.getAttribute('data-mod-evo-hint')).toBe(expectedHint);
+      expect(badge.getAttribute('data-tip')).toContain('Armor Plating Description');
+      expect(badge.getAttribute('data-tip')).toContain(expectedHint);
+      expect(badge.getAttribute('title')).toContain('Armor Plating');
+      expect(badge.getAttribute('title')).toContain(expectedHint);
+    });
+
+    it('standalone updateModDeck helper renders .mod-badge in #hud-mods-bar with evolution hints', () => {
+      document.body.innerHTML = `
+        <div id="hud-mods-bar"></div>
+      `;
+
+      const player = createTestPlayer({
+        modStacks: {
+          cryo_rounds: 2
+        }
+      });
+
+      updateModDeck(player);
+
+      const badge = document.querySelector('#hud-mods-bar .mod-badge') as HTMLElement;
+      expect(badge).not.toBeNull();
+      const expectedHint = formatModDeckTooltipHint('cryo_rounds', player);
+      expect(badge.getAttribute('data-mod-evo-hint')).toBe(expectedHint);
+      expect(badge.getAttribute('data-tip')).toContain('+1 STACK FOR OVERCLOCK EVO');
     });
   });
 });

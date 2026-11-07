@@ -29,6 +29,74 @@ export interface ShopBuildSynergyHint {
   hintText: string;
 }
 
+export interface ShopBudgetSummary {
+  playerCoins: number;
+  totalItems: number;
+  affordableCount: number;
+  cheapestCost: number | null;
+  totalBuyoutCost: number;
+  canBuyoutAll: boolean;
+  summaryLine: string;
+}
+
+export function getShopBudgetSummary(
+  pickups: any[] | null | undefined,
+  playerCoins: number = 0
+): ShopBudgetSummary {
+  const coins =
+    typeof playerCoins === 'number' && Number.isFinite(playerCoins) && playerCoins > 0
+      ? Math.floor(playerCoins)
+      : 0;
+  const items = Array.isArray(pickups) ? pickups.filter(Boolean) : [];
+  const totalItems = items.length;
+
+  let affordableCount = 0;
+  let totalBuyoutCost = 0;
+  let cheapestCost: number | null = null;
+
+  for (const item of items) {
+    const cost =
+      typeof item.cost === 'number' && Number.isFinite(item.cost) && item.cost >= 0
+        ? Math.floor(item.cost)
+        : 0;
+    if (coins >= cost) {
+      affordableCount++;
+    }
+    totalBuyoutCost += cost;
+    if (cheapestCost === null || cost < cheapestCost) {
+      cheapestCost = cost;
+    }
+  }
+
+  const canBuyoutAll = totalItems > 0 && coins >= totalBuyoutCost;
+
+  let summaryLine: string;
+  if (totalItems === 0) {
+    summaryLine = 'BUDGET: ' + coins + ' COINS 🪙 // SHOP SOLD OUT';
+  } else {
+    summaryLine =
+      'BUDGET: ' +
+      coins +
+      ' COINS 🪙 // AFFORDABLE: ' +
+      affordableCount +
+      '/' +
+      totalItems +
+      ' ITEMS // BUYOUT: ' +
+      totalBuyoutCost +
+      ' 🪙';
+  }
+
+  return {
+    playerCoins: coins,
+    totalItems,
+    affordableCount,
+    cheapestCost,
+    totalBuyoutCost,
+    canBuyoutAll,
+    summaryLine
+  };
+}
+
 export function getShopBuildSynergyHint(
   pickup?: Pickup | null,
   player?: Partial<PlayerState> | null
@@ -136,6 +204,8 @@ export class ShopModalController {
   public getShopItemAppraisal = getShopItemAppraisal;
   public static getShopBuildSynergyHint = getShopBuildSynergyHint;
   public getShopBuildSynergyHint = getShopBuildSynergyHint;
+  public static getShopBudgetSummary = getShopBudgetSummary;
+  public getShopBudgetSummary = getShopBudgetSummary;
 
   private overlay: HTMLElement | null = null;
   private nameEl: HTMLElement | null = null;
@@ -149,9 +219,19 @@ export class ShopModalController {
   private pendingConfirm: (() => void) | null = null;
   private pendingCancel: (() => void) | null = null;
   private activePickup: Pickup | null = null;
+  private activePickups: any[] = [];
+  private currentCoins: number = 0;
   private visible: boolean = false;
   /** Element focused before the modal opened; focus is restored to it on close. */
   private restoreFocusEl: HTMLElement | null = null;
+
+  public get overlayEl(): HTMLElement | null {
+    return this.overlay;
+  }
+
+  public set overlayEl(el: HTMLElement | null) {
+    this.overlay = el;
+  }
 
   constructor() {
     if (typeof document !== 'undefined') {
@@ -202,24 +282,58 @@ export class ShopModalController {
   }
 
   /**
+   * Re-renders the shop economy budget summary and updates DOM attributes on overlay.
+   */
+  public render(pickups?: any, playerCoins?: number): void {
+    const rawItems =
+      pickups !== undefined
+        ? Array.isArray(pickups)
+          ? pickups
+          : pickups
+            ? [pickups]
+            : []
+        : this.activePickups.length > 0
+          ? this.activePickups
+          : this.activePickup
+            ? [this.activePickup]
+            : [];
+    const coins = playerCoins !== undefined ? playerCoins : this.currentCoins;
+    const budget = getShopBudgetSummary(rawItems, coins);
+
+    if (this.overlayEl) {
+      this.overlayEl.setAttribute('data-shop-affordable-count', String(budget.affordableCount));
+      this.overlayEl.setAttribute('data-shop-buyout-cost', String(budget.totalBuyoutCost));
+      this.overlayEl.setAttribute('data-shop-budget-summary', budget.summaryLine);
+    }
+  }
+
+  /**
    * Opens the confirmation dialog for a shop pickup item.
    * `playerCoins` is optional; when provided and below the cost, the popup
    * renders its "NOT ENOUGH COINS" state (confirm still routes to onConfirm so
    * the caller keeps ownership of the purchase/error logic).
    */
   public open(
-    pickup: Pickup,
+    pickup: Pickup | Pickup[],
     onConfirm: () => void,
     onCancel?: () => void,
     playerCoins?: number,
-    player?: Partial<PlayerState> | null
+    player?: Partial<PlayerState> | null,
+    allPickups?: Pickup[]
   ): void {
-    this.activePickup = pickup;
+    const singlePickup: Pickup = Array.isArray(pickup) ? pickup[0] : pickup;
+    this.activePickup = singlePickup || null;
+    this.activePickups = allPickups ?? (Array.isArray(pickup) ? pickup : (pickup ? [pickup] : []));
+    this.currentCoins = typeof playerCoins === 'number' && Number.isFinite(playerCoins) ? playerCoins : 0;
     this.pendingConfirm = onConfirm;
     this.pendingCancel = onCancel || null;
 
-    const appraisal = getShopItemAppraisal(pickup, playerCoins);
-    const syn = getShopBuildSynergyHint(pickup, player);
+    const appraisal = singlePickup
+      ? getShopItemAppraisal(singlePickup, playerCoins)
+      : { tierLabel: '★ STANDARD ISSUE', valueVerdict: 'AVAILABLE', isBargain: false };
+    const syn = singlePickup
+      ? getShopBuildSynergyHint(singlePickup, player)
+      : { hasSynergy: false, synergyType: 'STANDARD' as const, hintText: 'Standard Black Market Ordnance' };
 
     let title = 'Mysterious Crate';
     let desc = 'Unknown item contents.';
@@ -228,27 +342,27 @@ export class ShopModalController {
     let artSvg = SHOP_CRATE_HI_FI_SVG;
     let accentColor = '#ffd60a';
 
-    if (pickup.type === 'shop_heart') {
-      title = pickup.name || 'Hull Repair';
+    if (singlePickup?.type === 'shop_heart') {
+      title = singlePickup.name || 'Hull Repair';
       desc = 'Restores +2 Hull Fuel Integrity.';
-      cost = pickup.cost;
+      cost = singlePickup.cost;
       kind = 'REPAIR';
       artSvg = SHOP_HEART_HI_FI_SVG;
       accentColor = '#ff4d6d';
-    } else if (pickup.type === 'mod_pedestal') {
-      title = pickup.mod.name;
-      desc = pickup.mod.desc;
-      cost = pickup.cost;
+    } else if (singlePickup?.type === 'mod_pedestal') {
+      title = singlePickup.mod.name;
+      desc = singlePickup.mod.desc;
+      cost = singlePickup.cost;
       kind = 'MOD';
-      artSvg = getModIconSvg(pickup.mod.id || pickup.mod.name);
+      artSvg = getModIconSvg(singlePickup.mod.id || singlePickup.mod.name);
       accentColor = '#ffd60a';
-    } else if (pickup.type === 'run_weapon') {
-      const w = WEAPONS[pickup.weaponId];
-      title = `${w ? w.name : pickup.name} (This Run)`;
+    } else if (singlePickup?.type === 'run_weapon') {
+      const w = WEAPONS[singlePickup.weaponId];
+      title = `${w ? w.name : singlePickup.name} (This Run)`;
       desc = w ? w.desc : 'Equip this weapon for the remainder of this run.';
-      cost = pickup.cost;
+      cost = singlePickup.cost;
       kind = 'WEAPON';
-      artSvg = WEAPON_HI_FI_SVG[pickup.weaponId] || SHOP_CRATE_HI_FI_SVG;
+      artSvg = WEAPON_HI_FI_SVG[singlePickup.weaponId] || SHOP_CRATE_HI_FI_SVG;
       accentColor = w ? w.color : '#4cc9f0';
     }
 
@@ -257,13 +371,13 @@ export class ShopModalController {
     if (this.nameEl) this.nameEl.textContent = title;
     if (this.descEl) {
       let badgeHtml = '';
-      if (pickup.type === 'mod_pedestal') {
-        badgeHtml += formatModStatDeltas((pickup.mod as any).statDeltas);
-        if (getModEvolutionTarget(pickup.mod as any)) {
+      if (singlePickup?.type === 'mod_pedestal') {
+        badgeHtml += formatModStatDeltas((singlePickup.mod as any).statDeltas);
+        if (getModEvolutionTarget(singlePickup.mod as any)) {
           badgeHtml += '<div style="color:#00f5d4;font-weight:800;margin-top:3px">⚡ OVERCLOCK EVOLUTION MOD</div>';
         }
       }
-      if ((pickup as any).choiceGroup) {
+      if ((singlePickup as any)?.choiceGroup) {
         badgeHtml += '<div style="color:#ffd60a;font-weight:800;margin-top:3px">⚖️ CHOICE PEDESTAL — OTHER DESPAWNS</div>';
       }
       if (badgeHtml) {
@@ -315,6 +429,7 @@ export class ShopModalController {
       this.overlay.setAttribute('data-shop-synergy', syn.synergyType);
       this.overlay.setAttribute('data-shop-synergy-hint', syn.hintText);
     }
+    this.render(this.activePickups, playerCoins);
     this.visible = true;
 
     if (typeof document !== 'undefined' && this.confirmBtn) {
@@ -356,6 +471,7 @@ export class ShopModalController {
     const wasVisible = this.visible;
     this.visible = false;
     this.activePickup = null;
+    this.activePickups = [];
     this.pendingConfirm = null;
     this.pendingCancel = null;
 

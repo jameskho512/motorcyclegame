@@ -28,6 +28,7 @@ import {
   DROP_ITEM_HI_FI_SVG,
   getModIconSvg
 } from './icons';
+import { formatModDeckTooltipHint } from './tooltip';
 import { formatWeaponMasteryHint, formatStyleRankTooltip, formatWeaponEvolutionTooltipHint } from '@/ui/tooltip';
 import { getFloorBountyContract, getRoomHazardSummary, getFloorExplorationStatus, type RoomHazardSummary } from '@/world/dungeon';
 import { getCombatOffenseSummary } from '@/systems/combat';
@@ -1281,9 +1282,13 @@ export class HUDController {
   public updateMods(player?: PlayerState): void {
     if (typeof document === 'undefined') return;
 
+    const modsBar = this.modBarEl || (typeof document !== 'undefined' ? document.getElementById('hud-mods-bar') || document.getElementById('mod-bar') : null);
     const containers = [
       document.getElementById('mod-list'),
-      document.getElementById('items-list')
+      document.getElementById('items-list'),
+      modsBar,
+      typeof document !== 'undefined' ? document.getElementById('hud-mods-bar') : null,
+      typeof document !== 'undefined' ? document.getElementById('mod-bar') : null
     ].filter((el, idx, arr) => Boolean(el) && arr.indexOf(el) === idx) as HTMLElement[];
 
     if (containers.length === 0) return;
@@ -1310,44 +1315,80 @@ export class HUDController {
     }
 
     const itemStacks = player.itemStacks || {};
+    const modStacks = ((player as any).modStacks || {}) as Record<string, number>;
     const items = player.items || [];
 
-    const stackBadges = Object.keys(itemStacks)
-      .filter(id => (itemStacks[id] || 0) > 0)
+    const combinedStacks: Record<string, number> = { ...itemStacks };
+    for (const [k, v] of Object.entries(modStacks)) {
+      if (typeof v === 'number' && Number.isFinite(v) && v > 0) {
+        const val = Math.floor(v);
+        combinedStacks[k] = Math.max(combinedStacks[k] || 0, val);
+      }
+    }
+
+    const effectivePlayer = player && typeof (player as any).modStacks === 'object' && (player as any).modStacks !== null
+      ? (player.itemStacks ? { ...player, modStacks: { ...player.itemStacks, ...(player as any).modStacks } } : player)
+      : (player?.itemStacks ? { ...player, modStacks: { ...player.itemStacks } } : player);
+    const pModStacks = (player as any)?.modStacks;
+    const targetPlayer = (pModStacks && typeof pModStacks === 'object' && Object.keys(pModStacks).length > 0) ? player : effectivePlayer;
+
+    const stackBadges = Object.keys(combinedStacks)
+      .filter(id => (combinedStacks[id] || 0) > 0)
       .map((id, index) => {
         const it = DROP_ITEMS[id as DropItemId];
-        const n = itemStacks[id];
+        const n = combinedStacks[id];
         const stackClass = getModStackTierClass(n);
         const rotClass = `rot-${(index % 6) + 1}`;
 
         if (it) {
           const svgIcon = DROP_ITEM_HI_FI_SVG[id as DropItemId] || it.icon;
-          return `<span class="item-badge mod-chip sticker ${rotClass} ${stackClass}" data-stack-tier="${stackClass}" style="--ic:${it.color}" aria-label="${it.name} x${n}" data-tip="<b style='color:${it.color}'>${it.name} x${n}</b><br/>${it.desc}<br/><i>Stacks with duplicates</i>"><span class="sticker-glyph">${svgIcon}</span><span class="sticker-count">x${n}</span><span class="sticker-peel" aria-hidden="true"></span></span>`;
+          return `<span class="item-badge mod-chip mod-badge sticker ${rotClass} ${stackClass}" data-stack-tier="${stackClass}" style="--ic:${it.color}" aria-label="${it.name} x${n}" data-tip="<b style='color:${it.color}'>${it.name} x${n}</b><br/>${it.desc}<br/><i>Stacks with duplicates</i>"><span class="sticker-glyph">${svgIcon}</span><span class="sticker-count">x${n}</span><span class="sticker-peel" aria-hidden="true"></span></span>`;
         }
 
         const m = (ALL_RUN_MOD_POOL || RUN_MOD_POOL).find(x => x.name === id || x.id === id);
-        const svgIcon = getModIconSvg(m ? m.id : id);
+        const modId = m ? m.id : id;
+        const svgIcon = getModIconSvg(modId);
         const modName = m ? m.name : id;
         const modDesc = m ? m.desc : '';
-        return `<span class="item-badge mod-chip sticker is-mod ${rotClass} ${stackClass}" data-stack-tier="${stackClass}" style="--ic:#ffd60a" aria-label="${modName} x${n}" data-tip="<b style='color:#ffd166'>${modName} x${n}</b><br/>${modDesc}"><span class="sticker-glyph">${svgIcon}</span><span class="sticker-count">x${n}</span><span class="sticker-peel" aria-hidden="true"></span></span>`;
+        const evoHint = formatModDeckTooltipHint(id, targetPlayer) || formatModDeckTooltipHint(modId, targetPlayer);
+        const evoHintTip = evoHint ? `<br/>${evoHint}` : '';
+        const safeEvoHint = evoHint ? evoHint.replace(/"/g, '&quot;') : '';
+        const tipContent = `<b style='color:#ffd166'>${modName} x${n}</b><br/>${modDesc}${evoHintTip}`;
+        const safeTip = tipContent.replace(/"/g, '&quot;');
+        const evoAttr = evoHint ? ` data-mod-evo-hint="${safeEvoHint}"` : '';
+        return `<span class="item-badge mod-chip mod-badge sticker is-mod ${rotClass} ${stackClass}" data-mod-id="${modId}" data-stack-tier="${stackClass}"${evoAttr} style="--ic:#ffd60a" aria-label="${modName} x${n}" data-tip="${safeTip}"><span class="sticker-glyph">${svgIcon}</span><span class="sticker-count">x${n}</span><span class="sticker-peel" aria-hidden="true"></span></span>`;
       });
 
-    const modBadges = items.map((name, index) => {
-      const m = (ALL_RUN_MOD_POOL || RUN_MOD_POOL).find(x => x.name === name || x.id === name);
-      const svgIcon = getModIconSvg(m ? m.id : name);
-      const rotClass = `rot-${((index + 3) % 6) + 1}`;
-      const count = (itemStacks[m ? m.id : name] || itemStacks[name])
-        || items.filter(x => x === name).length
-        || 1;
-      const stackClass = getModStackTierClass(count);
-      return `<span class="item-badge mod-chip sticker is-mod ${rotClass} ${stackClass}" data-stack-tier="${stackClass}" style="--ic:#ffd60a" aria-label="${name}" data-tip="<b style='color:#ffd166'>${name}</b><br/>${m ? m.desc : ''}"><span class="sticker-glyph">${svgIcon}</span><span class="sticker-peel" aria-hidden="true"></span></span>`;
-    });
+    const modBadges = items
+      .filter(name => {
+        const m = (ALL_RUN_MOD_POOL || RUN_MOD_POOL).find(x => x.name === name || x.id === name);
+        const modId = m ? m.id : name;
+        return !(modId in combinedStacks) && !(name in combinedStacks);
+      })
+      .map((name, index) => {
+        const m = (ALL_RUN_MOD_POOL || RUN_MOD_POOL).find(x => x.name === name || x.id === name);
+        const modId = m ? m.id : name;
+        const svgIcon = getModIconSvg(modId);
+        const rotClass = `rot-${((index + 3) % 6) + 1}`;
+        const count = (combinedStacks[modId] || combinedStacks[name])
+          || items.filter(x => x === name).length
+          || 1;
+        const stackClass = getModStackTierClass(count);
+        const evoHint = formatModDeckTooltipHint(name, targetPlayer) || formatModDeckTooltipHint(modId, targetPlayer);
+        const evoHintTip = evoHint ? `<br/>${evoHint}` : '';
+        const safeEvoHint = evoHint ? evoHint.replace(/"/g, '&quot;') : '';
+        const tipContent = `<b style='color:#ffd166'>${name}</b><br/>${m ? m.desc : ''}${evoHintTip}`;
+        const safeTip = tipContent.replace(/"/g, '&quot;');
+        const evoAttr = evoHint ? ` data-mod-evo-hint="${safeEvoHint}"` : '';
+        return `<span class="item-badge mod-chip mod-badge sticker is-mod ${rotClass} ${stackClass}" data-mod-id="${modId}" data-stack-tier="${stackClass}"${evoAttr} style="--ic:#ffd60a" aria-label="${name}" data-tip="${safeTip}"><span class="sticker-glyph">${svgIcon}</span><span class="sticker-peel" aria-hidden="true"></span></span>`;
+      });
 
     const all = stackBadges.concat(modBadges).filter(Boolean);
 
     for (const container of containers) {
       if (all.length === 0 && container.children.length > 0 && !container.querySelector('.items-empty')) {
         Array.from(container.children).forEach(child => {
+          if (child.classList.contains('items-empty') || !(child instanceof HTMLElement)) return;
           const countAttr = child.getAttribute('data-count') || child.getAttribute('data-stacks');
           let count = 1;
           if (countAttr) {
@@ -1360,6 +1401,22 @@ export class HUDController {
           const stackClass = getModStackTierClass(count);
           child.classList.add(stackClass);
           child.setAttribute('data-stack-tier', stackClass);
+
+          const modId = child.getAttribute('data-mod-id') || child.getAttribute('data-id');
+          if (modId) {
+            const evoHint = formatModDeckTooltipHint(modId, targetPlayer);
+            if (evoHint) {
+              child.setAttribute('data-mod-evo-hint', evoHint);
+              const tip = child.getAttribute('data-tip');
+              if (tip && !tip.includes(evoHint)) {
+                child.setAttribute('data-tip', tip ? `${tip}<br/>${evoHint}` : evoHint);
+              }
+              const title = child.getAttribute('title');
+              if (title && !title.includes(evoHint)) {
+                child.setAttribute('title', `${title}\n${evoHint}`);
+              }
+            }
+          }
         });
       } else {
         container.classList.toggle('is-empty', all.length === 0);
@@ -1368,11 +1425,26 @@ export class HUDController {
           : all.join('');
 
         Array.from(container.children).forEach(child => {
-          if (!child.classList.contains('items-empty')) {
+          if (!child.classList.contains('items-empty') && child instanceof HTMLElement) {
             const tier = child.getAttribute('data-stack-tier') as ModStackTierClass | null;
             if (tier) {
               child.classList.add(tier);
               child.setAttribute('data-stack-tier', tier);
+            }
+            const modId = child.getAttribute('data-mod-id') || child.getAttribute('data-id');
+            if (modId) {
+              const evoHint = formatModDeckTooltipHint(modId, targetPlayer);
+              if (evoHint) {
+                child.setAttribute('data-mod-evo-hint', evoHint);
+                const tip = child.getAttribute('data-tip');
+                if (tip && !tip.includes(evoHint)) {
+                  child.setAttribute('data-tip', `${tip}<br/>${evoHint}`);
+                }
+                const title = child.getAttribute('title');
+                if (title && !title.includes(evoHint)) {
+                  child.setAttribute('title', `${title}\n${evoHint}`);
+                }
+              }
             }
           }
         });
@@ -1403,9 +1475,37 @@ export class HUDController {
       el.setAttribute('data-mod-active-duos', String(modDeck.activeDuoCount));
       el.setAttribute('data-mod-deck-summary', modDeck.summaryLine);
     }
+
+    const effectivePlayer = player && typeof (player as any).modStacks === 'object' && (player as any).modStacks !== null
+      ? (player.itemStacks ? { ...player, modStacks: { ...player.itemStacks, ...(player as any).modStacks } } : player)
+      : (player?.itemStacks ? { ...player, modStacks: { ...player.itemStacks } } : player);
+    const pModStacks = (player as any)?.modStacks;
+    const targetPlayer = (pModStacks && typeof pModStacks === 'object' && Object.keys(pModStacks).length > 0) ? player : effectivePlayer;
+
+    if (modsBar) {
+      const badges = modsBar.querySelectorAll('.mod-badge');
+      badges.forEach(badge => {
+        const id = badge.getAttribute('data-mod-id') || badge.getAttribute('data-id');
+        if (id) {
+          const evoHint = formatModDeckTooltipHint(id, targetPlayer);
+          if (evoHint) {
+            badge.setAttribute('data-mod-evo-hint', evoHint);
+            const tip = badge.getAttribute('data-tip');
+            if (tip && !tip.includes(evoHint)) {
+              badge.setAttribute('data-tip', `${tip}<br/>${evoHint}`);
+            }
+            const title = badge.getAttribute('title');
+            if (title && !title.includes(evoHint)) {
+              badge.setAttribute('title', `${title}\n${evoHint}`);
+            }
+          }
+        }
+      });
+    }
   }
 
   public updateModDeck(player: PlayerState): void {
+    this.updateMods(player);
     this.updateModDeckTelemetry(player);
   }
 
@@ -1785,6 +1885,6 @@ export function updateWeaponDeck(player: PlayerState, metaSave?: any): void {
  */
 export function updateModDeck(player: PlayerState): void {
   const tempHud = new HUDController();
-  tempHud.updateModDeckTelemetry(player);
+  tempHud.updateModDeck(player);
 }
 

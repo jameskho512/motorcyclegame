@@ -59,7 +59,8 @@ import {
 
 import {
   calcUpgradeCost,
-  RUN_MOD_POOL
+  RUN_MOD_POOL,
+  getRunModDeckSummary
 } from '@/data/upgrades';
 
 import {
@@ -76,8 +77,13 @@ import { getRoomHazardSummary } from '@/world/dungeon';
 
 import {
   getScannerStationAdvisor,
-  getForgeStationAdvisor
+  getForgeStationAdvisor,
+  getWarRoomStationAdvisor,
+  getLaunchGateAdvisor,
+  getGarageStationAdvisor,
+  getArmoryStationAdvisor
 } from '../../src/ui/hubStationModal';
+import { formatModDeckTooltipHint } from '@/ui/tooltip';
 import { getWeaponArsenalSummary } from '../../src/data/weapons';
 import { getBossEncounterBriefing } from '../../src/systems/enemyAI';
 
@@ -1271,6 +1277,341 @@ describe('Tier 2: Boundary & Corner Cases', () => {
           expect(res.summaryLine).not.toContain('null');
         }
       }
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Sanctuary Station Advisors, Mod Deck Summary & Tooltip Hints Extreme Boundaries (M126)
+  // --------------------------------------------------------------------------
+  describe('Sanctuary Station Advisors, Mod Deck Summary & Tooltip Hints Extreme Boundaries (M126)', () => {
+    // Test 1: Exact readiness score boundaries and heat clamping in getWarRoomStationAdvisor
+    it('enforces exact readiness score boundaries (0, 3, 4, 9, 10, 17, 18, 999) and heat clamping (-5, 0, 1, 2, 3, 99, NaN, Infinity) in getWarRoomStationAdvisor', () => {
+      // Readiness Score boundaries (equippedCount * 2 + totalRanks)
+      // Boundary 1: readinessScore = 0 -> recommendedMaxHeat = 0
+      const score0 = getWarRoomStationAdvisor({ equipped: {}, ranks: {} });
+      expect(score0.recommendedMaxHeat).toBe(0);
+
+      // Boundary 2: readinessScore = 3 -> recommendedMaxHeat = 0
+      const score3 = getWarRoomStationAdvisor({ equipped: {}, ranks: { r1: 3 } });
+      expect(score3.recommendedMaxHeat).toBe(0);
+
+      // Boundary 3: readinessScore = 4 -> recommendedMaxHeat = 1 (lower bound for 1)
+      const score4 = getWarRoomStationAdvisor({ equipped: {}, ranks: { r1: 4 } });
+      expect(score4.recommendedMaxHeat).toBe(1);
+
+      // Equipped items contribution: 2 items = 4 points -> recommendedMaxHeat = 1
+      const score4Equip = getWarRoomStationAdvisor({ equipped: { a: 'itemA', b: 'itemB' }, ranks: {} });
+      expect(score4Equip.recommendedMaxHeat).toBe(1);
+
+      // Boundary 4: readinessScore = 9 -> recommendedMaxHeat = 1 (upper bound for 1)
+      const score9 = getWarRoomStationAdvisor({ equipped: { a: 'itemA' }, ranks: { r1: 7 } });
+      expect(score9.recommendedMaxHeat).toBe(1);
+
+      // Boundary 5: readinessScore = 10 -> recommendedMaxHeat = 2 (lower bound for 2)
+      const score10 = getWarRoomStationAdvisor({ equipped: {}, ranks: { r1: 10 } });
+      expect(score10.recommendedMaxHeat).toBe(2);
+
+      // Boundary 6: readinessScore = 17 -> recommendedMaxHeat = 2 (upper bound for 2)
+      const score17 = getWarRoomStationAdvisor({ equipped: { a: 'itemA', b: 'itemB', c: 'itemC' }, ranks: { r1: 11 } });
+      expect(score17.recommendedMaxHeat).toBe(2);
+
+      // Boundary 7: readinessScore = 18 -> recommendedMaxHeat = 3 (lower bound for 3)
+      const score18 = getWarRoomStationAdvisor({ equipped: {}, ranks: { r1: 18 } });
+      expect(score18.recommendedMaxHeat).toBe(3);
+
+      // Boundary 8: readinessScore = 999 -> clamped ranks (max 25) + equipped (max 6) -> 37 >= 18 -> recommendedMaxHeat = 3
+      const score999 = getWarRoomStationAdvisor({ equipped: {}, ranks: { r1: 999 } });
+      expect(score999.recommendedMaxHeat).toBe(3);
+
+      // Heat clamping matrix: [-5, 0, 1, 2, 3, 99, NaN, Infinity]
+      const heatCases: Array<{ heat: any; expectedHeat: number; expectedBonusPct: number }> = [
+        { heat: -5, expectedHeat: 0, expectedBonusPct: 0 },
+        { heat: 0, expectedHeat: 0, expectedBonusPct: 0 },
+        { heat: 1, expectedHeat: 1, expectedBonusPct: 25 },
+        { heat: 2, expectedHeat: 2, expectedBonusPct: 50 },
+        { heat: 3, expectedHeat: 3, expectedBonusPct: 75 },
+        { heat: 99, expectedHeat: 3, expectedBonusPct: 75 },
+        { heat: NaN, expectedHeat: 0, expectedBonusPct: 0 },
+        { heat: Infinity, expectedHeat: 0, expectedBonusPct: 0 }
+      ];
+
+      for (const { heat, expectedHeat, expectedBonusPct } of heatCases) {
+        const adv = getWarRoomStationAdvisor({ heatLevel: heat, ranks: { r1: 10 } });
+        expect(adv.currentHeat).toBe(expectedHeat);
+        expect(adv.scrapBonusPct).toBe(expectedBonusPct);
+        expect(adv.summaryLine).toContain(`HEAT ${expectedHeat} (+${expectedBonusPct}% SCRAP)`);
+        expect(adv.summaryLine).not.toContain('NaN');
+        expect(adv.summaryLine).not.toContain('undefined');
+      }
+
+      // Bounty claimed status flag boundaries
+      const unclaimed = getWarRoomStationAdvisor({ heatLevel: 2 }, false);
+      expect(unclaimed.bountyClaimed).toBe(false);
+      expect(unclaimed.summaryLine).toContain('CACHE: ⚡ FREE DROP READY (+15 🪙 / +1 ❤️)');
+
+      const claimed = getWarRoomStationAdvisor({ heatLevel: 2 }, true);
+      expect(claimed.bountyClaimed).toBe(true);
+      expect(claimed.summaryLine).toContain('CACHE: ✓ CLAIMED (+15 🪙 / +1 ❤️)');
+
+      // Null / undefined safety
+      const nullAdv = getWarRoomStationAdvisor(null);
+      expect(nullAdv.currentHeat).toBe(0);
+      expect(nullAdv.recommendedMaxHeat).toBe(0);
+      expect(nullAdv.summaryLine).toContain('HEAT 0 (+0% SCRAP)');
+    });
+
+    // Test 2: Exact buff combination boundaries and player.scannerBuff fallback in getLaunchGateAdvisor
+    it('evaluates exact buff combination boundaries (0/2, 1/2 scanner, 1/2 cache, 2/2 both) and player.scannerBuff fallback in getLaunchGateAdvisor', () => {
+      // 1. 0/2 buffs ready (neither claimed, no player scannerBuff)
+      const buffs0 = getLaunchGateAdvisor({ heatLevel: 1 }, { weapon: 'pistol', scannerBuff: false }, false, false);
+      expect(buffs0.readyCount).toBe(0);
+      expect(buffs0.totalChecks).toBe(2);
+      expect(buffs0.isFullyPrepped).toBe(false);
+      expect(buffs0.missingBuffs).toEqual(['SCANNER BUFF', 'WAR ROOM CACHE']);
+      expect(buffs0.summaryLine).toContain('PRE-FLIGHT: ⚠️ MISSING SCANNER BUFF & WAR ROOM CACHE // WEAPON: PISTOL // HEAT 1');
+
+      // 2. 1/2 buffs ready: scanner only (via scannerClaimed flag)
+      const buffsScanner = getLaunchGateAdvisor({ heatLevel: 2 }, { weapon: 'shotgun', scannerBuff: false }, true, false);
+      expect(buffsScanner.readyCount).toBe(1);
+      expect(buffsScanner.totalChecks).toBe(2);
+      expect(buffsScanner.isFullyPrepped).toBe(false);
+      expect(buffsScanner.missingBuffs).toEqual(['WAR ROOM CACHE']);
+      expect(buffsScanner.summaryLine).toContain('PRE-FLIGHT: ⚠️ MISSING WAR ROOM CACHE // WEAPON: SHOTGUN // HEAT 2');
+
+      // 3. 1/2 buffs ready: war room cache only (via bountyClaimed flag)
+      const buffsCache = getLaunchGateAdvisor({ heatLevel: 0 }, { weapon: 'railgun', scannerBuff: false }, false, true);
+      expect(buffsCache.readyCount).toBe(1);
+      expect(buffsCache.totalChecks).toBe(2);
+      expect(buffsCache.isFullyPrepped).toBe(false);
+      expect(buffsCache.missingBuffs).toEqual(['SCANNER BUFF']);
+      expect(buffsCache.summaryLine).toContain('PRE-FLIGHT: ⚠️ MISSING SCANNER BUFF // WEAPON: RAILGUN // HEAT 0');
+
+      // 4. 2/2 buffs ready: both locked
+      const buffsBoth = getLaunchGateAdvisor({ heatLevel: 3 }, { weapon: 'machine_gun' }, true, true);
+      expect(buffsBoth.readyCount).toBe(2);
+      expect(buffsBoth.totalChecks).toBe(2);
+      expect(buffsBoth.isFullyPrepped).toBe(true);
+      expect(buffsBoth.missingBuffs).toEqual([]);
+      expect(buffsBoth.summaryLine).toContain('PRE-FLIGHT: ✓ 2/2 BUFFS LOCKED // WEAPON: MACHINE_GUN // HEAT 3');
+
+      // 5. player.scannerBuff fallback: scannerClaimed is false, but player.scannerBuff is true
+      const fallbackOnly = getLaunchGateAdvisor({ heatLevel: 1 }, { weapon: 'pistol', scannerBuff: true }, false, false);
+      expect(fallbackOnly.readyCount).toBe(1);
+      expect(fallbackOnly.missingBuffs).toEqual(['WAR ROOM CACHE']);
+
+      const fallbackWithBounty = getLaunchGateAdvisor({ heatLevel: 2 }, { weapon: 'pistol', scannerBuff: true }, false, true);
+      expect(fallbackWithBounty.readyCount).toBe(2);
+      expect(fallbackWithBounty.isFullyPrepped).toBe(true);
+      expect(fallbackWithBounty.missingBuffs).toEqual([]);
+      expect(fallbackWithBounty.summaryLine).toContain('PRE-FLIGHT: ✓ 2/2 BUFFS LOCKED');
+
+      // Null player and metaSave handling: defaults weapon to PISTOL and heat to 0
+      const nullAdvisor = getLaunchGateAdvisor(null, null, false, false);
+      expect(nullAdvisor.readyCount).toBe(0);
+      expect(nullAdvisor.summaryLine).toContain('WEAPON: PISTOL // HEAT 0');
+    });
+
+    // Test 3: Exact scrap affordability boundaries in getGarageStationAdvisor
+    it('verifies exact scrap affordability boundaries (cheapestCost - 1, cheapestCost, cheapestCost + 1, 19/19 maxed, NaN, -100) in getGarageStationAdvisor', () => {
+      // With ranks: {}, cheapest upgrade is speed (Twin-Cam Engine Tune, baseCost 20)
+      const cheapestCost = 20;
+
+      // Boundary 1: scrap = cheapestCost - 1 (19 scrap: insufficient)
+      const scrap19 = getGarageStationAdvisor({ scrap: cheapestCost - 1, ranks: {} });
+      expect(scrap19.canAffordNextTuning).toBe(false);
+      expect(scrap19.summaryLine).toContain(`NEED ${cheapestCost} ⚙️ FOR NEXT TUNE`);
+
+      // Boundary 2: scrap = cheapestCost (20 scrap: exact threshold met)
+      const scrap20 = getGarageStationAdvisor({ scrap: cheapestCost, ranks: {} });
+      expect(scrap20.canAffordNextTuning).toBe(true);
+      expect(scrap20.summaryLine).toContain(`READY TO UPGRADE TWIN-CAM ENGINE TUNE (${cheapestCost} ⚙️)`);
+
+      // Boundary 3: scrap = cheapestCost + 1 (21 scrap: surplus scrap)
+      const scrap21 = getGarageStationAdvisor({ scrap: cheapestCost + 1, ranks: {} });
+      expect(scrap21.canAffordNextTuning).toBe(true);
+      expect(scrap21.summaryLine).toContain(`READY TO UPGRADE TWIN-CAM ENGINE TUNE (${cheapestCost} ⚙️)`);
+
+      // Boundary 4: 19/19 maxed (all 4 meta upgrades at maximum rank: 5+5+5+4 = 19)
+      const maxedMeta = getGarageStationAdvisor({
+        scrap: 99999,
+        ranks: {
+          dmg: 5,
+          fireRate: 5,
+          speed: 5,
+          maxHp: 4
+        }
+      });
+      expect(maxedMeta.tuningRanks).toBe(19);
+      expect(maxedMeta.tuningMaxRanks).toBe(19);
+      expect(maxedMeta.tuningCompletionPct).toBe(100);
+      expect(maxedMeta.canAffordNextTuning).toBe(false);
+      expect(maxedMeta.summaryLine).toContain('TUNING: 19/19 RANKS (100%) // TUNING MAXED');
+
+      // Boundary 5: scrap is NaN -> sanitized to 0
+      const nanScrap = getGarageStationAdvisor({ scrap: NaN, ranks: {} });
+      expect(nanScrap.canAffordNextTuning).toBe(false);
+      expect(nanScrap.summaryLine).toContain(`NEED ${cheapestCost} ⚙️ FOR NEXT TUNE`);
+
+      // Boundary 6: scrap is negative (-100) -> clamped to 0
+      const negScrap = getGarageStationAdvisor({ scrap: -100, ranks: {} });
+      expect(negScrap.canAffordNextTuning).toBe(false);
+      expect(negScrap.summaryLine).toContain(`NEED ${cheapestCost} ⚙️ FOR NEXT TUNE`);
+    });
+
+    // Test 4: Exact weapon unlock and kill boundaries in getArmoryStationAdvisor
+    it('handles exact weapon unlock and kill boundaries (1/7 stock pistol -> 7/7 unlocked, invalid weapon ID fallback, negative/NaN kills) in getArmoryStationAdvisor', () => {
+      // Boundary 1: 1/7 stock pistol unlocked (default/empty metaSave)
+      const stockArmory = getArmoryStationAdvisor({ unlocked: {}, weaponKills: {} }, { weapon: 'pistol' });
+      expect(stockArmory.unlockedCount).toBe(1);
+      expect(stockArmory.totalWeapons).toBe(7);
+      expect(stockArmory.totalKills).toBe(0);
+      expect(stockArmory.equippedWeaponId).toBe('pistol');
+      expect(stockArmory.equippedRoleLabel).toBe('PRECISION SIDEARM');
+      expect(stockArmory.equippedBaseDps).toBe(48);
+      expect(stockArmory.summaryLine).toBe('ARSENAL: 1/7 UNLOCKED (0 KILLS) // EQUIPPED: PISTOL (PRECISION SIDEARM, 48 DPS)');
+
+      // Boundary 2: 7/7 all weapons unlocked with positive kill telemetry
+      const allUnlockedMeta = {
+        unlocked: {
+          machine_gun: true,
+          shotgun: true,
+          flamethrower: true,
+          railgun: true,
+          grenade_launcher: true,
+          arc_coil: true
+        },
+        weaponKills: {
+          pistol: 25,
+          machine_gun: 100,
+          shotgun: 50,
+          railgun: 75
+        }
+      };
+      const fullyUnlockedArmory = getArmoryStationAdvisor(allUnlockedMeta, { weapon: 'machine_gun' });
+      expect(fullyUnlockedArmory.unlockedCount).toBe(7);
+      expect(fullyUnlockedArmory.totalWeapons).toBe(7);
+      expect(fullyUnlockedArmory.totalKills).toBe(250);
+      expect(fullyUnlockedArmory.equippedWeaponId).toBe('machine_gun');
+      expect(fullyUnlockedArmory.summaryLine).toContain('ARSENAL: 7/7 UNLOCKED (250 KILLS) // EQUIPPED: MACHINE_GUN');
+
+      // Boundary 3: Invalid weapon ID fallback to 'pistol'
+      const invalidWeaponArmory = getArmoryStationAdvisor(null, { weapon: 'antimatter_blaster_xyz' });
+      expect(invalidWeaponArmory.equippedWeaponId).toBe('pistol');
+      expect(invalidWeaponArmory.equippedRoleLabel).toBe('PRECISION SIDEARM');
+      expect(invalidWeaponArmory.equippedBaseDps).toBe(48);
+      expect(invalidWeaponArmory.summaryLine).toContain('EQUIPPED: PISTOL (PRECISION SIDEARM, 48 DPS)');
+
+      // Null player weapon fallback
+      const nullPlayerArmory = getArmoryStationAdvisor(null, null);
+      expect(nullPlayerArmory.equippedWeaponId).toBe('pistol');
+
+      // Boundary 4: Negative and NaN kill counts sanitized to 0
+      const corruptKillsArmory = getArmoryStationAdvisor({
+        unlocked: { railgun: true },
+        weaponKills: {
+          pistol: -50,
+          shotgun: NaN,
+          machine_gun: -999,
+          railgun: 42,
+          arc_coil: Infinity
+        }
+      }, { weapon: 'railgun' });
+      expect(corruptKillsArmory.unlockedCount).toBe(2);
+      expect(corruptKillsArmory.totalKills).toBe(42);
+      expect(corruptKillsArmory.summaryLine).toContain('ARSENAL: 2/7 UNLOCKED (42 KILLS)');
+    });
+
+    // Test 5: Exact mod stack boundaries across getRunModDeckSummary and formatModDeckTooltipHint
+    it('evaluates exact mod stack boundaries (0, 1, 2, 3, 100, -5, NaN, Infinity) across both getRunModDeckSummary and formatModDeckTooltipHint', () => {
+      const modId = 'hollow_point';
+
+      // 1. Stack = 0
+      const deck0 = getRunModDeckSummary({ modStacks: { [modId]: 0 } });
+      expect(deck0.totalModPicks).toBe(0);
+      expect(deck0.uniqueModsCount).toBe(0);
+      expect(deck0.maxStackCount).toBe(0);
+      expect(deck0.evoStackReady).toBe(false);
+      expect(deck0.summaryLine).toContain('MODS: 0 PICKS (0 UNIQUE) // 0/3 MAX STACK');
+      const hint0 = formatModDeckTooltipHint(modId, { modStacks: { [modId]: 0 } });
+      expect(hint0).toContain('📦 STACKS: 0/3 FOR OVERCLOCK EVO');
+
+      // 2. Stack = 1
+      const deck1 = getRunModDeckSummary({ modStacks: { [modId]: 1 } });
+      expect(deck1.totalModPicks).toBe(1);
+      expect(deck1.uniqueModsCount).toBe(1);
+      expect(deck1.maxStackCount).toBe(1);
+      expect(deck1.evoStackReady).toBe(false);
+      expect(deck1.summaryLine).toContain('MODS: 1 PICKS (1 UNIQUE) // 1/3 MAX STACK');
+      const hint1 = formatModDeckTooltipHint(modId, { modStacks: { [modId]: 1 } });
+      expect(hint1).toContain('📦 STACKS: 1/3 FOR OVERCLOCK EVO');
+
+      // 3. Stack = 2
+      const deck2 = getRunModDeckSummary({ modStacks: { [modId]: 2 } });
+      expect(deck2.totalModPicks).toBe(2);
+      expect(deck2.uniqueModsCount).toBe(1);
+      expect(deck2.maxStackCount).toBe(2);
+      expect(deck2.evoStackReady).toBe(false);
+      expect(deck2.summaryLine).toContain('MODS: 2 PICKS (1 UNIQUE) // 2/3 STACK NEAR EVO');
+      const hint2 = formatModDeckTooltipHint(modId, { modStacks: { [modId]: 2 } });
+      expect(hint2).toContain('🔥 2/3 STACKS: +1 STACK FOR OVERCLOCK EVO');
+
+      // 4. Stack = 3 (Evolution threshold reached)
+      const deck3 = getRunModDeckSummary({ modStacks: { [modId]: 3 } });
+      expect(deck3.totalModPicks).toBe(3);
+      expect(deck3.uniqueModsCount).toBe(1);
+      expect(deck3.maxStackCount).toBe(3);
+      expect(deck3.evoStackReady).toBe(true);
+      expect(deck3.summaryLine).toContain('MODS: 3 PICKS (1 UNIQUE) // 3+ STACK EVO READY');
+      const hint3 = formatModDeckTooltipHint(modId, { modStacks: { [modId]: 3 } });
+      expect(hint3).toContain('⚡ 3+ STACKS: GENERIC OVERCLOCK READY');
+
+      // 5. Stack = 100 (Deep stacks beyond evolution)
+      const deck100 = getRunModDeckSummary({ modStacks: { [modId]: 100 } });
+      expect(deck100.totalModPicks).toBe(100);
+      expect(deck100.uniqueModsCount).toBe(1);
+      expect(deck100.maxStackCount).toBe(100);
+      expect(deck100.evoStackReady).toBe(true);
+      expect(deck100.summaryLine).toContain('MODS: 100 PICKS (1 UNIQUE) // 3+ STACK EVO READY');
+      const hint100 = formatModDeckTooltipHint(modId, { modStacks: { [modId]: 100 } });
+      expect(hint100).toContain('⚡ 3+ STACKS: GENERIC OVERCLOCK READY');
+
+      // 6. Stack = -5 (Negative stack sanitized to 0)
+      const deckNeg = getRunModDeckSummary({ modStacks: { [modId]: -5 } });
+      expect(deckNeg.totalModPicks).toBe(0);
+      expect(deckNeg.uniqueModsCount).toBe(0);
+      expect(deckNeg.maxStackCount).toBe(0);
+      expect(deckNeg.evoStackReady).toBe(false);
+      expect(deckNeg.summaryLine).toContain('MODS: 0 PICKS (0 UNIQUE) // 0/3 MAX STACK');
+      const hintNeg = formatModDeckTooltipHint(modId, { modStacks: { [modId]: -5 } });
+      expect(hintNeg).toContain('📦 STACKS: 0/3 FOR OVERCLOCK EVO');
+
+      // 7. Stack = NaN (NaN sanitized to 0)
+      const deckNaN = getRunModDeckSummary({ modStacks: { [modId]: NaN } });
+      expect(deckNaN.totalModPicks).toBe(0);
+      expect(deckNaN.uniqueModsCount).toBe(0);
+      expect(deckNaN.maxStackCount).toBe(0);
+      expect(deckNaN.evoStackReady).toBe(false);
+      expect(deckNaN.summaryLine).toContain('MODS: 0 PICKS (0 UNIQUE) // 0/3 MAX STACK');
+      const hintNaN = formatModDeckTooltipHint(modId, { modStacks: { [modId]: NaN } });
+      expect(hintNaN).toContain('📦 STACKS: 0/3 FOR OVERCLOCK EVO');
+
+      // 8. Stack = Infinity (Infinity sanitized to 0)
+      const deckInf = getRunModDeckSummary({ modStacks: { [modId]: Infinity } });
+      expect(deckInf.totalModPicks).toBe(0);
+      expect(deckInf.uniqueModsCount).toBe(0);
+      expect(deckInf.maxStackCount).toBe(0);
+      expect(deckInf.evoStackReady).toBe(false);
+      expect(deckInf.summaryLine).toContain('MODS: 0 PICKS (0 UNIQUE) // 0/3 MAX STACK');
+      const hintInf = formatModDeckTooltipHint(modId, { modStacks: { [modId]: Infinity } });
+      expect(hintInf).toContain('📦 STACKS: 0/3 FOR OVERCLOCK EVO');
+
+      // Additional corner cases: null player and unknown mod definition
+      const deckNull = getRunModDeckSummary(null);
+      expect(deckNull.totalModPicks).toBe(0);
+      expect(deckNull.summaryLine).toContain('MODS: 0 PICKS');
+
+      const hintUnknown = formatModDeckTooltipHint('non_existent_mod_id', { modStacks: {} });
+      expect(hintUnknown).toBe('');
     });
   });
 });
