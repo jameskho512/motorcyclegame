@@ -343,6 +343,81 @@ export function getArmoryStationAdvisor(metaSave?: any, player?: any): ArmorySta
   };
 }
 
+export interface SanctuaryHideoutOverview {
+  readinessPct: number;
+  pendingFreeActionsCount: number;
+  actionableStations: string[];
+  isOptimalForLaunch: boolean;
+  summaryLine: string;
+}
+
+/**
+ * Computes sanctuary holistic hideout readiness overview across all stations.
+ */
+export function getSanctuaryHideoutOverview(
+  metaSave?: any,
+  player?: any,
+  scannerClaimed: boolean = false,
+  bountyClaimed: boolean = false
+): SanctuaryHideoutOverview {
+  const garage = getGarageStationAdvisor(metaSave);
+  const forge = getForgeStationAdvisor(metaSave, player);
+  const launch = getLaunchGateAdvisor(metaSave, player, scannerClaimed, bountyClaimed);
+  const warRoom = getWarRoomStationAdvisor(metaSave, bountyClaimed);
+
+  const hasScanner = !!(scannerClaimed || player?.scannerBuff);
+  const hasCache = !!bountyClaimed;
+  let pendingFreeActionsCount = 0;
+  const actionableStations: string[] = [];
+
+  if (!hasScanner) {
+    pendingFreeActionsCount++;
+    actionableStations.push('INTEL SCANNER (FREE BUFF)');
+  }
+  if (!hasCache) {
+    pendingFreeActionsCount++;
+    actionableStations.push('WAR ROOM (FREE CACHE)');
+  }
+  if (garage.canAffordNextTuning) {
+    actionableStations.push('GARAGE (TUNING AFFORDABLE)');
+  }
+  if (forge.canReforge) {
+    actionableStations.push('SCRAP FORGE (REFORGE READY)');
+  }
+
+  const readinessPct = Math.max(
+    0,
+    Math.min(
+      100,
+      (hasScanner ? 35 : 0) +
+        (hasCache ? 35 : 0) +
+        Math.min(15, Math.round((garage.equippedCount / 6) * 15)) +
+        Math.min(15, Math.round((garage.tuningCompletionPct / 100) * 15))
+    )
+  );
+
+  const isOptimalForLaunch = launch.isFullyPrepped && !garage.canAffordNextTuning;
+  const topAction =
+    actionableStations.length > 0 ? 'NEXT: ' + actionableStations[0] : 'ALL STATIONS OPTIMIZED';
+  const summaryLine =
+    'SANCTUARY READINESS: ' +
+    readinessPct +
+    '% // FREE BUFFS PENDING: ' +
+    pendingFreeActionsCount +
+    ' // HEAT ' +
+    warRoom.currentHeat +
+    ' // ' +
+    topAction;
+
+  return {
+    readinessPct,
+    pendingFreeActionsCount,
+    actionableStations,
+    isOptimalForLaunch,
+    summaryLine
+  };
+}
+
 export interface HubStationPromptInfo {
   title: string;
   summary: string;
@@ -484,6 +559,33 @@ export class HubStationModalController {
   public getGarageStationAdvisor = getGarageStationAdvisor;
   public static getArmoryStationAdvisor = getArmoryStationAdvisor;
   public getArmoryStationAdvisor = getArmoryStationAdvisor;
+  public static getSanctuaryHideoutOverview = getSanctuaryHideoutOverview;
+  public getSanctuaryHideoutOverview = getSanctuaryHideoutOverview;
+
+  private syncSanctuaryOverviewAttributes(
+    metaSave?: any,
+    player?: any,
+    scannerClaimed?: boolean,
+    bountyClaimed?: boolean
+  ): void {
+    if (!this.overlay) return;
+    const effectiveMetaSave = metaSave ?? this.currentOptions?.metaSave;
+    const effectivePlayer = player ?? this.currentOptions?.player;
+    const effectiveScannerClaimed =
+      scannerClaimed !== undefined ? !!scannerClaimed : !!this.currentOptions?.scannerClaimed;
+    const effectiveBountyClaimed =
+      bountyClaimed !== undefined ? !!bountyClaimed : !!this.currentOptions?.bountyClaimed;
+
+    const overview = getSanctuaryHideoutOverview(
+      effectiveMetaSave,
+      effectivePlayer,
+      effectiveScannerClaimed,
+      effectiveBountyClaimed
+    );
+    this.overlay.setAttribute('data-sanctuary-readiness-pct', String(overview.readinessPct));
+    this.overlay.setAttribute('data-sanctuary-free-actions', String(overview.pendingFreeActionsCount));
+    this.overlay.setAttribute('data-sanctuary-overview', overview.summaryLine);
+  }
 
   constructor() {
     if (typeof document !== 'undefined') {
@@ -639,6 +741,16 @@ export class HubStationModalController {
       this.overlay.setAttribute('data-career-title', careerRank.title);
       this.overlay.setAttribute('data-career-score', String(careerRank.careerScore));
 
+      const overview = getSanctuaryHideoutOverview(
+        options.metaSave,
+        options.player,
+        !!options.scannerClaimed,
+        !!options.bountyClaimed
+      );
+      this.overlay.setAttribute('data-sanctuary-readiness-pct', String(overview.readinessPct));
+      this.overlay.setAttribute('data-sanctuary-free-actions', String(overview.pendingFreeActionsCount));
+      this.overlay.setAttribute('data-sanctuary-overview', overview.summaryLine);
+
       if (options.npcId === 'forge' || options.npcId === 'blacksmith') {
         const advisor = getForgeStationAdvisor(options.metaSave, options.player);
         this.overlay.setAttribute('data-forge-can-reforge', advisor.canReforge ? 'true' : 'false');
@@ -703,6 +815,16 @@ export class HubStationModalController {
       this.overlay.setAttribute('data-career-rank', careerRank.rankId);
       this.overlay.setAttribute('data-career-title', careerRank.title);
       this.overlay.setAttribute('data-career-score', String(careerRank.careerScore));
+
+      const overview = getSanctuaryHideoutOverview(
+        this.currentOptions.metaSave,
+        this.currentOptions.player,
+        !!this.currentOptions.scannerClaimed,
+        !!this.currentOptions.bountyClaimed
+      );
+      this.overlay.setAttribute('data-sanctuary-readiness-pct', String(overview.readinessPct));
+      this.overlay.setAttribute('data-sanctuary-free-actions', String(overview.pendingFreeActionsCount));
+      this.overlay.setAttribute('data-sanctuary-overview', overview.summaryLine);
 
       if (this.currentOptions.npcId === 'forge' || this.currentOptions.npcId === 'blacksmith') {
         const advisor = getForgeStationAdvisor(this.currentOptions.metaSave, this.currentOptions.player);
@@ -975,6 +1097,18 @@ export class HubStationModalController {
     if (!this.bodyEl || !this.currentOptions) return;
     const { npcId, metaSave, player, scannerClaimed, bountyClaimed } = this.currentOptions;
 
+    if (this.overlay) {
+      const overview = getSanctuaryHideoutOverview(
+        metaSave,
+        player,
+        !!scannerClaimed,
+        !!bountyClaimed
+      );
+      this.overlay.setAttribute('data-sanctuary-readiness-pct', String(overview.readinessPct));
+      this.overlay.setAttribute('data-sanctuary-free-actions', String(overview.pendingFreeActionsCount));
+      this.overlay.setAttribute('data-sanctuary-overview', overview.summaryLine);
+    }
+
     if (npcId === 'bounty') {
       const advisor = getWarRoomStationAdvisor(metaSave, bountyClaimed);
       if (this.overlayEl) {
@@ -1047,6 +1181,7 @@ export class HubStationModalController {
     if (this.overlay) {
       this.overlay.setAttribute('data-forge-can-reforge', advisor.canReforge ? 'true' : 'false');
       this.overlay.setAttribute('data-forge-advisor', advisor.summaryLine);
+      this.syncSanctuaryOverviewAttributes(metaSave, effectivePlayer);
     }
 
     if (!this.bodyEl || !this.currentOptions) return;
@@ -1127,6 +1262,7 @@ export class HubStationModalController {
     if (this.overlay) {
       this.overlay.setAttribute('data-scanner-active', scanAdv.scannerActive ? 'true' : 'false');
       this.overlay.setAttribute('data-scanner-advisor', scanAdv.summaryLine);
+      this.syncSanctuaryOverviewAttributes(metaSave, effectivePlayer, scannerClaimed);
     }
     const bestFloor = metaSave?.bestFloor || 1;
     const totalKills = metaSave?.totalKills || 0;
@@ -1211,6 +1347,7 @@ export class HubStationModalController {
       this.overlayEl.setAttribute('data-war-room-heat', String(advisor.currentHeat));
       this.overlayEl.setAttribute('data-war-room-rec-heat', String(advisor.recommendedMaxHeat));
       this.overlayEl.setAttribute('data-war-room-advisor', advisor.summaryLine);
+      this.syncSanctuaryOverviewAttributes(effectiveMetaSave, undefined, undefined, effectiveBountyClaimed);
     }
     const currentHeat = advisor.currentHeat;
 
@@ -1313,6 +1450,7 @@ export class HubStationModalController {
       this.overlay.setAttribute('data-launch-ready-count', String(advisor.readyCount));
       this.overlay.setAttribute('data-launch-fully-prepped', advisor.isFullyPrepped ? 'true' : 'false');
       this.overlay.setAttribute('data-launch-advisor', advisor.summaryLine);
+      this.syncSanctuaryOverviewAttributes(metaSave, player, scannerClaimed, bountyClaimed);
     }
     const weaponName = (player?.weapon || 'pistol').toUpperCase();
     const heat = metaSave?.heatLevel || 0;
@@ -1396,6 +1534,7 @@ export class HubStationModalController {
       this.overlayEl.setAttribute('data-garage-equipped-count', String(advisor.equippedCount));
       this.overlayEl.setAttribute('data-garage-tuning-pct', String(advisor.tuningCompletionPct));
       this.overlayEl.setAttribute('data-garage-advisor', advisor.summaryLine);
+      this.syncSanctuaryOverviewAttributes(metaSave);
     }
     if (!this.bodyEl) return;
     const scrap = metaSave?.scrap || 0;
@@ -1439,6 +1578,7 @@ export class HubStationModalController {
       this.overlay.setAttribute('data-armory-unlocked-count', String(advisor.unlockedCount));
       this.overlay.setAttribute('data-armory-equipped-role', advisor.equippedRoleLabel);
       this.overlay.setAttribute('data-armory-advisor', advisor.summaryLine);
+      this.syncSanctuaryOverviewAttributes(metaSave, effectivePlayer);
     }
 
     if (!this.bodyEl) return;

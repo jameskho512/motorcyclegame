@@ -23,6 +23,8 @@ import {
   type RoomHazardSummary,
   getFloorExplorationStatus,
   type FloorExplorationStatus,
+  getDungeonSectorSummary,
+  type DungeonSectorSummary,
   createHomeBaseRoom
 } from '../../src/world/dungeon';
 import {
@@ -1152,6 +1154,141 @@ describe('World Module: Procedural Dungeon Generation (src/world/dungeon.ts)', (
       expect(statusFromGraph.statusLine).toBe(
         `${statusFromGraph.clearedRooms}/${statusFromGraph.totalRooms} SECTORS SECURED · ${statusFromGraph.remainingPickups} DROP(S) DETECTED`
       );
+    });
+  });
+
+  describe('Dungeon Sector Threat & Special Room Summary (getDungeonSectorSummary, M131)', () => {
+    it('accurately evaluates procedurally generated dungeons across floors 1 to 6', () => {
+      for (let floor = 1; floor <= 6; floor++) {
+        const graph = generateDungeon(floor);
+        const summary: DungeonSectorSummary = getDungeonSectorSummary(graph);
+
+        expect(summary.floorNum).toBe(floor);
+        expect(summary.totalRooms).toBe(graph.targetRooms);
+        // Boss, treasure, and shop are assigned
+        expect(summary.bossRooms).toBe(1);
+        expect(summary.treasureRooms).toBe(1);
+        expect(summary.shopRooms).toBe(1);
+        // Combat rooms count = totalRooms - (start + boss + treasure + shop)
+        expect(summary.combatRooms).toBe(graph.targetRooms - 4);
+        // By default, start, treasure, and shop are marked cleared (3 rooms)
+        expect(summary.clearedRooms).toBe(3);
+        // Pickups: at least 1 treasure pedestal + 3 shop items = 4
+        expect(summary.remainingPickups).toBeGreaterThanOrEqual(4);
+        // Default heat is 0
+        expect(summary.heatLevel).toBe(0);
+        expect(summary.scrapBonusPct).toBe(0);
+
+        const expectedLine =
+          `SECTOR ${floor} (3/${graph.targetRooms} CLEARED) // ROOMS: ${summary.combatRooms} COMBAT, 1 TREASURE, 1 SHOP, 1 BOSS // LOOT: ${summary.remainingPickups} DROPS // HEAT +0%`;
+        expect(summary.summaryLine).toBe(expectedLine);
+      }
+    });
+
+    it('correctly calculates Heat levels 0 to 3 and scrap bonus percentages', () => {
+      const graph = generateDungeon(2);
+      const heatBonusMap: Array<[number, number, number]> = [
+        [0, 0, 0],
+        [1, 1, 25],
+        [2, 2, 50],
+        [3, 3, 75]
+      ];
+
+      for (const [inputHeat, expectedHeat, expectedScrapBonus] of heatBonusMap) {
+        const summary = getDungeonSectorSummary(graph, 2, inputHeat);
+        expect(summary.heatLevel).toBe(expectedHeat);
+        expect(summary.scrapBonusPct).toBe(expectedScrapBonus);
+        expect(summary.summaryLine).toContain(`// HEAT +${expectedScrapBonus}%`);
+      }
+    });
+
+    it('tracks clearance transitions between cleared and uncleared sectors', () => {
+      const graph = generateDungeon(1);
+      // Initially 3 rooms cleared (start, treasure, shop)
+      let summary = getDungeonSectorSummary(graph);
+      expect(summary.clearedRooms).toBe(3);
+      expect(summary.summaryLine).toContain('(3/9 CLEARED)');
+
+      // Clear all combat rooms and boss room
+      for (const room of Object.values(graph.rooms)) {
+        room.cleared = true;
+      }
+      summary = getDungeonSectorSummary(graph);
+      expect(summary.clearedRooms).toBe(9);
+      expect(summary.summaryLine).toContain('(9/9 CLEARED)');
+
+      // Unclear all rooms
+      for (const room of Object.values(graph.rooms)) {
+        room.cleared = false;
+      }
+      summary = getDungeonSectorSummary(graph);
+      expect(summary.clearedRooms).toBe(0);
+      expect(summary.summaryLine).toContain('(0/9 CLEARED)');
+    });
+
+    it('ignores hub_npc pickups in hub / home base sectors', () => {
+      const hubRoom = createHomeBaseRoom();
+      const summary = getDungeonSectorSummary({ '0,0': hubRoom }, 1, 2);
+      expect(summary.totalRooms).toBe(1);
+      expect(summary.clearedRooms).toBe(1);
+      expect(summary.combatRooms).toBe(0);
+      expect(summary.treasureRooms).toBe(0);
+      expect(summary.shopRooms).toBe(0);
+      expect(summary.bossRooms).toBe(0);
+      expect(summary.remainingPickups).toBe(0);
+      expect(summary.heatLevel).toBe(2);
+      expect(summary.scrapBonusPct).toBe(50);
+      expect(summary.summaryLine).toBe(
+        'SECTOR 1 (1/1 CLEARED) // ROOMS: 0 COMBAT, 0 TREASURE, 0 SHOP, 0 BOSS // LOOT: 0 DROPS // HEAT +50%'
+      );
+    });
+
+    it('handles empty, null, undefined, and malformed inputs with safe defaults', () => {
+      const emptySummary = getDungeonSectorSummary();
+      expect(emptySummary).toEqual({
+        floorNum: 1,
+        totalRooms: 0,
+        clearedRooms: 0,
+        combatRooms: 0,
+        treasureRooms: 0,
+        shopRooms: 0,
+        bossRooms: 0,
+        remainingPickups: 0,
+        heatLevel: 0,
+        scrapBonusPct: 0,
+        summaryLine: 'SECTOR 1 (0/0 CLEARED) // ROOMS: 0 COMBAT, 0 TREASURE, 0 SHOP, 0 BOSS // LOOT: 0 DROPS // HEAT +0%'
+      });
+
+      const nullSummary = getDungeonSectorSummary(null);
+      expect(nullSummary.floorNum).toBe(1);
+      expect(nullSummary.totalRooms).toBe(0);
+
+      const malformedRooms = getDungeonSectorSummary({ rooms: { '0,0': null as any, '1,0': undefined as any } });
+      expect(malformedRooms.totalRooms).toBe(0);
+      expect(malformedRooms.summaryLine).toBe(
+        'SECTOR 1 (0/0 CLEARED) // ROOMS: 0 COMBAT, 0 TREASURE, 0 SHOP, 0 BOSS // LOOT: 0 DROPS // HEAT +0%'
+      );
+
+      // Floor & Heat clamping / fallback behavior
+      const clampedSummary = getDungeonSectorSummary(null, -10, 10);
+      expect(clampedSummary.floorNum).toBe(1);
+      expect(clampedSummary.heatLevel).toBe(3);
+      expect(clampedSummary.scrapBonusPct).toBe(75);
+
+      const floatSummary = getDungeonSectorSummary(null, 4.9, 1.8);
+      expect(floatSummary.floorNum).toBe(4);
+      expect(floatSummary.heatLevel).toBe(1);
+      expect(floatSummary.scrapBonusPct).toBe(25);
+
+      const nanSummary = getDungeonSectorSummary(null, NaN, NaN);
+      expect(nanSummary.floorNum).toBe(1);
+      expect(nanSummary.heatLevel).toBe(0);
+      expect(nanSummary.scrapBonusPct).toBe(0);
+
+      // DungeonGraph with floor property fallback when floorNum is not explicitly provided
+      const graphF4 = generateDungeon(4);
+      const graphSummary = getDungeonSectorSummary(graphF4);
+      expect(graphSummary.floorNum).toBe(4);
     });
   });
 });

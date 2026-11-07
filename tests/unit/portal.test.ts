@@ -51,7 +51,9 @@ import {
   getGarageStationAdvisor,
   GarageStationAdvisor,
   getArmoryStationAdvisor,
-  ArmoryStationAdvisor
+  ArmoryStationAdvisor,
+  getSanctuaryHideoutOverview,
+  SanctuaryHideoutOverview
 } from '../../src/ui/hubStationModal';
 import { WEAPONS, WeaponId, getWeaponTacticalProfile } from '../../src/data/weapons';
 import { getCareerOutlawRank } from '../../src/core/state';
@@ -2234,6 +2236,91 @@ describe('HubStationModalController & getHubStationPromptInfo (Wave 14-15)', () 
         'CHASSIS: 6/6 EQUIPPED (PWR 12) // TUNING: 19/19 RANKS (100%) // TUNING MAXED'
       );
     });
+
+    it('sets data-sanctuary-readiness-pct, data-sanctuary-free-actions, and data-sanctuary-overview DOM attributes on overlay across fresh, partial, and fully prepped states', () => {
+      const overlayEl = document.getElementById('hub-station-overlay')!;
+
+      // 1. Fresh unprepped state (0% readiness, 2 free actions pending)
+      const stockOpts = createHubOptions({
+        npcId: 'launch',
+        metaSave: {
+          scrap: 0,
+          heatLevel: 0,
+          ranks: {},
+          equipped: {}
+        },
+        player: { weapon: 'pistol' },
+        scannerClaimed: false,
+        bountyClaimed: false
+      });
+      modal.open(stockOpts);
+
+      expect(overlayEl.getAttribute('data-sanctuary-readiness-pct')).toBe('0');
+      expect(overlayEl.getAttribute('data-sanctuary-free-actions')).toBe('2');
+      expect(overlayEl.getAttribute('data-sanctuary-overview')).toBe(
+        'SANCTUARY READINESS: 0% // FREE BUFFS PENDING: 2 // HEAT 0 // NEXT: INTEL SCANNER (FREE BUFF)'
+      );
+
+      // 2. Partial state (1 free buff claimed, affordable tuning / forge)
+      const partialOpts = createHubOptions({
+        npcId: 'garage',
+        metaSave: {
+          scrap: 30,
+          heatLevel: 1,
+          ranks: { speed: 1 },
+          equipped: {
+            engine: { slot: 'engine', rarity: 1, name: 'Engine Mk1', stats: { hp: 2 } },
+            tires: { slot: 'tires', rarity: 1, name: 'Tires Mk1', stats: { hp: 1 } }
+          }
+        },
+        player: { weapon: 'shotgun', scannerBuff: true },
+        scannerClaimed: true,
+        bountyClaimed: false
+      });
+      modal.open(partialOpts);
+
+      expect(overlayEl.getAttribute('data-sanctuary-readiness-pct')).toBe('41');
+      expect(overlayEl.getAttribute('data-sanctuary-free-actions')).toBe('1');
+      expect(overlayEl.getAttribute('data-sanctuary-overview')).toBe(
+        'SANCTUARY READINESS: 41% // FREE BUFFS PENDING: 1 // HEAT 1 // NEXT: WAR ROOM (FREE CACHE)'
+      );
+
+      // Verify modal.render() resynchronizes attributes when bounty is claimed
+      partialOpts.bountyClaimed = true;
+      modal.render();
+      expect(overlayEl.getAttribute('data-sanctuary-readiness-pct')).toBe('76');
+      expect(overlayEl.getAttribute('data-sanctuary-free-actions')).toBe('0');
+      expect(overlayEl.getAttribute('data-sanctuary-overview')).toBe(
+        'SANCTUARY READINESS: 76% // FREE BUFFS PENDING: 0 // HEAT 1 // NEXT: GARAGE (TUNING AFFORDABLE)'
+      );
+
+      // 3. Fully prepped 100% state
+      modal.open(createHubOptions({
+        npcId: 'launch',
+        metaSave: {
+          scrap: 0,
+          heatLevel: 2,
+          ranks: { dmg: 5, fireRate: 5, speed: 5, maxHp: 4 },
+          equipped: {
+            tires: { slot: 'tires', rarity: 3, name: 'Tires', stats: { hp: 2 } },
+            engine: { slot: 'engine', rarity: 3, name: 'Engine', stats: { hp: 2 } },
+            handlebars: { slot: 'handlebars', rarity: 3, name: 'Handlebars', stats: { hp: 2 } },
+            exhaust: { slot: 'exhaust', rarity: 3, name: 'Exhaust', stats: { hp: 2 } },
+            frame: { slot: 'frame', rarity: 3, name: 'Frame', stats: { hp: 2 } },
+            tank: { slot: 'tank', rarity: 3, name: 'Tank', stats: { hp: 2 } }
+          }
+        },
+        player: { weapon: 'rocket_launcher', scannerBuff: true },
+        scannerClaimed: true,
+        bountyClaimed: true
+      }));
+
+      expect(overlayEl.getAttribute('data-sanctuary-readiness-pct')).toBe('100');
+      expect(overlayEl.getAttribute('data-sanctuary-free-actions')).toBe('0');
+      expect(overlayEl.getAttribute('data-sanctuary-overview')).toBe(
+        'SANCTUARY READINESS: 100% // FREE BUFFS PENDING: 0 // HEAT 2 // ALL STATIONS OPTIMIZED'
+      );
+    });
   });
 
   describe('getForgeStationAdvisor pure helper (M101)', () => {
@@ -3062,6 +3149,144 @@ describe('HubStationModalController & getHubStationPromptInfo (Wave 14-15)', () 
       expect(controller.getArmoryStationAdvisor(meta, player)).toEqual(
         getArmoryStationAdvisor(meta, player)
       );
+    });
+  });
+
+  describe('getSanctuaryHideoutOverview pure helper (M130)', () => {
+    it('returns fresh unprepped state with 0% readiness and 2 pending free actions', () => {
+      const overview: SanctuaryHideoutOverview = getSanctuaryHideoutOverview();
+      expect(overview).toEqual({
+        readinessPct: 0,
+        pendingFreeActionsCount: 2,
+        actionableStations: ['INTEL SCANNER (FREE BUFF)', 'WAR ROOM (FREE CACHE)'],
+        isOptimalForLaunch: false,
+        summaryLine: 'SANCTUARY READINESS: 0% // FREE BUFFS PENDING: 2 // HEAT 0 // NEXT: INTEL SCANNER (FREE BUFF)'
+      });
+
+      const explicitUnprepped = getSanctuaryHideoutOverview(
+        { scrap: 0, heatLevel: 0, ranks: {}, equipped: {} },
+        { weapon: 'pistol' },
+        false,
+        false
+      );
+      expect(explicitUnprepped.readinessPct).toBe(0);
+      expect(explicitUnprepped.pendingFreeActionsCount).toBe(2);
+      expect(explicitUnprepped.actionableStations).toEqual([
+        'INTEL SCANNER (FREE BUFF)',
+        'WAR ROOM (FREE CACHE)'
+      ]);
+      expect(explicitUnprepped.isOptimalForLaunch).toBe(false);
+      expect(explicitUnprepped.summaryLine).toBe(
+        'SANCTUARY READINESS: 0% // FREE BUFFS PENDING: 2 // HEAT 0 // NEXT: INTEL SCANNER (FREE BUFF)'
+      );
+    });
+
+    it('evaluates partial state with 1 free buff claimed and affordable tuning / reforge', () => {
+      const meta = {
+        scrap: 40,
+        heatLevel: 1,
+        ranks: { speed: 1 },
+        equipped: {
+          engine: { slot: 'engine', rarity: 1 },
+          tires: { slot: 'tires', rarity: 1 }
+        }
+      };
+      const player = { weapon: 'shotgun', scannerBuff: true };
+
+      // 1. Scanner buff active, war room cache pending
+      const overview: SanctuaryHideoutOverview = getSanctuaryHideoutOverview(meta, player, true, false);
+      // scanner: 35, cache: 0
+      // 2/6 equipped: Math.round((2/6)*15) = 5
+      // tuning: 1/19 ranks (5%): Math.round((5/100)*15) = 1
+      // total readiness: 35 + 5 + 1 = 41%
+      expect(overview.readinessPct).toBe(41);
+      expect(overview.pendingFreeActionsCount).toBe(1);
+      expect(overview.actionableStations).toEqual([
+        'WAR ROOM (FREE CACHE)',
+        'GARAGE (TUNING AFFORDABLE)',
+        'SCRAP FORGE (REFORGE READY)'
+      ]);
+      expect(overview.isOptimalForLaunch).toBe(false);
+      expect(overview.summaryLine).toBe(
+        'SANCTUARY READINESS: 41% // FREE BUFFS PENDING: 1 // HEAT 1 // NEXT: WAR ROOM (FREE CACHE)'
+      );
+
+      // 2. War room cache claimed, scanner pending, scrap 0 (no tuning or forge ready)
+      const metaNoScrap = { scrap: 0, heatLevel: 2, ranks: {}, equipped: {} };
+      const playerNoScanner = { weapon: 'pistol' };
+      const overviewCacheOnly = getSanctuaryHideoutOverview(metaNoScrap, playerNoScanner, false, true);
+      expect(overviewCacheOnly.readinessPct).toBe(35);
+      expect(overviewCacheOnly.pendingFreeActionsCount).toBe(1);
+      expect(overviewCacheOnly.actionableStations).toEqual(['INTEL SCANNER (FREE BUFF)']);
+      expect(overviewCacheOnly.isOptimalForLaunch).toBe(false);
+      expect(overviewCacheOnly.summaryLine).toBe(
+        'SANCTUARY READINESS: 35% // FREE BUFFS PENDING: 1 // HEAT 2 // NEXT: INTEL SCANNER (FREE BUFF)'
+      );
+    });
+
+    it('evaluates fully prepped state with 100% readiness and ALL STATIONS OPTIMIZED', () => {
+      const meta = {
+        scrap: 0,
+        heatLevel: 3,
+        ranks: { dmg: 5, fireRate: 5, speed: 5, maxHp: 4 },
+        equipped: {
+          tires: { slot: 'tires', rarity: 3 },
+          engine: { slot: 'engine', rarity: 3 },
+          handlebars: { slot: 'handlebars', rarity: 3 },
+          exhaust: { slot: 'exhaust', rarity: 3 },
+          frame: { slot: 'frame', rarity: 3 },
+          tank: { slot: 'tank', rarity: 3 }
+        }
+      };
+      const player = { weapon: 'plasma_rifle', scannerBuff: true };
+
+      const overview: SanctuaryHideoutOverview = getSanctuaryHideoutOverview(meta, player, true, true);
+      expect(overview.readinessPct).toBe(100);
+      expect(overview.pendingFreeActionsCount).toBe(0);
+      expect(overview.actionableStations).toEqual([]);
+      expect(overview.isOptimalForLaunch).toBe(true);
+      expect(overview.summaryLine).toBe(
+        'SANCTUARY READINESS: 100% // FREE BUFFS PENDING: 0 // HEAT 3 // ALL STATIONS OPTIMIZED'
+      );
+    });
+
+    it('identifies un-optimal launch when buffs are locked but tuning remains affordable', () => {
+      const meta = {
+        scrap: 100,
+        heatLevel: 0,
+        ranks: { speed: 1 },
+        equipped: {
+          tires: { slot: 'tires', rarity: 1 },
+          engine: { slot: 'engine', rarity: 1 },
+          handlebars: { slot: 'handlebars', rarity: 1 },
+          exhaust: { slot: 'exhaust', rarity: 1 },
+          frame: { slot: 'frame', rarity: 1 },
+          tank: { slot: 'tank', rarity: 1 }
+        }
+      };
+      const player = { weapon: 'shotgun', scannerBuff: true };
+
+      const overview: SanctuaryHideoutOverview = getSanctuaryHideoutOverview(meta, player, true, true);
+      expect(overview.pendingFreeActionsCount).toBe(0);
+      expect(overview.isOptimalForLaunch).toBe(false);
+      expect(overview.actionableStations).toEqual([
+        'GARAGE (TUNING AFFORDABLE)',
+        'SCRAP FORGE (REFORGE READY)'
+      ]);
+      expect(overview.summaryLine).toContain('NEXT: GARAGE (TUNING AFFORDABLE)');
+    });
+
+    it('is accessible via HubStationModalController static and instance methods', () => {
+      const meta = { scrap: 50, heatLevel: 2 };
+      const player = { weapon: 'shotgun' };
+
+      const staticRes = HubStationModalController.getSanctuaryHideoutOverview(meta, player, true, false);
+      const pureRes = getSanctuaryHideoutOverview(meta, player, true, false);
+      expect(staticRes).toEqual(pureRes);
+
+      const controller = new HubStationModalController();
+      const instanceRes = controller.getSanctuaryHideoutOverview(meta, player, true, false);
+      expect(instanceRes).toEqual(pureRes);
     });
   });
 

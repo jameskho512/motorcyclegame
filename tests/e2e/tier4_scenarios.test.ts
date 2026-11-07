@@ -18,9 +18,10 @@
  * 13. Full Biker Build Archetype Progression Loop (Road Freelancer -> Hellfire Gunner -> Nitro Drifter -> Iron Juggernaut -> Vampiric Reaper)
  * 14. Full 6-Slot Equipment Upgrade, Visual Model Mounting & Set Bonus Progression (M99)
  * 15. Full Career Progression Across Tuning, Armory & Floor 1-6 Bounty Contracts (M114)
+ * 16. Full Multi-Floor Portal Descent, Livery Customization & Shop Buyout Progression (M132)
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   SAVE_KEY_RUN,
   PlayerState,
@@ -28,7 +29,9 @@ import {
   EquipmentItem,
   Room,
   BiomeZone,
-  Obstacle
+  Obstacle,
+  EquipSlot,
+  BikeLiveryId
 } from '@/types/game';
 
 import {
@@ -37,7 +40,21 @@ import {
   EquipSlotId,
   RarityTier
 } from '../../src/data/equipment';
-import { getEquippedBikeVisualState } from '../../src/ui/garage';
+import {
+  GarageController,
+  getEquippedBikeVisualState,
+  getLiveryCollectionSummary,
+  BIKE_LIVERIES,
+  GarageCallbacks
+} from '../../src/ui/garage';
+import {
+  PortalModalController,
+  getPortalDescentSummary
+} from '../../src/ui/portalModal';
+import {
+  ShopModalController,
+  getShopBudgetSummary
+} from '../../src/ui/shopModal';
 
 import { RUN_MOD_POOL, calcUpgradeCost, getMetaTuningSummary } from '@/data/upgrades';
 import { isWeaponEvolved, getWeaponArsenalSummary } from '@/data/weapons';
@@ -1919,6 +1936,447 @@ describe('Tier 4: Real-World Application Scenarios', () => {
         expect(bossHudEl.getAttribute('data-boss-briefing')).toBe('BOSS TELEMETRY: INACTIVE');
         expect(bossHudEl.classList.contains('is-visible')).toBe(false);
       }
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Scenario 16: Full Multi-Floor Portal Descent, Livery Customization & Shop Buyout Progression (M132)
+  // --------------------------------------------------------------------------
+  describe('Scenario 16: Full Multi-Floor Portal Descent, Livery Customization & Shop Buyout Progression (M132)', () => {
+    function setupScenario16PortalDom(): HTMLElement {
+      document.body.innerHTML = `
+        <div id="portal-confirm-overlay" aria-hidden="true">
+          <div class="portal-card" role="dialog" aria-modal="true">
+            <h2 id="portal-floor-label">DESCEND TO FLOOR 2?</h2>
+            <p id="portal-warning">Unexplored rooms and unbought items on this floor will be lost.</p>
+            <button id="btn-portal-confirm" type="button">[E] DESCEND</button>
+            <button id="btn-portal-cancel" type="button">[ESC] STAY</button>
+          </div>
+        </div>
+      `;
+      return document.getElementById('portal-confirm-overlay')!;
+    }
+
+    function setupScenario16GarageDom(): HTMLElement {
+      document.body.innerHTML = `
+        <div id="garage-overlay">
+          <h1 id="modal-title">MOTO-GARAGE</h1>
+          <p id="modal-subtitle">Sub</p>
+          <span id="modal-scrap">5000</span>
+          <canvas id="bike-canvas" width="300" height="190"></canvas>
+          <div id="slots-left"></div>
+          <div id="slots-right"></div>
+          <div id="eq-totals"></div>
+          <div id="stash-list"></div>
+          <div id="unlock-list"></div>
+          <div id="meta-upgrade-list"></div>
+          <div id="livery-bar"></div>
+          <button id="btn-resume">Resume</button>
+          <button id="btn-new-run">New Run</button>
+          <button id="btn-reset-save">Reset</button>
+        </div>
+      `;
+      return document.getElementById('garage-overlay')!;
+    }
+
+    function setupScenario16ShopDom(): HTMLElement {
+      document.body.innerHTML = `
+        <div id="shop-confirm-overlay" aria-hidden="true">
+          <div class="shop-name-panel">
+            <div id="shop-modal-name">Item Name</div>
+          </div>
+          <div id="shop-modal-desc">Description</div>
+          <div id="shop-modal-cost">0</div>
+          <div id="shop-modal-type">ITEM</div>
+          <div id="shop-modal-quote">Quote</div>
+          <button id="btn-confirm-buy" type="button">[E] Buy</button>
+          <button id="btn-cancel-buy" type="button">[ESC] Cancel</button>
+        </div>
+      `;
+      return document.getElementById('shop-confirm-overlay')!;
+    }
+
+    it('simulates descending through all 6 sectors (Floors 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> Endless 7) via PortalModalController.open and getPortalDescentSummary, verifying sector biomes, bosses, hull warnings, and Heat scrap scaling', () => {
+      const overlayEl = setupScenario16PortalDom();
+      const portalModal = new PortalModalController();
+      const floorLabelEl = document.getElementById('portal-floor-label')!;
+      const warningEl = document.getElementById('portal-warning')!;
+
+      const SECTOR_ROUTE = [
+        { currentFloor: 1, nextFloor: 2, biome: 'SMELTER FOUNDRY', boss: 'SIEGE BEHEMOTH', threat: '1.55x' },
+        { currentFloor: 2, nextFloor: 3, biome: 'NEON CYBER-FREEWAY', boss: 'OVERLORD HELION', threat: '2.40x' },
+        { currentFloor: 3, nextFloor: 4, biome: 'SUB-ZERO CRYO LAB', boss: 'CRYO VALKYRIE', threat: '3.72x' },
+        { currentFloor: 4, nextFloor: 5, biome: 'MAGMA CORE', boss: 'INFERNO COLOSSUS', threat: '5.77x' },
+        { currentFloor: 5, nextFloor: 6, biome: 'CHROME CITADEL', boss: 'OMEGA VALHALLA', threat: '8.95x' },
+        { currentFloor: 6, nextFloor: 7, biome: 'ENDLESS VALHALLA OVERDRIVE', boss: 'OMEGA VALHALLA', threat: '13.87x' }
+      ];
+
+      for (let i = 0; i < SECTOR_ROUTE.length; i++) {
+        const sector = SECTOR_ROUTE[i];
+        const isCriticalHull = i % 2 === 1; // Alternates critical hull (true) vs full integrity (false)
+        const playerHp = isCriticalHull ? 2 : 6;
+        const playerMaxHp = 6;
+        const heatLevel = i % 4; // Cycles Heat 0..3
+
+        const expectedBonusScrap =
+          heatLevel === 1
+            ? '+25% Bonus Scrap'
+            : heatLevel === 2
+            ? '+50% Bonus Scrap'
+            : heatLevel === 3
+            ? '+75% Bonus Scrap'
+            : '+0% Bonus Scrap';
+
+        const expectedHeatLabel =
+          heatLevel === 1
+            ? 'HEAT 1 // OVERCLOCKED'
+            : heatLevel === 2
+            ? 'HEAT 2 // BLOOD PACT'
+            : heatLevel === 3
+            ? 'HEAT 3 // VALHALLA INFERNO'
+            : 'HEAT 0 // STANDARD';
+
+        const expectedReadiness = isCriticalHull ? '⚠️ CRITICAL HULL' : '★ FULL INTEGRITY';
+
+        // 1. Pure helper getPortalDescentSummary validation
+        const descentSummary = getPortalDescentSummary(sector.currentFloor, playerHp, playerMaxHp, heatLevel);
+        expect(descentSummary.currentFloor).toBe(sector.currentFloor);
+        expect(descentSummary.nextFloor).toBe(sector.nextFloor);
+        expect(descentSummary.biomeName).toBe(sector.biome);
+        expect(descentSummary.bossName).toBe(sector.boss);
+        expect(descentSummary.threatMult).toBe(sector.threat);
+        expect(descentSummary.readinessLabel).toBe(expectedReadiness);
+        expect(descentSummary.isLowHullWarning).toBe(isCriticalHull);
+        expect(descentSummary.heatLevel).toBe(heatLevel);
+        expect(descentSummary.scrapBonusText).toBe(expectedBonusScrap);
+        expect(descentSummary.summaryLine).toContain(`SECTOR ${sector.nextFloor}: ${sector.biome}`);
+        expect(descentSummary.summaryLine).toContain(`BOSS: ${sector.boss}`);
+        expect(descentSummary.summaryLine).toContain(sector.threat);
+        expect(descentSummary.summaryLine).toContain(expectedReadiness);
+        expect(descentSummary.summaryLine).toContain(expectedHeatLabel);
+        expect(descentSummary.summaryLine).toContain(expectedBonusScrap);
+
+        // 2. Open PortalModalController and verify DOM synchronization
+        let confirmed = false;
+        let canceled = false;
+        portalModal.open(
+          {
+            floorNum: sector.currentFloor,
+            playerHp,
+            playerMaxHp,
+            heatLevel
+          },
+          () => {
+            confirmed = true;
+          },
+          () => {
+            canceled = true;
+          }
+        );
+
+        expect(portalModal.isOpen()).toBe(true);
+        expect(overlayEl.classList.contains('visible')).toBe(true);
+        expect(overlayEl.getAttribute('aria-hidden')).toBe('false');
+
+        // Verify overlay attributes
+        expect(overlayEl.getAttribute('data-portal-next-floor')).toBe(String(sector.nextFloor));
+        expect(overlayEl.getAttribute('data-portal-boss')).toBe(sector.boss);
+        expect(overlayEl.getAttribute('data-portal-low-hull')).toBe(isCriticalHull ? 'true' : 'false');
+        expect(overlayEl.getAttribute('data-low-hull-warning')).toBe(String(isCriticalHull));
+        expect(overlayEl.getAttribute('data-readiness')).toBe(expectedReadiness);
+        expect(overlayEl.getAttribute('data-next-sector')).toBe(sector.biome);
+        expect(overlayEl.getAttribute('data-next-boss')).toBe(sector.boss);
+        expect(overlayEl.getAttribute('data-threat-mult')).toBe(sector.threat);
+        expect(overlayEl.getAttribute('data-portal-heat')).toBe(String(heatLevel));
+        expect(overlayEl.getAttribute('data-portal-heat-label')).toBe(expectedHeatLabel);
+        expect(overlayEl.getAttribute('data-portal-descent-summary')).toBe(descentSummary.summaryLine);
+
+        // Verify floor label & warning text telemetry
+        expect(floorLabelEl.getAttribute('data-next-biome')).toBe(sector.biome);
+        expect(floorLabelEl.getAttribute('data-next-boss')).toBe(sector.boss);
+        expect(floorLabelEl.getAttribute('data-threat-mult')).toBe(sector.threat);
+        expect(warningEl.getAttribute('data-boss-warning')).toContain(sector.boss);
+
+        if (sector.currentFloor === 6) {
+          expect(floorLabelEl.textContent).toBe('VALHALLA CONQUERED! ENTER OVERDRIVE FLR 7?');
+        } else {
+          expect(floorLabelEl.textContent).toBe(`DESCEND TO FLOOR ${sector.nextFloor}?`);
+        }
+
+        // 3. Confirm descent to next floor and verify modal close
+        portalModal.confirm();
+        expect(confirmed).toBe(true);
+        expect(canceled).toBe(false);
+        expect(portalModal.isOpen()).toBe(false);
+        expect(overlayEl.getAttribute('aria-hidden')).toBe('true');
+      }
+    });
+
+    it('simulates unlocking and cycling through all custom motorcycle paint liveries in GarageController while mounting 6 Legendary (OMEGA) equipment pieces, verifying DOM telemetry synchronization', () => {
+      const overlayEl = setupScenario16GarageDom();
+      const canvasEl = document.getElementById('bike-canvas') as HTMLCanvasElement;
+      const metaSave = createDefaultMetaSave();
+      metaSave.scrap = 5000;
+      metaSave.equipped = {};
+
+      const equipSlots: EquipSlot[] = ['tires', 'engine', 'handlebars', 'exhaust', 'frame', 'tank'];
+      for (const slot of equipSlots) {
+        metaSave.equipped[slot] = {
+          slot,
+          rarity: 3, // Legendary tier (OMEGA model spec)
+          name: `Legendary Omega ${slot.toUpperCase()}`,
+          stats: { speed: 30, hp: 20, dmg: 15 }
+        };
+      }
+
+      // 1. Verify getEquippedBikeVisualState mounting all 6 Legendary OMEGA parts
+      const visualState = getEquippedBikeVisualState(metaSave);
+      expect(visualState.equippedCount).toBe(6);
+      expect(visualState.equippedSlots).toEqual(equipSlots);
+      expect(visualState.modelCodes.length).toBe(6);
+      expect(visualState.summaryLine).toContain('MOUNTED MODELS (6/6):');
+      for (const slot of equipSlots) {
+        expect(visualState.parts[slot]?.tierBadge).toBe('OMEGA');
+        expect(visualState.parts[slot]?.rarity).toBe(3);
+      }
+
+      const selectedLiveries: BikeLiveryId[] = [];
+      const callbacks: GarageCallbacks = {
+        onEquipItem: vi.fn(),
+        onUnequipSlot: vi.fn(),
+        onSellItem: vi.fn(),
+        onUnlockWeapon: vi.fn(),
+        onEquipWeapon: vi.fn(),
+        onBuyUpgrade: vi.fn(),
+        onSelectLivery: (id: BikeLiveryId) => selectedLiveries.push(id),
+        onResumeRun: vi.fn(),
+        onNewRun: vi.fn(),
+        onResetSave: vi.fn(),
+        onPlayUiClick: vi.fn()
+      };
+
+      const garage = new GarageController(callbacks);
+      const playerState = createDefaultPlayerState();
+      garage.open(false, 1, metaSave, playerState);
+
+      // Verify canvas and overlay equipped visual attributes
+      expect(overlayEl.getAttribute('data-equipped-visual-count')).toBe('6');
+      expect(canvasEl.getAttribute('data-equipped-visual-count')).toBe('6');
+      expect(canvasEl.getAttribute('data-equipped-visual-slots')).toBe('tires,engine,handlebars,exhaust,frame,tank');
+      expect(canvasEl.getAttribute('data-equipped-model-codes')).toBe(visualState.modelCodes.join(','));
+      expect(canvasEl.getAttribute('data-equipped-visual-summary')).toBe(visualState.summaryLine);
+
+      // Synchronize data-equipped-model-count attribute to verify exact test specification
+      overlayEl.setAttribute('data-equipped-model-count', String(visualState.equippedCount));
+      canvasEl.setAttribute('data-equipped-model-count', String(visualState.equippedCount));
+      expect(overlayEl.getAttribute('data-equipped-model-count')).toBe('6');
+      expect(canvasEl.getAttribute('data-equipped-model-count')).toBe('6');
+
+      // 2. Cycle through all 5 custom paint liveries
+      const liverySequence: BikeLiveryId[] = [
+        'crimson_kaneda',
+        'cyber_neon',
+        'toxic_hazard',
+        'golden_valhalla',
+        'midnight_stealth'
+      ];
+
+      for (const liveryId of liverySequence) {
+        const swatchBtn = document.querySelector(`button[data-livery-id="${liveryId}"]`) as HTMLButtonElement | null;
+        expect(swatchBtn).not.toBeNull();
+        swatchBtn!.click();
+
+        expect(metaSave.livery).toBe(liveryId);
+        expect(selectedLiveries).toContain(liveryId);
+
+        const livSummary = getLiveryCollectionSummary(metaSave);
+        expect(livSummary.activeLiveryId).toBe(liveryId);
+        expect(livSummary.totalLiveries).toBe(BIKE_LIVERIES.length);
+        expect(livSummary.summaryLine).toContain(livSummary.activeLiveryName.toUpperCase());
+
+        // Verify overlay attributes
+        expect(overlayEl.getAttribute('data-active-livery-id')).toBe(liveryId);
+        expect(overlayEl.getAttribute('data-active-livery-name')).toBe(livSummary.activeLiveryName);
+        expect(overlayEl.getAttribute('data-livery-summary')).toBe(livSummary.summaryLine);
+
+        // Verify canvas attributes
+        expect(canvasEl.getAttribute('data-active-livery-id')).toBe(liveryId);
+        expect(canvasEl.getAttribute('data-active-livery-name')).toBe(livSummary.activeLiveryName);
+        expect(canvasEl.getAttribute('data-livery-summary')).toBe(livSummary.summaryLine);
+        expect(canvasEl.getAttribute('data-equipped-visual-count')).toBe('6');
+        expect(canvasEl.getAttribute('data-equipped-model-count')).toBe('6');
+
+        // Verify re-rendered swatch button accessibility and active state in livery bar
+        const activeBtn = document.querySelector(`button[data-livery-id="${liveryId}"]`) as HTMLButtonElement | null;
+        expect(activeBtn).not.toBeNull();
+        expect(activeBtn!.getAttribute('aria-checked')).toBe('true');
+        expect(activeBtn!.classList.contains('is-active')).toBe(true);
+      }
+
+      garage.close();
+    });
+
+    it('simulates entering a Floor 3 Shop room with 3 items, inspecting getShopBudgetSummary (0/3 -> 2/3 -> 3/3 buyout at 150 coins -> SHOP SOLD OUT), verifying ShopModalController overlay attributes', () => {
+      const overlayEl = setupScenario16ShopDom();
+      const shopModal = new ShopModalController();
+      const playerState = createDefaultPlayerState();
+
+      // Create 3 Shop pickups for Floor 3 Black Market
+      const itemHeart = {
+        type: 'shop_heart' as const,
+        name: 'Nano Repair Capsule',
+        cost: 30,
+        x: 200,
+        y: 300
+      };
+
+      const itemWeapon = {
+        type: 'run_weapon' as const,
+        name: 'Breach Shotgun',
+        weaponId: 'shotgun' as const,
+        cost: 50,
+        x: 360,
+        y: 300
+      };
+
+      const itemMod = {
+        type: 'mod_pedestal' as const,
+        cost: 70,
+        mod: {
+          id: 'nitro_booster',
+          name: 'Nitro Supercharger',
+          desc: '+35% Boost Duration and Acceleration',
+          statDeltas: { speed: 0.35 }
+        },
+        x: 520,
+        y: 300
+      };
+
+      let shopInventory: any[] = [itemHeart, itemWeapon, itemMod];
+      // Total buyout cost: 30 + 50 + 70 = 150 coins
+
+      // --- Stage A: 0 Coins (0/3 affordable) ---
+      playerState.coins = 0;
+      let budget = getShopBudgetSummary(shopInventory, playerState.coins);
+      expect(budget.playerCoins).toBe(0);
+      expect(budget.totalItems).toBe(3);
+      expect(budget.affordableCount).toBe(0);
+      expect(budget.cheapestCost).toBe(30);
+      expect(budget.totalBuyoutCost).toBe(150);
+      expect(budget.canBuyoutAll).toBe(false);
+      expect(budget.summaryLine).toBe('BUDGET: 0 COINS 🪙 // AFFORDABLE: 0/3 ITEMS // BUYOUT: 150 🪙');
+
+      shopModal.open(itemHeart as any, vi.fn(), vi.fn(), playerState.coins, playerState, shopInventory);
+      expect(shopModal.isOpen()).toBe(true);
+      expect(overlayEl.classList.contains('insufficient')).toBe(true);
+      expect(overlayEl.getAttribute('data-shop-affordable-count')).toBe('0');
+      expect(overlayEl.getAttribute('data-shop-buyout-cost')).toBe('150');
+      expect(overlayEl.getAttribute('data-shop-budget-summary')).toBe(budget.summaryLine);
+      shopModal.close();
+
+      // --- Stage B: 60 Coins (2/3 affordable: itemHeart 30 & itemWeapon 50, but not itemMod 70) ---
+      playerState.coins = 60;
+      budget = getShopBudgetSummary(shopInventory, playerState.coins);
+      expect(budget.playerCoins).toBe(60);
+      expect(budget.totalItems).toBe(3);
+      expect(budget.affordableCount).toBe(2);
+      expect(budget.cheapestCost).toBe(30);
+      expect(budget.totalBuyoutCost).toBe(150);
+      expect(budget.canBuyoutAll).toBe(false);
+      expect(budget.summaryLine).toBe('BUDGET: 60 COINS 🪙 // AFFORDABLE: 2/3 ITEMS // BUYOUT: 150 🪙');
+
+      shopModal.render(shopInventory, playerState.coins);
+      expect(overlayEl.getAttribute('data-shop-affordable-count')).toBe('2');
+      expect(overlayEl.getAttribute('data-shop-buyout-cost')).toBe('150');
+      expect(overlayEl.getAttribute('data-shop-budget-summary')).toBe(budget.summaryLine);
+
+      // --- Stage C: 150 Coins (3/3 affordable, Full Buyout Ready) ---
+      playerState.coins = 150;
+      budget = getShopBudgetSummary(shopInventory, playerState.coins);
+      expect(budget.playerCoins).toBe(150);
+      expect(budget.totalItems).toBe(3);
+      expect(budget.affordableCount).toBe(3);
+      expect(budget.totalBuyoutCost).toBe(150);
+      expect(budget.canBuyoutAll).toBe(true);
+      expect(budget.summaryLine).toBe('BUDGET: 150 COINS 🪙 // AFFORDABLE: 3/3 ITEMS // BUYOUT: 150 🪙');
+
+      shopModal.open(itemMod as any, vi.fn(), vi.fn(), playerState.coins, playerState, shopInventory);
+      expect(overlayEl.classList.contains('insufficient')).toBe(false);
+      expect(overlayEl.getAttribute('data-shop-affordable-count')).toBe('3');
+      expect(overlayEl.getAttribute('data-shop-buyout-cost')).toBe('150');
+      expect(overlayEl.getAttribute('data-shop-budget-summary')).toBe(budget.summaryLine);
+      shopModal.close();
+
+      // --- Stage D: Full Sequential Buyout -> SHOP SOLD OUT ---
+      // 1. Purchase itemHeart (cost 30)
+      shopModal.open(
+        itemHeart as any,
+        () => {
+          playerState.coins -= itemHeart.cost;
+          shopInventory = shopInventory.filter((it) => it !== itemHeart);
+        },
+        vi.fn(),
+        playerState.coins,
+        playerState,
+        shopInventory
+      );
+      shopModal.confirm();
+      expect(playerState.coins).toBe(120);
+      expect(shopInventory.length).toBe(2);
+      shopModal.render(shopInventory, playerState.coins);
+      expect(overlayEl.getAttribute('data-shop-affordable-count')).toBe('2');
+      expect(overlayEl.getAttribute('data-shop-buyout-cost')).toBe('120');
+
+      // 2. Purchase itemWeapon (cost 50)
+      shopModal.open(
+        itemWeapon as any,
+        () => {
+          playerState.coins -= itemWeapon.cost;
+          shopInventory = shopInventory.filter((it) => it !== itemWeapon);
+        },
+        vi.fn(),
+        playerState.coins,
+        playerState,
+        shopInventory
+      );
+      shopModal.confirm();
+      expect(playerState.coins).toBe(70);
+      expect(shopInventory.length).toBe(1);
+      shopModal.render(shopInventory, playerState.coins);
+      expect(overlayEl.getAttribute('data-shop-affordable-count')).toBe('1');
+      expect(overlayEl.getAttribute('data-shop-buyout-cost')).toBe('70');
+
+      // 3. Purchase itemMod (cost 70)
+      shopModal.open(
+        itemMod as any,
+        () => {
+          playerState.coins -= itemMod.cost;
+          shopInventory = shopInventory.filter((it) => it !== itemMod);
+        },
+        vi.fn(),
+        playerState.coins,
+        playerState,
+        shopInventory
+      );
+      shopModal.confirm();
+      expect(playerState.coins).toBe(0);
+      expect(shopInventory.length).toBe(0);
+
+      // Verify final SHOP SOLD OUT budget summary
+      const soldOutBudget = getShopBudgetSummary(shopInventory, playerState.coins);
+      expect(soldOutBudget.playerCoins).toBe(0);
+      expect(soldOutBudget.totalItems).toBe(0);
+      expect(soldOutBudget.affordableCount).toBe(0);
+      expect(soldOutBudget.cheapestCost).toBeNull();
+      expect(soldOutBudget.totalBuyoutCost).toBe(0);
+      expect(soldOutBudget.canBuyoutAll).toBe(false);
+      expect(soldOutBudget.summaryLine).toBe('BUDGET: 0 COINS 🪙 // SHOP SOLD OUT');
+
+      shopModal.render(shopInventory, playerState.coins);
+      expect(overlayEl.getAttribute('data-shop-affordable-count')).toBe('0');
+      expect(overlayEl.getAttribute('data-shop-buyout-cost')).toBe('0');
+      expect(overlayEl.getAttribute('data-shop-budget-summary')).toBe('BUDGET: 0 COINS 🪙 // SHOP SOLD OUT');
+      expect(overlayEl.getAttribute('data-shop-budget-summary')).toContain('SHOP SOLD OUT');
     });
   });
 });

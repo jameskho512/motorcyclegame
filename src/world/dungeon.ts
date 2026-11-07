@@ -1123,5 +1123,92 @@ export function getFloorExplorationStatus(
   };
 }
 
+// ============================================================================
+// DUNGEON SECTOR THREAT & SPECIAL ROOM SUMMARY (M131)
+// ============================================================================
+
+export interface DungeonSectorSummary {
+  floorNum: number;
+  totalRooms: number;
+  clearedRooms: number;
+  combatRooms: number;
+  treasureRooms: number;
+  shopRooms: number;
+  bossRooms: number;
+  remainingPickups: number;
+  heatLevel: number;
+  scrapBonusPct: number;
+  summaryLine: string;
+}
+
+/**
+ * Calculates sector threat, special room distribution, exploration clearance,
+ * unclaimed loot drops, and Heat Level scrap bonuses for HUD displays and sector transition banners.
+ */
+export function getDungeonSectorSummary(
+  dungeon?: Dungeon | { rooms: Dungeon; floor?: number } | null,
+  floorNum?: number,
+  heatLevel: number = 0
+): DungeonSectorSummary {
+  const safeFloor = typeof floorNum === 'number' && Number.isFinite(floorNum) && floorNum >= 1
+    ? Math.floor(floorNum)
+    : (typeof (dungeon as any)?.floor === 'number' && Number.isFinite((dungeon as any).floor) && (dungeon as any).floor >= 1
+      ? Math.floor((dungeon as any).floor)
+      : 1);
+  const safeHeat = typeof heatLevel === 'number' && Number.isFinite(heatLevel)
+    ? Math.max(0, Math.min(3, Math.floor(heatLevel)))
+    : 0;
+  const scrapBonusPct = safeHeat * 25;
+
+  const roomsMap = (dungeon && (dungeon as any).rooms && typeof (dungeon as any).rooms === 'object')
+    ? (dungeon as any).rooms
+    : (dungeon || {});
+  const rooms = Object.values(roomsMap) as Room[];
+
+  let totalRooms = 0;
+  let clearedRooms = 0;
+  let combatRooms = 0;
+  let treasureRooms = 0;
+  let shopRooms = 0;
+  let bossRooms = 0;
+  let remainingPickups = 0;
+
+  for (const r of rooms) {
+    if (!r) continue;
+    totalRooms++;
+    if (r.cleared) clearedRooms++;
+    if (r.type === 'combat') combatRooms++;
+    if (r.type === 'treasure') treasureRooms++;
+    if (r.type === 'shop') shopRooms++;
+    if (r.type === 'boss') bossRooms++;
+    if (Array.isArray(r.pickups)) {
+      for (const p of r.pickups) {
+        if (p && (p as any).type !== 'hub_npc') {
+          remainingPickups++;
+        }
+      }
+    }
+  }
+
+  const summaryLine =
+    'SECTOR ' + safeFloor + ' (' + clearedRooms + '/' + totalRooms + ' CLEARED) // ROOMS: ' +
+    combatRooms + ' COMBAT, ' + treasureRooms + ' TREASURE, ' + shopRooms + ' SHOP, ' +
+    bossRooms + ' BOSS // LOOT: ' + remainingPickups + ' DROPS // HEAT +' + scrapBonusPct + '%';
+
+  return {
+    floorNum: safeFloor,
+    totalRooms,
+    clearedRooms,
+    combatRooms,
+    treasureRooms,
+    shopRooms,
+    bossRooms,
+    remainingPickups,
+    heatLevel: safeHeat,
+    scrapBonusPct,
+    summaryLine
+  };
+}
+
 
 
