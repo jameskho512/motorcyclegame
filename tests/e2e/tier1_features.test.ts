@@ -33,7 +33,7 @@
  * 28. Semicircular Fuel Gauge Math
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   MAX_SKIDS_PER_ROOM,
   SAVE_KEY_META,
@@ -62,13 +62,21 @@ import {
   getCareerOutlawRank
 } from '@/core/state';
 import { getFloorBountyContractStatus } from '../../src/core/state';
-import { getScannerStationAdvisor, getForgeStationAdvisor } from '../../src/ui/hubStationModal';
+import {
+  getScannerStationAdvisor,
+  getForgeStationAdvisor,
+  getGarageStationAdvisor,
+  getArmoryStationAdvisor,
+  getLaunchGateAdvisor,
+  HubStationModalController
+} from '../../src/ui/hubStationModal';
 import { InputManager, KEY_WEAPON_MAP } from '@/core/input';
 import { SoundSynthesizer, calculateEngineParams } from '@/audio/sfx';
 import { generateDungeon, OBSTACLE_PATTERNS, createBoss, getFloorExplorationStatus } from '@/world/dungeon';
-import { formatWeaponEvolutionTooltipHint } from '@/ui/tooltip';
-import { getShopBuildSynergyHint } from '@/ui/shopModal';
+import { formatWeaponEvolutionTooltipHint, formatModDeckTooltipHint } from '@/ui/tooltip';
+import { getShopBuildSynergyHint, getShopBudgetSummary, ShopModalController } from '@/ui/shopModal';
 import { getPortalHeatBriefing } from '@/ui/portalModal';
+import { HUDController } from '@/ui/hud';
 import {
   calculateEffectiveSpeed,
   updateNos,
@@ -1339,6 +1347,497 @@ describe('Tier 1: Feature Coverage — 28 Features in Isolation', () => {
       expect(veteranRank.tierNumber).toBe(5);
       expect(veteranRank.careerScore).toBe(950);
       expect(veteranRank.nextMilestoneText).toBe('MAX CAREER RANK ACHIEVED');
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Feature 10: Sanctuary Station Advisors, Shop Budget Summary & HUD Mod Deck Telemetry (M129)
+  // --------------------------------------------------------------------------
+  describe('Feature 10: Sanctuary Station Advisors, Shop Budget Summary & HUD Mod Deck Telemetry (M129)', () => {
+    const HUB_STATION_HTML = `
+      <div id="hub-station-overlay" aria-hidden="true">
+        <div class="hub-station-card" role="dialog" aria-modal="true" aria-labelledby="hub-station-title">
+          <header class="hub-station-header">
+            <div class="hub-station-title-wrap">
+              <span class="hub-station-kicker" id="hub-station-kicker"></span>
+              <h2 class="hub-station-title" id="hub-station-title"></h2>
+            </div>
+            <div class="hub-station-speaker-pill" id="hub-station-speaker"></div>
+          </header>
+          <blockquote class="hub-station-quote" id="hub-station-quote"></blockquote>
+          <div class="hub-station-purpose" id="hub-station-purpose"></div>
+          <div class="hub-station-body" id="hub-station-body"></div>
+          <div class="hub-station-feedback" id="hub-station-feedback" hidden></div>
+          <footer class="hub-station-actions" id="hub-station-actions">
+            <button type="button" class="portal-btn portal-btn--primary" id="btn-hub-station-primary"><kbd>E</kbd> ACTIVATE</button>
+            <button type="button" class="portal-btn portal-btn--secondary" id="btn-hub-station-secondary">CYCLE HEAT</button>
+            <button type="button" class="portal-btn portal-btn--secondary" id="btn-hub-station-close"><kbd>ESC</kbd> CLOSE</button>
+          </footer>
+        </div>
+      </div>
+    `;
+
+    const SHOP_MODAL_HTML = `
+      <div id="shop-confirm-overlay" aria-hidden="true">
+        <div class="shop-confirm-card">
+          <div class="shop-name-panel">
+            <div id="shop-modal-name"></div>
+          </div>
+          <div id="shop-modal-desc"></div>
+          <div id="shop-modal-cost"></div>
+          <div id="shop-modal-type"></div>
+          <div id="shop-modal-quote"></div>
+          <button id="btn-confirm-buy" type="button">Confirm</button>
+          <button id="btn-cancel-buy" type="button">Cancel</button>
+        </div>
+      </div>
+    `;
+
+    it('verifies getGarageStationAdvisor and HubStationModalController at garage station reflect live chassis equipment power score, tuning rank percentage, and cheapest next upgrade affordability', () => {
+      // 1. Pure helper calculations
+      const stockMeta: MetaSaveState = {
+        ...createDefaultMetaSave(),
+        scrap: 0,
+        ranks: { dmg: 0, fireRate: 0, speed: 0, maxHp: 0 },
+        equipped: {}
+      };
+      const stockAdvisor = getGarageStationAdvisor(stockMeta);
+      expect(stockAdvisor.equippedCount).toBe(0);
+      expect(stockAdvisor.powerScore).toBe(0);
+      expect(stockAdvisor.tuningRanks).toBe(0);
+      expect(stockAdvisor.tuningMaxRanks).toBe(19);
+      expect(stockAdvisor.tuningCompletionPct).toBe(0);
+      expect(stockAdvisor.canAffordNextTuning).toBe(false);
+      expect(stockAdvisor.summaryLine).toBe(
+        'CHASSIS: 0/6 EQUIPPED (PWR 0) // TUNING: 0/19 RANKS (0%) // NEED 20 ⚙️ FOR NEXT TUNE'
+      );
+
+      // Partial loadout with affordable tuning upgrade (cost 25 scrap <= 30 scrap)
+      const partialMeta: MetaSaveState = {
+        ...createDefaultMetaSave(),
+        scrap: 30,
+        ranks: { dmg: 0, fireRate: 0, speed: 1, maxHp: 0 },
+        equipped: {
+          engine: { slot: 'engine', rarity: 1, name: 'Engine Mk1', stats: { hp: 2 } },
+          tires: { slot: 'tires', rarity: 1, name: 'Tires Mk1', stats: { hp: 1 } }
+        }
+      };
+      const partialAdvisor = getGarageStationAdvisor(partialMeta);
+      expect(partialAdvisor.equippedCount).toBe(2);
+      expect(partialAdvisor.powerScore).toBe(3);
+      expect(partialAdvisor.tuningRanks).toBe(1);
+      expect(partialAdvisor.tuningMaxRanks).toBe(19);
+      expect(partialAdvisor.tuningCompletionPct).toBe(5);
+      expect(partialAdvisor.canAffordNextTuning).toBe(true);
+      expect(partialAdvisor.summaryLine).toBe(
+        'CHASSIS: 2/6 EQUIPPED (PWR 3) // TUNING: 1/19 RANKS (5%) // READY TO UPGRADE ORDNANCE CALIBRATION (25 ⚙️)'
+      );
+
+      // Maxed chassis loadout and all 19 tuning ranks
+      const maxedMeta: MetaSaveState = {
+        ...createDefaultMetaSave(),
+        scrap: 500,
+        ranks: { dmg: 5, fireRate: 5, speed: 5, maxHp: 4 },
+        equipped: {
+          tires: { slot: 'tires', rarity: 3, name: 'Tires', stats: { hp: 2 } },
+          engine: { slot: 'engine', rarity: 3, name: 'Engine', stats: { hp: 2 } },
+          handlebars: { slot: 'handlebars', rarity: 3, name: 'Handlebars', stats: { hp: 2 } },
+          exhaust: { slot: 'exhaust', rarity: 3, name: 'Exhaust', stats: { hp: 2 } },
+          frame: { slot: 'frame', rarity: 3, name: 'Frame', stats: { hp: 2 } },
+          tank: { slot: 'tank', rarity: 3, name: 'Tank', stats: { hp: 2 } }
+        }
+      };
+      const maxedAdvisor = getGarageStationAdvisor(maxedMeta);
+      expect(maxedAdvisor.equippedCount).toBe(6);
+      expect(maxedAdvisor.powerScore).toBe(12);
+      expect(maxedAdvisor.tuningRanks).toBe(19);
+      expect(maxedAdvisor.tuningMaxRanks).toBe(19);
+      expect(maxedAdvisor.tuningCompletionPct).toBe(100);
+      expect(maxedAdvisor.canAffordNextTuning).toBe(false);
+      expect(maxedAdvisor.summaryLine).toBe(
+        'CHASSIS: 6/6 EQUIPPED (PWR 12) // TUNING: 19/19 RANKS (100%) // TUNING MAXED'
+      );
+
+      // 2. HubStationModalController DOM Telemetry at 'garage'
+      document.body.innerHTML = HUB_STATION_HTML;
+      const modal = new HubStationModalController();
+      const overlayEl = document.getElementById('hub-station-overlay')!;
+
+      // Stock state open
+      modal.open('garage', stockMeta);
+      expect(overlayEl.getAttribute('data-garage-equipped-count')).toBe('0');
+      expect(overlayEl.getAttribute('data-garage-tuning-pct')).toBe('0');
+      expect(overlayEl.getAttribute('data-garage-advisor')).toBe(stockAdvisor.summaryLine);
+      expect(document.querySelector('.hub-garage-advisor-text')?.textContent).toBe(stockAdvisor.summaryLine);
+
+      // Partial state open
+      modal.open('garage', partialMeta);
+      expect(overlayEl.getAttribute('data-garage-equipped-count')).toBe('2');
+      expect(overlayEl.getAttribute('data-garage-tuning-pct')).toBe('5');
+      expect(overlayEl.getAttribute('data-garage-advisor')).toBe(partialAdvisor.summaryLine);
+      expect(document.querySelector('.hub-garage-advisor-text')?.textContent).toBe(partialAdvisor.summaryLine);
+
+      // Live re-render when scrap drops below next upgrade cost
+      partialMeta.scrap = 10;
+      modal.render();
+      expect(overlayEl.getAttribute('data-garage-equipped-count')).toBe('2');
+      expect(overlayEl.getAttribute('data-garage-tuning-pct')).toBe('5');
+      expect(overlayEl.getAttribute('data-garage-advisor')).toBe(
+        'CHASSIS: 2/6 EQUIPPED (PWR 3) // TUNING: 1/19 RANKS (5%) // NEED 25 ⚙️ FOR NEXT TUNE'
+      );
+
+      // Maxed state open
+      modal.open('garage', maxedMeta);
+      expect(overlayEl.getAttribute('data-garage-equipped-count')).toBe('6');
+      expect(overlayEl.getAttribute('data-garage-tuning-pct')).toBe('100');
+      expect(overlayEl.getAttribute('data-garage-advisor')).toBe(maxedAdvisor.summaryLine);
+
+      modal.close();
+      document.body.innerHTML = '';
+    });
+
+    it('verifies getArmoryStationAdvisor and HubStationModalController at armory station reflect unlocked weapon count, lifetime kills, equipped tactical role (PRECISION SIDEARM -> SNIPER PIERCE), and base DPS', () => {
+      // 1. Pure helper calculations
+      const freshMeta = createDefaultMetaSave();
+      const freshAdv = getArmoryStationAdvisor(freshMeta, { weapon: 'pistol' });
+      expect(freshAdv.unlockedCount).toBe(1);
+      expect(freshAdv.totalWeapons).toBe(7);
+      expect(freshAdv.totalKills).toBe(0);
+      expect(freshAdv.equippedWeaponId).toBe('pistol');
+      expect(freshAdv.equippedRoleLabel).toBe('PRECISION SIDEARM');
+      expect(freshAdv.equippedBaseDps).toBe(48);
+      expect(freshAdv.summaryLine).toBe(
+        'ARSENAL: 1/7 UNLOCKED (0 KILLS) // EQUIPPED: PISTOL (PRECISION SIDEARM, 48 DPS)'
+      );
+
+      // Unlocked railgun equipped
+      const multiMeta: MetaSaveState = {
+        ...createDefaultMetaSave(),
+        scrap: 100,
+        unlocked: {
+          ...createDefaultMetaSave().unlocked,
+          railgun: true
+        },
+        weaponKills: {
+          pistol: 15,
+          railgun: 45
+        }
+      };
+      const multiAdv = getArmoryStationAdvisor(multiMeta, { weapon: 'railgun' });
+      expect(multiAdv.unlockedCount).toBe(2);
+      expect(multiAdv.totalWeapons).toBe(7);
+      expect(multiAdv.totalKills).toBe(60);
+      expect(multiAdv.equippedWeaponId).toBe('railgun');
+      expect(multiAdv.equippedRoleLabel).toBe('SNIPER PIERCE');
+      expect(multiAdv.equippedBaseDps).toBe(44);
+      expect(multiAdv.summaryLine).toBe(
+        'ARSENAL: 2/7 UNLOCKED (60 KILLS) // EQUIPPED: RAILGUN (SNIPER PIERCE, 44 DPS)'
+      );
+
+      // 2. HubStationModalController DOM Telemetry at 'armory'
+      document.body.innerHTML = HUB_STATION_HTML;
+      const modal = new HubStationModalController();
+      const onEquipWeapon = vi.fn();
+      modal.open('armory', multiMeta, { weapon: 'pistol' }, false, false, { onEquipWeapon });
+
+      const overlayEl = document.getElementById('hub-station-overlay')!;
+      expect(overlayEl.getAttribute('data-armory-unlocked-count')).toBe('2');
+      expect(overlayEl.getAttribute('data-armory-equipped-role')).toBe('PRECISION SIDEARM');
+      expect(overlayEl.getAttribute('data-armory-advisor')).toBe(
+        'ARSENAL: 2/7 UNLOCKED (60 KILLS) // EQUIPPED: PISTOL (PRECISION SIDEARM, 48 DPS)'
+      );
+      expect(document.querySelector('.hub-armory-advisor-text')?.textContent).toBe(
+        'ARSENAL: 2/7 UNLOCKED (60 KILLS) // EQUIPPED: PISTOL (PRECISION SIDEARM, 48 DPS)'
+      );
+
+      // Equip railgun by clicking weapon card
+      const railgunCard = document.querySelector<HTMLElement>('.hub-weapon-card[data-weapon-id="railgun"]')!;
+      expect(railgunCard).not.toBeNull();
+      railgunCard.click();
+
+      expect(onEquipWeapon).toHaveBeenCalledWith('railgun');
+      expect(overlayEl.getAttribute('data-armory-equipped-role')).toBe('SNIPER PIERCE');
+      expect(overlayEl.getAttribute('data-armory-advisor')).toBe(
+        'ARSENAL: 2/7 UNLOCKED (60 KILLS) // EQUIPPED: RAILGUN (SNIPER PIERCE, 44 DPS)'
+      );
+      expect(document.querySelector('.hub-armory-advisor-text')?.textContent).toBe(
+        'ARSENAL: 2/7 UNLOCKED (60 KILLS) // EQUIPPED: RAILGUN (SNIPER PIERCE, 44 DPS)'
+      );
+
+      modal.close();
+      document.body.innerHTML = '';
+    });
+
+    it('verifies getLaunchGateAdvisor and HubStationModalController at launch station transition from 0/2 (⚠️ MISSING SCANNER BUFF & WAR ROOM CACHE) -> 1/2 -> 2/2 (✓ 2/2 BUFFS LOCKED) as pre-run buffs are claimed', () => {
+      // 1. Pure helper calculations
+      const meta = { heatLevel: 2 };
+      const player = { weapon: 'shotgun' };
+
+      // State 0/2: missing both
+      const adv0 = getLaunchGateAdvisor(meta, player, false, false);
+      expect(adv0.readyCount).toBe(0);
+      expect(adv0.totalChecks).toBe(2);
+      expect(adv0.isFullyPrepped).toBe(false);
+      expect(adv0.missingBuffs).toEqual(['SCANNER BUFF', 'WAR ROOM CACHE']);
+      expect(adv0.summaryLine).toBe(
+        'PRE-FLIGHT: ⚠️ MISSING SCANNER BUFF & WAR ROOM CACHE // WEAPON: SHOTGUN // HEAT 2'
+      );
+
+      // State 1/2: scanner buff claimed, missing war room cache
+      const advScannerOnly = getLaunchGateAdvisor(meta, player, true, false);
+      expect(advScannerOnly.readyCount).toBe(1);
+      expect(advScannerOnly.isFullyPrepped).toBe(false);
+      expect(advScannerOnly.missingBuffs).toEqual(['WAR ROOM CACHE']);
+      expect(advScannerOnly.summaryLine).toBe(
+        'PRE-FLIGHT: ⚠️ MISSING WAR ROOM CACHE // WEAPON: SHOTGUN // HEAT 2'
+      );
+
+      // State 1/2: war room cache claimed, missing scanner buff
+      const advCacheOnly = getLaunchGateAdvisor(meta, player, false, true);
+      expect(advCacheOnly.readyCount).toBe(1);
+      expect(advCacheOnly.isFullyPrepped).toBe(false);
+      expect(advCacheOnly.missingBuffs).toEqual(['SCANNER BUFF']);
+      expect(advCacheOnly.summaryLine).toBe(
+        'PRE-FLIGHT: ⚠️ MISSING SCANNER BUFF // WEAPON: SHOTGUN // HEAT 2'
+      );
+
+      // State 2/2: fully prepped
+      const adv2 = getLaunchGateAdvisor(meta, player, true, true);
+      expect(adv2.readyCount).toBe(2);
+      expect(adv2.totalChecks).toBe(2);
+      expect(adv2.isFullyPrepped).toBe(true);
+      expect(adv2.missingBuffs).toEqual([]);
+      expect(adv2.summaryLine).toBe(
+        'PRE-FLIGHT: ✓ 2/2 BUFFS LOCKED // WEAPON: SHOTGUN // HEAT 2'
+      );
+
+      // 2. HubStationModalController DOM Telemetry at 'launch'
+      document.body.innerHTML = HUB_STATION_HTML;
+      const modal = new HubStationModalController();
+      const onClaimScanner = vi.fn();
+      const onClaimBountyCache = vi.fn();
+      const onLaunchRun = vi.fn();
+
+      modal.open('launch', meta, player, false, false, {
+        onClaimScanner,
+        onClaimBountyCache,
+        onLaunchRun
+      });
+
+      const overlayEl = document.getElementById('hub-station-overlay')!;
+      expect(overlayEl.getAttribute('data-launch-ready-count')).toBe('0');
+      expect(overlayEl.getAttribute('data-launch-fully-prepped')).toBe('false');
+      expect(overlayEl.getAttribute('data-launch-advisor')).toBe(
+        'PRE-FLIGHT: ⚠️ MISSING SCANNER BUFF & WAR ROOM CACHE // WEAPON: SHOTGUN // HEAT 2'
+      );
+
+      // Auto-claim all free pre-run buffs via #btn-hub-autoclaim
+      const autoClaimBtn = document.getElementById('btn-hub-autoclaim') as HTMLButtonElement;
+      expect(autoClaimBtn).not.toBeNull();
+      autoClaimBtn.click();
+
+      expect(onClaimScanner).toHaveBeenCalledTimes(1);
+      expect(onClaimBountyCache).toHaveBeenCalledTimes(1);
+      expect(overlayEl.getAttribute('data-launch-ready-count')).toBe('2');
+      expect(overlayEl.getAttribute('data-launch-fully-prepped')).toBe('true');
+      expect(overlayEl.getAttribute('data-launch-advisor')).toBe(
+        'PRE-FLIGHT: ✓ 2/2 BUFFS LOCKED // WEAPON: SHOTGUN // HEAT 2'
+      );
+      expect(document.querySelector('.hub-ready-banner')?.textContent).toContain(
+        'All free pre-run systems calibrated'
+      );
+
+      // Deploy into run
+      const primaryBtn = document.getElementById('btn-hub-station-primary') as HTMLButtonElement;
+      primaryBtn.click();
+      expect(modal.isOpen()).toBe(false);
+      expect(onLaunchRun).toHaveBeenCalledTimes(1);
+
+      document.body.innerHTML = '';
+    });
+
+    it('verifies getShopBudgetSummary and ShopModalController accurately compute affordableCount, cheapestCost, totalBuyoutCost, canBuyoutAll, and data-shop-budget-summary across broke, partial-budget, full-buyout, and sold-out shop states', () => {
+      const inventory = [
+        { cost: 15, name: 'Tire Iron' },
+        { cost: 30, name: 'Supercharger' },
+        { cost: 45, name: 'Cryo Rounds' }
+      ];
+
+      // 1. Broke state (coins: 5)
+      const broke = getShopBudgetSummary(inventory, 5);
+      expect(broke.playerCoins).toBe(5);
+      expect(broke.totalItems).toBe(3);
+      expect(broke.affordableCount).toBe(0);
+      expect(broke.cheapestCost).toBe(15);
+      expect(broke.totalBuyoutCost).toBe(90);
+      expect(broke.canBuyoutAll).toBe(false);
+      expect(broke.summaryLine).toBe(
+        'BUDGET: 5 COINS 🪙 // AFFORDABLE: 0/3 ITEMS // BUYOUT: 90 🪙'
+      );
+
+      // 2. Partial-budget state (coins: 35)
+      const partial = getShopBudgetSummary(inventory, 35);
+      expect(partial.playerCoins).toBe(35);
+      expect(partial.totalItems).toBe(3);
+      expect(partial.affordableCount).toBe(2);
+      expect(partial.cheapestCost).toBe(15);
+      expect(partial.totalBuyoutCost).toBe(90);
+      expect(partial.canBuyoutAll).toBe(false);
+      expect(partial.summaryLine).toBe(
+        'BUDGET: 35 COINS 🪙 // AFFORDABLE: 2/3 ITEMS // BUYOUT: 90 🪙'
+      );
+
+      // 3. Full-buyout state (coins: 120)
+      const buyout = getShopBudgetSummary(inventory, 120);
+      expect(buyout.playerCoins).toBe(120);
+      expect(buyout.totalItems).toBe(3);
+      expect(buyout.affordableCount).toBe(3);
+      expect(buyout.cheapestCost).toBe(15);
+      expect(buyout.totalBuyoutCost).toBe(90);
+      expect(buyout.canBuyoutAll).toBe(true);
+      expect(buyout.summaryLine).toBe(
+        'BUDGET: 120 COINS 🪙 // AFFORDABLE: 3/3 ITEMS // BUYOUT: 90 🪙'
+      );
+
+      // 4. Sold-out state (empty pickups, coins: 50)
+      const soldOut = getShopBudgetSummary([], 50);
+      expect(soldOut.playerCoins).toBe(50);
+      expect(soldOut.totalItems).toBe(0);
+      expect(soldOut.affordableCount).toBe(0);
+      expect(soldOut.cheapestCost).toBeNull();
+      expect(soldOut.totalBuyoutCost).toBe(0);
+      expect(soldOut.canBuyoutAll).toBe(false);
+      expect(soldOut.summaryLine).toBe('BUDGET: 50 COINS 🪙 // SHOP SOLD OUT');
+
+      // 5. ShopModalController DOM attributes synchronization
+      document.body.innerHTML = SHOP_MODAL_HTML;
+      const modal = new ShopModalController();
+      const overlay = document.getElementById('shop-confirm-overlay')!;
+
+      // Partial budget open
+      modal.open(inventory as any, vi.fn(), undefined, 35);
+      expect(overlay.getAttribute('data-shop-affordable-count')).toBe('2');
+      expect(overlay.getAttribute('data-shop-buyout-cost')).toBe('90');
+      expect(overlay.getAttribute('data-shop-budget-summary')).toBe(partial.summaryLine);
+
+      // Broke state re-render
+      modal.render(inventory, 5);
+      expect(overlay.getAttribute('data-shop-affordable-count')).toBe('0');
+      expect(overlay.getAttribute('data-shop-buyout-cost')).toBe('90');
+      expect(overlay.getAttribute('data-shop-budget-summary')).toBe(broke.summaryLine);
+
+      // Full buyout re-render
+      modal.render(inventory, 120);
+      expect(overlay.getAttribute('data-shop-affordable-count')).toBe('3');
+      expect(overlay.getAttribute('data-shop-buyout-cost')).toBe('90');
+      expect(overlay.getAttribute('data-shop-budget-summary')).toBe(buyout.summaryLine);
+
+      // Sold out re-render
+      modal.render([], 50);
+      expect(overlay.getAttribute('data-shop-affordable-count')).toBe('0');
+      expect(overlay.getAttribute('data-shop-buyout-cost')).toBe('0');
+      expect(overlay.getAttribute('data-shop-budget-summary')).toBe(soldOut.summaryLine);
+
+      modal.close();
+      document.body.innerHTML = '';
+    });
+
+    it('verifies HUDController.updateModDeckTelemetry and .mod-badge data-mod-evo-hint attributes (formatModDeckTooltipHint) update across 1/3, 2/3 NEAR EVO, 3+ OVERCLOCK READY, and active Duo Synergy states', () => {
+      // 1. Tooltip Hint formatting across stack milestones and synergies
+      const p1 = { ...createDefaultPlayerState(), modStacks: { armor_plate: 1 } };
+      const hint1 = formatModDeckTooltipHint('armor_plate', p1);
+      expect(hint1).toContain('📦 STACKS: 1/3 FOR OVERCLOCK EVO');
+
+      const p2 = { ...createDefaultPlayerState(), modStacks: { hollow_point: 2 } };
+      const hint2 = formatModDeckTooltipHint('hollow_point', p2);
+      expect(hint2).toContain('🔥 2/3 STACKS: +1 STACK FOR OVERCLOCK EVO');
+
+      const p3 = { ...createDefaultPlayerState(), modStacks: { hair_trigger: 3 } };
+      const hint3 = formatModDeckTooltipHint('hair_trigger', p3);
+      expect(hint3).toContain('⚡ 3+ STACKS: GENERIC OVERCLOCK READY');
+
+      // Duo Synergy: cryo_rounds (1) + high_explosive (2) -> Thermal Shock
+      const pDuo = {
+        ...createDefaultPlayerState(),
+        modStacks: {
+          cryo_rounds: 1,
+          high_explosive: 2
+        }
+      };
+      const cryoHint = formatModDeckTooltipHint('cryo_rounds', pDuo);
+      const heHint = formatModDeckTooltipHint('high_explosive', pDuo);
+      expect(cryoHint).toContain('✓ DUO ACTIVE: THERMAL SHOCK');
+      expect(heHint).toContain('✓ DUO ACTIVE: THERMAL SHOCK');
+      expect(heHint).toContain('+1 STACK FOR OVERCLOCK EVO');
+
+      // 2. HUDController.updateModDeckTelemetry DOM attributes and badge hint injection
+      document.body.innerHTML = `
+        <div id="hud-mods-bar">
+          <span class="mod-badge" data-mod-id="armor_plate" title="Armor Plating" data-tip="Armor Plating"></span>
+          <span class="mod-badge" data-mod-id="hollow_point" title="Hollow Point" data-tip="Hollow Point"></span>
+          <span class="mod-badge" data-mod-id="hair_trigger" title="Hair Trigger" data-tip="Hair Trigger"></span>
+          <span class="mod-badge" data-mod-id="cryo_rounds" title="Cryo Rounds" data-tip="Cryo Rounds"></span>
+          <span class="mod-badge" data-mod-id="high_explosive" title="High Explosive" data-tip="High Explosive"></span>
+        </div>
+        <div id="hud-synergy-list"></div>
+        <div id="hud-sidebar"></div>
+      `;
+
+      const fullPlayer: PlayerState = {
+        ...createDefaultPlayerState(),
+        itemStacks: {
+          armor_plate: 1,
+          hollow_point: 2,
+          hair_trigger: 3,
+          cryo_rounds: 1,
+          high_explosive: 2
+        }
+      };
+      (fullPlayer as any).modStacks = { ...fullPlayer.itemStacks };
+
+      const hud = new HUDController();
+      hud.updateModDeckTelemetry(fullPlayer);
+
+      // Verify container telemetry attributes
+      const modsBar = document.getElementById('hud-mods-bar')!;
+      const synergyList = document.getElementById('hud-synergy-list')!;
+      const sidebar = document.getElementById('hud-sidebar')!;
+
+      for (const el of [modsBar, synergyList, sidebar]) {
+        expect(el.getAttribute('data-mod-total-picks')).toBe('9');
+        expect(el.getAttribute('data-mod-unique-count')).toBe('5');
+        expect(el.getAttribute('data-mod-evo-ready')).toBe('true');
+        expect(el.getAttribute('data-mod-active-duos')).toBe('1');
+        expect(el.getAttribute('data-mod-deck-summary')).toContain('MODS: 9 PICKS (5 UNIQUE)');
+        expect(el.getAttribute('data-mod-deck-summary')).toContain('3+ STACK EVO READY');
+        expect(el.getAttribute('data-mod-deck-summary')).toContain('DUOS: 1 ACTIVE');
+      }
+
+      // Verify .mod-badge attributes
+      const badgeArmor = document.querySelector<HTMLElement>('#hud-mods-bar [data-mod-id="armor_plate"]')!;
+      const badgeHp = document.querySelector<HTMLElement>('#hud-mods-bar [data-mod-id="hollow_point"]')!;
+      const badgeHt = document.querySelector<HTMLElement>('#hud-mods-bar [data-mod-id="hair_trigger"]')!;
+      const badgeCryo = document.querySelector<HTMLElement>('#hud-mods-bar [data-mod-id="cryo_rounds"]')!;
+      const badgeHe = document.querySelector<HTMLElement>('#hud-mods-bar [data-mod-id="high_explosive"]')!;
+
+      expect(badgeArmor.getAttribute('data-mod-evo-hint')).toContain('1/3 FOR OVERCLOCK EVO');
+      expect(badgeArmor.getAttribute('data-tip')).toContain('1/3 FOR OVERCLOCK EVO');
+      expect(badgeArmor.getAttribute('title')).toContain('1/3 FOR OVERCLOCK EVO');
+
+      expect(badgeHp.getAttribute('data-mod-evo-hint')).toContain('2/3 STACKS: +1 STACK FOR OVERCLOCK EVO');
+      expect(badgeHp.getAttribute('data-tip')).toContain('2/3 STACKS: +1 STACK FOR OVERCLOCK EVO');
+
+      expect(badgeHt.getAttribute('data-mod-evo-hint')).toContain('3+ STACKS: GENERIC OVERCLOCK READY');
+      expect(badgeHt.getAttribute('data-tip')).toContain('3+ STACKS: GENERIC OVERCLOCK READY');
+
+      expect(badgeCryo.getAttribute('data-mod-evo-hint')).toContain('✓ DUO ACTIVE: THERMAL SHOCK');
+      expect(badgeCryo.getAttribute('data-tip')).toContain('✓ DUO ACTIVE: THERMAL SHOCK');
+
+      expect(badgeHe.getAttribute('data-mod-evo-hint')).toContain('✓ DUO ACTIVE: THERMAL SHOCK');
+      expect(badgeHe.getAttribute('data-mod-evo-hint')).toContain('+1 STACK FOR OVERCLOCK EVO');
+      expect(badgeHe.getAttribute('data-tip')).toContain('✓ DUO ACTIVE: THERMAL SHOCK');
+
+      document.body.innerHTML = '';
     });
   });
 });

@@ -21,6 +21,8 @@ import {
   PortalRiskAssessment,
   getPortalHeatBriefing,
   PortalHeatBriefing,
+  getPortalDescentSummary,
+  PortalDescentSummary,
   PORTAL_X,
   PORTAL_Y,
   PORTAL_RADIUS,
@@ -3345,6 +3347,353 @@ describe('HubStationModalController & getHubStationPromptInfo (Wave 14-15)', () 
       expect(customOverlay.getAttribute('data-shop-budget-summary')).toBe(
         'BUDGET: 10 COINS 🪙 // AFFORDABLE: 1/2 ITEMS // BUYOUT: 20 🪙'
       );
+    });
+  });
+
+  describe('PortalModalController combined pre-descent summary (M127)', () => {
+    describe('getPortalDescentSummary pure helper across floors 1-6', () => {
+      it('calculates accurate pre-descent summary for Floor 1 (nextFloor 2)', () => {
+        const summary: PortalDescentSummary = getPortalDescentSummary(1, 6, 6, 0);
+        expect(summary.currentFloor).toBe(1);
+        expect(summary.nextFloor).toBe(2);
+        expect(summary.biomeName).toBe('SMELTER FOUNDRY');
+        expect(summary.bossName).toBe('SIEGE BEHEMOTH');
+        expect(summary.threatMult).toBe('1.55x');
+        expect(summary.readinessLabel).toBe('★ FULL INTEGRITY');
+        expect(summary.isLowHullWarning).toBe(false);
+        expect(summary.heatLevel).toBe(0);
+        expect(summary.scrapBonusText).toBe('+0% Bonus Scrap');
+        expect(summary.summaryLine).toBe(
+          'SECTOR 2: SMELTER FOUNDRY (BOSS: SIEGE BEHEMOTH · 1.55x) // HULL: ★ FULL INTEGRITY // HEAT 0 // STANDARD (+0% Bonus Scrap)'
+        );
+      });
+
+      it('calculates accurate pre-descent summary for Floor 2 (nextFloor 3)', () => {
+        const summary = getPortalDescentSummary(2, 4, 6, 1);
+        expect(summary.currentFloor).toBe(2);
+        expect(summary.nextFloor).toBe(3);
+        expect(summary.biomeName).toBe('NEON CYBER-FREEWAY');
+        expect(summary.bossName).toBe('OVERLORD HELION');
+        expect(summary.threatMult).toBe('2.40x');
+        expect(summary.readinessLabel).toBe('⚡ COMBAT READY');
+        expect(summary.isLowHullWarning).toBe(false);
+        expect(summary.heatLevel).toBe(1);
+        expect(summary.scrapBonusText).toBe('+25% Bonus Scrap');
+        expect(summary.summaryLine).toBe(
+          'SECTOR 3: NEON CYBER-FREEWAY (BOSS: OVERLORD HELION · 2.40x) // HULL: ⚡ COMBAT READY // HEAT 1 // OVERCLOCKED (+25% Bonus Scrap)'
+        );
+      });
+
+      it('calculates accurate pre-descent summary for Floor 3 (nextFloor 4)', () => {
+        const summary = getPortalDescentSummary(3, 1, 6, 2);
+        expect(summary.currentFloor).toBe(3);
+        expect(summary.nextFloor).toBe(4);
+        expect(summary.biomeName).toBe('SUB-ZERO CRYO LAB');
+        expect(summary.bossName).toBe('CRYO VALKYRIE');
+        expect(summary.threatMult).toBe('3.72x');
+        expect(summary.readinessLabel).toBe('⚠️ CRITICAL HULL');
+        expect(summary.isLowHullWarning).toBe(true);
+        expect(summary.heatLevel).toBe(2);
+        expect(summary.scrapBonusText).toBe('+50% Bonus Scrap');
+        expect(summary.summaryLine).toBe(
+          'SECTOR 4: SUB-ZERO CRYO LAB (BOSS: CRYO VALKYRIE · 3.72x) // HULL: ⚠️ CRITICAL HULL // HEAT 2 // BLOOD PACT (+50% Bonus Scrap)'
+        );
+      });
+
+      it('calculates accurate pre-descent summary for Floor 4 (nextFloor 5)', () => {
+        const summary = getPortalDescentSummary(4, 5, 6, 3);
+        expect(summary.currentFloor).toBe(4);
+        expect(summary.nextFloor).toBe(5);
+        expect(summary.biomeName).toBe('MAGMA CORE');
+        expect(summary.bossName).toBe('INFERNO COLOSSUS');
+        expect(summary.threatMult).toBe('5.77x');
+        expect(summary.readinessLabel).toBe('⚡ COMBAT READY');
+        expect(summary.isLowHullWarning).toBe(false);
+        expect(summary.heatLevel).toBe(3);
+        expect(summary.scrapBonusText).toBe('+75% Bonus Scrap');
+        expect(summary.summaryLine).toBe(
+          'SECTOR 5: MAGMA CORE (BOSS: INFERNO COLOSSUS · 5.77x) // HULL: ⚡ COMBAT READY // HEAT 3 // VALHALLA INFERNO (+75% Bonus Scrap)'
+        );
+      });
+
+      it('calculates accurate pre-descent summary for Floor 5 (nextFloor 6)', () => {
+        const summary = getPortalDescentSummary(5, 2, 6, 0);
+        expect(summary.currentFloor).toBe(5);
+        expect(summary.nextFloor).toBe(6);
+        expect(summary.biomeName).toBe('CHROME CITADEL');
+        expect(summary.bossName).toBe('OMEGA VALHALLA');
+        expect(summary.threatMult).toBe('8.95x');
+        expect(summary.readinessLabel).toBe('⚠️ CRITICAL HULL');
+        expect(summary.isLowHullWarning).toBe(true);
+        expect(summary.heatLevel).toBe(0);
+        expect(summary.scrapBonusText).toBe('+0% Bonus Scrap');
+        expect(summary.summaryLine).toBe(
+          'SECTOR 6: CHROME CITADEL (BOSS: OMEGA VALHALLA · 8.95x) // HULL: ⚠️ CRITICAL HULL // HEAT 0 // STANDARD (+0% Bonus Scrap)'
+        );
+      });
+
+      it('calculates accurate pre-descent summary for Floor 6 (nextFloor 7 - Endless Valhalla)', () => {
+        const summary = getPortalDescentSummary(6, 6, 6, 1);
+        expect(summary.currentFloor).toBe(6);
+        expect(summary.nextFloor).toBe(7);
+        expect(summary.biomeName).toBe('ENDLESS VALHALLA OVERDRIVE');
+        expect(summary.bossName).toBe('OMEGA VALHALLA');
+        expect(summary.threatMult).toBe('13.87x');
+        expect(summary.readinessLabel).toBe('★ FULL INTEGRITY');
+        expect(summary.isLowHullWarning).toBe(false);
+        expect(summary.heatLevel).toBe(1);
+        expect(summary.scrapBonusText).toBe('+25% Bonus Scrap');
+        expect(summary.summaryLine).toBe(
+          'SECTOR 7: ENDLESS VALHALLA OVERDRIVE (BOSS: OMEGA VALHALLA · 13.87x) // HULL: ★ FULL INTEGRITY // HEAT 1 // OVERCLOCKED (+25% Bonus Scrap)'
+        );
+      });
+
+      it('calculates accurate pre-descent summary for Endless Floor 7+ (nextFloor 8+)', () => {
+        const summary = getPortalDescentSummary(7, 3, 6, 2);
+        expect(summary.currentFloor).toBe(7);
+        expect(summary.nextFloor).toBe(8);
+        expect(summary.biomeName).toBe('ENDLESS VALHALLA OVERDRIVE');
+        expect(summary.bossName).toBe('OMEGA VALHALLA');
+        expect(summary.threatMult).toBe('21.49x');
+        expect(summary.readinessLabel).toBe('⚡ COMBAT READY');
+        expect(summary.isLowHullWarning).toBe(false);
+        expect(summary.heatLevel).toBe(2);
+        expect(summary.scrapBonusText).toBe('+50% Bonus Scrap');
+        expect(summary.summaryLine).toBe(
+          'SECTOR 8: ENDLESS VALHALLA OVERDRIVE (BOSS: OMEGA VALHALLA · 21.49x) // HULL: ⚡ COMBAT READY // HEAT 2 // BLOOD PACT (+50% Bonus Scrap)'
+        );
+      });
+    });
+
+    describe('hull readiness states in summary', () => {
+      it('handles critical hull states (<= 35% maxHp)', () => {
+        const crit1 = getPortalDescentSummary(1, 1, 6, 0);
+        expect(crit1.readinessLabel).toBe('⚠️ CRITICAL HULL');
+        expect(crit1.isLowHullWarning).toBe(true);
+        expect(crit1.summaryLine).toContain('// HULL: ⚠️ CRITICAL HULL //');
+
+        const critExact35 = getPortalDescentSummary(1, 35, 100, 0);
+        expect(critExact35.readinessLabel).toBe('⚠️ CRITICAL HULL');
+        expect(critExact35.isLowHullWarning).toBe(true);
+
+        const critZero = getPortalDescentSummary(1, 0, 6, 0);
+        expect(critZero.readinessLabel).toBe('⚠️ CRITICAL HULL');
+        expect(critZero.isLowHullWarning).toBe(true);
+      });
+
+      it('handles normal combat ready hull states (> 35% and < 100% maxHp)', () => {
+        const normal = getPortalDescentSummary(2, 4, 6, 0);
+        expect(normal.readinessLabel).toBe('⚡ COMBAT READY');
+        expect(normal.isLowHullWarning).toBe(false);
+        expect(normal.summaryLine).toContain('// HULL: ⚡ COMBAT READY //');
+
+        const justAbove35 = getPortalDescentSummary(2, 36, 100, 0);
+        expect(justAbove35.readinessLabel).toBe('⚡ COMBAT READY');
+        expect(justAbove35.isLowHullWarning).toBe(false);
+      });
+
+      it('handles full integrity hull states (>= 100% maxHp)', () => {
+        const full = getPortalDescentSummary(3, 6, 6, 0);
+        expect(full.readinessLabel).toBe('★ FULL INTEGRITY');
+        expect(full.isLowHullWarning).toBe(false);
+        expect(full.summaryLine).toContain('// HULL: ★ FULL INTEGRITY //');
+
+        const overhealed = getPortalDescentSummary(3, 8, 6, 0);
+        expect(overhealed.readinessLabel).toBe('★ FULL INTEGRITY');
+        expect(overhealed.isLowHullWarning).toBe(false);
+      });
+
+      it('handles omitted or missing playerHp / playerMaxHp', () => {
+        const noHp = getPortalDescentSummary(1);
+        expect(noHp.readinessLabel).toBe('⚡ COMBAT READY');
+        expect(noHp.isLowHullWarning).toBe(false);
+        expect(noHp.summaryLine).toContain('// HULL: ⚡ COMBAT READY //');
+
+        const missingMaxHp = getPortalDescentSummary(1, 4, undefined);
+        expect(missingMaxHp.readinessLabel).toBe('⚡ COMBAT READY');
+        expect(missingMaxHp.isLowHullWarning).toBe(false);
+
+        const zeroMaxHp = getPortalDescentSummary(1, 4, 0);
+        expect(zeroMaxHp.readinessLabel).toBe('⚡ COMBAT READY');
+        expect(zeroMaxHp.isLowHullWarning).toBe(false);
+      });
+    });
+
+    describe('heat modifier briefing in summary', () => {
+      it.each([
+        {
+          heat: 0,
+          expectedLevel: 0,
+          expectedBonus: '+0% Bonus Scrap',
+          expectedLabel: 'HEAT 0 // STANDARD'
+        },
+        {
+          heat: 1,
+          expectedLevel: 1,
+          expectedBonus: '+25% Bonus Scrap',
+          expectedLabel: 'HEAT 1 // OVERCLOCKED'
+        },
+        {
+          heat: 2,
+          expectedLevel: 2,
+          expectedBonus: '+50% Bonus Scrap',
+          expectedLabel: 'HEAT 2 // BLOOD PACT'
+        },
+        {
+          heat: 3,
+          expectedLevel: 3,
+          expectedBonus: '+75% Bonus Scrap',
+          expectedLabel: 'HEAT 3 // VALHALLA INFERNO'
+        }
+      ])('formats Heat $heat correctly in pre-descent summary', ({ heat, expectedLevel, expectedBonus, expectedLabel }) => {
+        const summary = getPortalDescentSummary(1, 6, 6, heat);
+        expect(summary.heatLevel).toBe(expectedLevel);
+        expect(summary.scrapBonusText).toBe(expectedBonus);
+        expect(summary.summaryLine).toContain(`// ${expectedLabel} (${expectedBonus})`);
+      });
+
+      it('clamps out-of-range heat values to 0..3', () => {
+        const underflow = getPortalDescentSummary(1, 6, 6, -5);
+        expect(underflow.heatLevel).toBe(0);
+        expect(underflow.scrapBonusText).toBe('+0% Bonus Scrap');
+
+        const overflow = getPortalDescentSummary(1, 6, 6, 9);
+        expect(overflow.heatLevel).toBe(3);
+        expect(overflow.scrapBonusText).toBe('+75% Bonus Scrap');
+
+        const rounded = getPortalDescentSummary(1, 6, 6, 2.7);
+        expect(rounded.heatLevel).toBe(3);
+      });
+    });
+
+    describe('input sanitization and boundary handling', () => {
+      it('defaults invalid currentFloor numbers to 1', () => {
+        expect(getPortalDescentSummary(NaN).currentFloor).toBe(1);
+        expect(getPortalDescentSummary(Infinity).currentFloor).toBe(1);
+        expect(getPortalDescentSummary(-Infinity).currentFloor).toBe(1);
+        expect(getPortalDescentSummary(0).currentFloor).toBe(1);
+        expect(getPortalDescentSummary(-10).currentFloor).toBe(1);
+        expect(getPortalDescentSummary('4' as any).currentFloor).toBe(1);
+        expect(getPortalDescentSummary(undefined).currentFloor).toBe(1);
+      });
+
+      it('floors fractional currentFloor numbers to integers', () => {
+        const fractional = getPortalDescentSummary(3.85);
+        expect(fractional.currentFloor).toBe(3);
+        expect(fractional.nextFloor).toBe(4);
+        expect(fractional.biomeName).toBe('SUB-ZERO CRYO LAB');
+      });
+    });
+
+    describe('controller static and instance integration', () => {
+      it('is accessible via PortalModalController static and instance methods', () => {
+        expect(PortalModalController.getPortalDescentSummary(2, 4, 6, 1)).toEqual(
+          getPortalDescentSummary(2, 4, 6, 1)
+        );
+
+        const controller = new PortalModalController();
+        expect(controller.getPortalDescentSummary(3, 1, 6, 2)).toEqual(
+          getPortalDescentSummary(3, 1, 6, 2)
+        );
+      });
+    });
+
+    describe('DOM attribute updates on #portal-confirm-overlay', () => {
+      let modal: PortalModalController;
+      let overlay: HTMLElement;
+
+      beforeEach(() => {
+        document.body.innerHTML = MARKUP;
+        overlay = document.getElementById('portal-confirm-overlay')!;
+        modal = new PortalModalController();
+      });
+
+      afterEach(() => {
+        modal.close();
+        document.body.innerHTML = '';
+      });
+
+      it('sets data-portal attributes on open with normal hull and heat 0', () => {
+        modal.open({ floorNum: 1, playerHp: 6, playerMaxHp: 6, heatLevel: 0 }, vi.fn());
+
+        expect(overlay.getAttribute('data-portal-next-floor')).toBe('2');
+        expect(overlay.getAttribute('data-portal-boss')).toBe('SIEGE BEHEMOTH');
+        expect(overlay.getAttribute('data-portal-low-hull')).toBe('false');
+        expect(overlay.getAttribute('data-portal-descent-summary')).toBe(
+          'SECTOR 2: SMELTER FOUNDRY (BOSS: SIEGE BEHEMOTH · 1.55x) // HULL: ★ FULL INTEGRITY // HEAT 0 // STANDARD (+0% Bonus Scrap)'
+        );
+      });
+
+      it('sets data-portal attributes on open with critical hull and heat 2', () => {
+        modal.open({ floorNum: 2, playerHp: 1, playerMaxHp: 6, heatLevel: 2 }, vi.fn());
+
+        expect(overlay.getAttribute('data-portal-next-floor')).toBe('3');
+        expect(overlay.getAttribute('data-portal-boss')).toBe('OVERLORD HELION');
+        expect(overlay.getAttribute('data-portal-low-hull')).toBe('true');
+        expect(overlay.getAttribute('data-portal-descent-summary')).toBe(
+          'SECTOR 3: NEON CYBER-FREEWAY (BOSS: OVERLORD HELION · 2.40x) // HULL: ⚠️ CRITICAL HULL // HEAT 2 // BLOOD PACT (+50% Bonus Scrap)'
+        );
+      });
+
+      it('sets data-portal attributes on open for Floor 5 -> 6 Citadel confrontation', () => {
+        modal.open({ floorNum: 5, playerHp: 4, playerMaxHp: 6, heatLevel: 3 }, vi.fn());
+
+        expect(overlay.getAttribute('data-portal-next-floor')).toBe('6');
+        expect(overlay.getAttribute('data-portal-boss')).toBe('OMEGA VALHALLA');
+        expect(overlay.getAttribute('data-portal-low-hull')).toBe('false');
+        expect(overlay.getAttribute('data-portal-descent-summary')).toBe(
+          'SECTOR 6: CHROME CITADEL (BOSS: OMEGA VALHALLA · 8.95x) // HULL: ⚡ COMBAT READY // HEAT 3 // VALHALLA INFERNO (+75% Bonus Scrap)'
+        );
+      });
+
+      it('sets data-portal attributes when render() is called with context object', () => {
+        modal.render({ floorNum: 3, playerHp: 1, playerMaxHp: 6, heatLevel: 1 });
+
+        expect(overlay.getAttribute('data-portal-next-floor')).toBe('4');
+        expect(overlay.getAttribute('data-portal-boss')).toBe('CRYO VALKYRIE');
+        expect(overlay.getAttribute('data-portal-low-hull')).toBe('true');
+        expect(overlay.getAttribute('data-portal-descent-summary')).toBe(
+          'SECTOR 4: SUB-ZERO CRYO LAB (BOSS: CRYO VALKYRIE · 3.72x) // HULL: ⚠️ CRITICAL HULL // HEAT 1 // OVERCLOCKED (+25% Bonus Scrap)'
+        );
+      });
+
+      it('sets data-portal attributes when render() is called with discrete arguments', () => {
+        modal.render(4, 6, 6, 2);
+
+        expect(overlay.getAttribute('data-portal-next-floor')).toBe('5');
+        expect(overlay.getAttribute('data-portal-boss')).toBe('INFERNO COLOSSUS');
+        expect(overlay.getAttribute('data-portal-low-hull')).toBe('false');
+        expect(overlay.getAttribute('data-portal-descent-summary')).toBe(
+          'SECTOR 5: MAGMA CORE (BOSS: INFERNO COLOSSUS · 5.77x) // HULL: ★ FULL INTEGRITY // HEAT 2 // BLOOD PACT (+50% Bonus Scrap)'
+        );
+      });
+
+      it('sets data-portal attributes when render() is called parameterless reusing last open context', () => {
+        modal.open({ floorNum: 2, playerHp: 2, playerMaxHp: 6, heatLevel: 0 }, vi.fn());
+        expect(overlay.getAttribute('data-portal-next-floor')).toBe('3');
+
+        // Calling render() parameterless
+        modal.render();
+        expect(overlay.getAttribute('data-portal-next-floor')).toBe('3');
+        expect(overlay.getAttribute('data-portal-boss')).toBe('OVERLORD HELION');
+        expect(overlay.getAttribute('data-portal-low-hull')).toBe('true');
+      });
+
+      it('supports custom overlayEl setter and updates attributes on custom element', () => {
+        expect(modal.overlayEl).toBe(overlay);
+
+        const customOverlay = document.createElement('div');
+        modal.overlayEl = customOverlay;
+        expect(modal.overlayEl).toBe(customOverlay);
+
+        modal.render(1, 6, 6, 0);
+        expect(customOverlay.getAttribute('data-portal-next-floor')).toBe('2');
+        expect(customOverlay.getAttribute('data-portal-boss')).toBe('SIEGE BEHEMOTH');
+        expect(customOverlay.getAttribute('data-portal-low-hull')).toBe('false');
+        expect(customOverlay.getAttribute('data-portal-descent-summary')).toBe(
+          'SECTOR 2: SMELTER FOUNDRY (BOSS: SIEGE BEHEMOTH · 1.55x) // HULL: ★ FULL INTEGRITY // HEAT 0 // STANDARD (+0% Bonus Scrap)'
+        );
+      });
     });
   });
 });

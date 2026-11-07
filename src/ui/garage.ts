@@ -66,6 +66,46 @@ export const BIKE_LIVERIES: readonly BikeLiveryDef[] = [
   { id: 'toxic_hazard', name: 'TOXIC HAZARD', primary: '#38b000', secondary: '#004b23', accent: '#b5e48c' }
 ] as const;
 
+export interface LiveryCollectionSummary {
+  activeLiveryId: BikeLiveryId;
+  activeLiveryName: string;
+  primaryColor: string;
+  secondaryColor: string;
+  totalLiveries: number;
+  summaryLine: string;
+}
+
+const LIVERY_ALIASES: Record<string, BikeLiveryId> = {
+  valhalla_gold: 'golden_valhalla',
+  cyber_cyan: 'cyber_neon',
+  toxic_viper: 'toxic_hazard'
+};
+
+export function getLiveryCollectionSummary(metaSave?: MetaSaveState | null): LiveryCollectionSummary {
+  const rawId = metaSave?.livery;
+  const normalizedId = rawId ? (LIVERY_ALIASES[rawId] || rawId) : rawId;
+  const matched = BIKE_LIVERIES.find(l => l.id === normalizedId || l.id === rawId) || BIKE_LIVERIES[0];
+  const totalLiveries = BIKE_LIVERIES.length;
+  const summaryLine =
+    'LIVERY: ' +
+    matched.name.toUpperCase() +
+    ' (' +
+    matched.primary +
+    ' / ' +
+    matched.secondary +
+    ') // ' +
+    totalLiveries +
+    ' CUSTOM PAINTS AVAILABLE';
+  return {
+    activeLiveryId: matched.id,
+    activeLiveryName: matched.name,
+    primaryColor: matched.primary,
+    secondaryColor: matched.secondary,
+    totalLiveries,
+    summaryLine
+  };
+}
+
 export interface WeaponMasteryInfo {
   tier: 0 | 1 | 2 | 3;
   label: string;
@@ -363,8 +403,13 @@ function slotIcon(slot: EquipSlot, item?: EquipmentItem | null): string {
 }
 
 export class GarageController {
+  public static getLiveryCollectionSummary = getLiveryCollectionSummary;
+  public getLiveryCollectionSummary = getLiveryCollectionSummary;
   private overlay: HTMLElement | null = null;
   public get overlayEl(): HTMLElement | null {
+    if (!this.overlay && typeof document !== 'undefined') {
+      this.overlay = document.getElementById('garage-overlay');
+    }
     return this.overlay;
   }
   public set overlayEl(el: HTMLElement | null) {
@@ -569,6 +614,20 @@ export class GarageController {
     this.overlayEl?.setAttribute('data-career-title', careerRank.title);
     this.overlayEl?.setAttribute('data-career-score', String(careerRank.careerScore));
 
+    const livSummary = getLiveryCollectionSummary(this.metaSave);
+    this.overlayEl?.setAttribute('data-active-livery-id', livSummary.activeLiveryId);
+    this.overlayEl?.setAttribute('data-active-livery-name', livSummary.activeLiveryName);
+    this.overlayEl?.setAttribute('data-livery-summary', livSummary.summaryLine);
+
+    if (!this.bikeCanvas && typeof document !== 'undefined') {
+      this.bikeCanvas = document.getElementById('bike-canvas') as HTMLCanvasElement | null;
+    }
+    if (this.bikeCanvas) {
+      this.bikeCanvas.setAttribute('data-active-livery-id', livSummary.activeLiveryId);
+      this.bikeCanvas.setAttribute('data-active-livery-name', livSummary.activeLiveryName);
+      this.bikeCanvas.setAttribute('data-livery-summary', livSummary.summaryLine);
+    }
+
     if (this.modalTitle) {
       this.modalTitle.textContent = 'GARAGE BAY';
     }
@@ -707,6 +766,20 @@ export class GarageController {
     this.overlayEl?.setAttribute('data-career-title', careerRank.title);
     this.overlayEl?.setAttribute('data-career-score', String(careerRank.careerScore));
 
+    const livSummary = getLiveryCollectionSummary(this.metaSave);
+    this.overlayEl?.setAttribute('data-active-livery-id', livSummary.activeLiveryId);
+    this.overlayEl?.setAttribute('data-active-livery-name', livSummary.activeLiveryName);
+    this.overlayEl?.setAttribute('data-livery-summary', livSummary.summaryLine);
+
+    if (!this.bikeCanvas && typeof document !== 'undefined') {
+      this.bikeCanvas = document.getElementById('bike-canvas') as HTMLCanvasElement | null;
+    }
+    if (this.bikeCanvas) {
+      this.bikeCanvas.setAttribute('data-active-livery-id', livSummary.activeLiveryId);
+      this.bikeCanvas.setAttribute('data-active-livery-name', livSummary.activeLiveryName);
+      this.bikeCanvas.setAttribute('data-livery-summary', livSummary.summaryLine);
+    }
+
     const bikeVisuals = getEquippedBikeVisualState(metaSave);
     this.overlayEl?.setAttribute('data-equipped-visual-count', String(bikeVisuals.equippedCount));
     this.overlayEl?.setAttribute('data-equipped-visual-slots', bikeVisuals.equippedSlots.join(','));
@@ -721,7 +794,7 @@ export class GarageController {
 
     this.renderHeader(metaSave, curPlayer);
     this.renderEquipmentBay(metaSave, curPlayer);
-    this.renderLiveryBar(metaSave, curPlayer || ({} as any));
+    this.renderLiverySwatches(metaSave, curPlayer || ({} as any));
     this.renderStash(metaSave);
     this.renderWeaponUnlocks(metaSave, curPlayer || ({} as any));
     this.renderMetaUpgrades(metaSave);
@@ -737,12 +810,33 @@ export class GarageController {
   }
 
   /**
-   * Renders the 5 custom bike paint livery swatches.
+   * Renders the custom bike paint livery swatches and syncs paint telemetry.
    */
-  private renderLiveryBar(metaSave: MetaSaveState, player: PlayerState): void {
+  public renderLiverySwatches(metaSave: MetaSaveState, player?: PlayerState | null): void {
+    const curPlayer = player || this.player || ({} as any);
+    const livSummary = getLiveryCollectionSummary(metaSave);
+
+    if (this.overlayEl) {
+      this.overlayEl.setAttribute('data-active-livery-id', livSummary.activeLiveryId);
+      this.overlayEl.setAttribute('data-active-livery-name', livSummary.activeLiveryName);
+      this.overlayEl.setAttribute('data-livery-summary', livSummary.summaryLine);
+    }
+
+    if (!this.bikeCanvas && typeof document !== 'undefined') {
+      this.bikeCanvas = document.getElementById('bike-canvas') as HTMLCanvasElement | null;
+    }
+    if (this.bikeCanvas) {
+      this.bikeCanvas.setAttribute('data-active-livery-id', livSummary.activeLiveryId);
+      this.bikeCanvas.setAttribute('data-active-livery-name', livSummary.activeLiveryName);
+      this.bikeCanvas.setAttribute('data-livery-summary', livSummary.summaryLine);
+    }
+
+    if (!this.liveryBar && typeof document !== 'undefined') {
+      this.liveryBar = document.getElementById('livery-bar') || document.getElementById('livery-swatches');
+    }
     if (!this.liveryBar) return;
     this.liveryBar.innerHTML = '';
-    const activeId: BikeLiveryId = metaSave.livery || player.livery || 'crimson_kaneda';
+    const activeId: BikeLiveryId = metaSave.livery || curPlayer.livery || 'crimson_kaneda';
 
     for (const liv of BIKE_LIVERIES) {
       const btn = document.createElement('button');
@@ -752,17 +846,25 @@ export class GarageController {
       btn.style.setProperty('--liv-col', liv.primary);
       btn.setAttribute('role', 'radio');
       btn.setAttribute('aria-checked', isActive ? 'true' : 'false');
+      btn.setAttribute('data-livery-id', liv.id);
       btn.innerHTML = `<span class="gx-livery-dot"></span><span>${esc(liv.name)}</span>`;
       btn.onclick = () => {
         this.callbacks.onPlayUiClick?.();
         metaSave.livery = liv.id;
-        player.livery = liv.id;
+        curPlayer.livery = liv.id;
         this.callbacks.onSelectLivery?.(liv.id);
-        this.renderLiveryBar(metaSave, player);
+        this.renderLiverySwatches(metaSave, curPlayer);
         this.drawBikeLift(metaSave);
       };
       this.liveryBar.appendChild(btn);
     }
+  }
+
+  /**
+   * Backward-compatibility alias for renderLiverySwatches.
+   */
+  public renderLiveryBar(metaSave: MetaSaveState, player: PlayerState): void {
+    this.renderLiverySwatches(metaSave, player);
   }
 
   /**
@@ -1191,11 +1293,24 @@ export class GarageController {
     this.overlayEl?.setAttribute('data-equipped-visual-slots', bikeVisuals.equippedSlots.join(','));
     this.overlayEl?.setAttribute('data-equipped-model-codes', bikeVisuals.modelCodes.join(','));
     this.overlayEl?.setAttribute('data-equipped-visual-summary', bikeVisuals.summaryLine);
+
+    const livSummary = getLiveryCollectionSummary(metaSave);
+    this.overlayEl?.setAttribute('data-active-livery-id', livSummary.activeLiveryId);
+    this.overlayEl?.setAttribute('data-active-livery-name', livSummary.activeLiveryName);
+    this.overlayEl?.setAttribute('data-livery-summary', livSummary.summaryLine);
+
+    if (!this.bikeCanvas && typeof document !== 'undefined') {
+      this.bikeCanvas = document.getElementById('bike-canvas') as HTMLCanvasElement | null;
+    }
     if (this.bikeCanvas) {
       this.bikeCanvas.setAttribute('data-equipped-visual-count', String(bikeVisuals.equippedCount));
       this.bikeCanvas.setAttribute('data-equipped-visual-slots', bikeVisuals.equippedSlots.join(','));
       this.bikeCanvas.setAttribute('data-equipped-model-codes', bikeVisuals.modelCodes.join(','));
       this.bikeCanvas.setAttribute('data-equipped-visual-summary', bikeVisuals.summaryLine);
+
+      this.bikeCanvas.setAttribute('data-active-livery-id', livSummary.activeLiveryId);
+      this.bikeCanvas.setAttribute('data-active-livery-name', livSummary.activeLiveryName);
+      this.bikeCanvas.setAttribute('data-livery-summary', livSummary.summaryLine);
     }
 
     if (!this.bikeCanvas || !this.bikeCtx) return;

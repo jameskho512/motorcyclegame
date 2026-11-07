@@ -178,6 +178,68 @@ export function getPortalHeatBriefing(heatLevel: number = 0): PortalHeatBriefing
   }
 }
 
+export interface PortalDescentSummary {
+  currentFloor: number;
+  nextFloor: number;
+  biomeName: string;
+  bossName: string;
+  threatMult: string;
+  readinessLabel: string;
+  isLowHullWarning: boolean;
+  heatLevel: number;
+  scrapBonusText: string;
+  summaryLine: string;
+}
+
+/**
+ * Pure helper calculating the combined pre-descent summary including next sector briefing,
+ * risk assessment (hull readiness), and heat modifier scaling.
+ */
+export function getPortalDescentSummary(
+  currentFloor: number = 1,
+  playerHp?: number,
+  playerMaxHp?: number,
+  heatLevel: number = 0
+): PortalDescentSummary {
+  const floor =
+    typeof currentFloor === 'number' && Number.isFinite(currentFloor) && currentFloor >= 1
+      ? Math.floor(currentFloor)
+      : 1;
+  const sector = getNextSectorBriefing(floor);
+  const risk = getPortalRiskAssessment(floor, playerHp, playerMaxHp);
+  const heat = getPortalHeatBriefing(heatLevel);
+
+  const summaryLine =
+    'SECTOR ' +
+    sector.nextFloor +
+    ': ' +
+    sector.biomeName +
+    ' (BOSS: ' +
+    sector.bossName +
+    ' · ' +
+    sector.threatMult +
+    ') // HULL: ' +
+    risk.readinessLabel +
+    ' // ' +
+    heat.label +
+    ' (' +
+    heat.scrapBonusText +
+    ')';
+
+  return {
+    currentFloor: floor,
+    nextFloor: sector.nextFloor,
+    biomeName: sector.biomeName,
+    bossName: sector.bossName,
+    threatMult: sector.threatMult,
+    readinessLabel: risk.readinessLabel,
+    isLowHullWarning: risk.isLowHullWarning,
+    heatLevel: heat.heatLevel,
+    scrapBonusText: heat.scrapBonusText,
+    summaryLine
+  };
+}
+
 const CONFIRM_KEYS = new Set(['enter', 'e', ' ', 'spacebar']);
 
 export class PortalModalController {
@@ -187,6 +249,7 @@ export class PortalModalController {
   private confirmBtn: HTMLButtonElement | null = null;
   private cancelBtn: HTMLButtonElement | null = null;
 
+  private currentContext: PortalContext | null = null;
   private pendingConfirm: (() => void) | null = null;
   private pendingCancel: (() => void) | null = null;
   private visible: boolean = false;
@@ -213,6 +276,14 @@ export class PortalModalController {
         }
       });
     }
+  }
+
+  public get overlayEl(): HTMLElement | null {
+    return this.overlay;
+  }
+
+  public set overlayEl(el: HTMLElement | null) {
+    this.overlay = el;
   }
 
   public isOpen(): boolean {
@@ -251,13 +322,52 @@ export class PortalModalController {
     return getPortalHeatBriefing(heatLevel);
   }
 
+  public static getPortalDescentSummary = getPortalDescentSummary;
+  public getPortalDescentSummary = getPortalDescentSummary;
+
+  /**
+   * Re-renders the pre-descent summary and updates DOM attributes on overlay.
+   */
+  public render(
+    contextOrFloor?: PortalContext | number,
+    playerHp?: number,
+    playerMaxHp?: number,
+    heatLevel?: number
+  ): void {
+    let ctx: PortalContext;
+    if (typeof contextOrFloor === 'number') {
+      ctx = {
+        floorNum: contextOrFloor,
+        playerHp,
+        playerMaxHp,
+        heatLevel
+      };
+    } else if (contextOrFloor && typeof contextOrFloor === 'object') {
+      ctx = contextOrFloor;
+    } else if (this.currentContext) {
+      ctx = this.currentContext;
+    } else {
+      ctx = { floorNum: 1 };
+    }
+    this.currentContext = ctx;
+    const descent = getPortalDescentSummary(ctx.floorNum, ctx.playerHp, ctx.playerMaxHp, ctx.heatLevel ?? 0);
+    if (this.overlay) {
+      this.overlay.setAttribute('data-portal-next-floor', String(descent.nextFloor));
+      this.overlay.setAttribute('data-portal-boss', descent.bossName);
+      this.overlay.setAttribute('data-portal-low-hull', descent.isLowHullWarning ? 'true' : 'false');
+      this.overlay.setAttribute('data-portal-descent-summary', descent.summaryLine);
+    }
+  }
+
   public open(context: PortalContext, onConfirm: () => void, onCancel?: () => void): void {
     this.pendingConfirm = onConfirm;
     this.pendingCancel = onCancel || null;
+    this.currentContext = context;
 
     const briefing = getNextSectorBriefing(context.floorNum);
     const assessment = getPortalRiskAssessment(context.floorNum, context.playerHp, context.playerMaxHp);
     const heatBrief = getPortalHeatBriefing(context.heatLevel ?? 0);
+    const descent = getPortalDescentSummary(context.floorNum, context.playerHp, context.playerMaxHp, context.heatLevel ?? 0);
 
     if (context.floorNum === 6) {
       if (this.floorLabelEl) {
@@ -308,6 +418,10 @@ export class PortalModalController {
       this.overlay.setAttribute('data-low-hull-warning', String(assessment.isLowHullWarning));
       this.overlay.setAttribute('data-portal-heat', `${heatBrief.heatLevel}`);
       this.overlay.setAttribute('data-portal-heat-label', heatBrief.label);
+      this.overlay.setAttribute('data-portal-next-floor', String(descent.nextFloor));
+      this.overlay.setAttribute('data-portal-boss', descent.bossName);
+      this.overlay.setAttribute('data-portal-low-hull', descent.isLowHullWarning ? 'true' : 'false');
+      this.overlay.setAttribute('data-portal-descent-summary', descent.summaryLine);
     }
 
     if (this.warningEl) {

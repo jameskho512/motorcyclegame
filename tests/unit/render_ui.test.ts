@@ -44,6 +44,9 @@ import {
   getEquipmentLoadoutSummary,
   getWeaponArsenalSummary,
   getMetaTuningSummary,
+  getLiveryCollectionSummary,
+  type LiveryCollectionSummary,
+  BIKE_LIVERIES,
   PART_ANCHORS,
   type StashSalvageSummary
 } from '../../src/ui/garage';
@@ -3632,6 +3635,327 @@ describe('Render & UI Subsystems', () => {
       const expectedHint = formatModDeckTooltipHint('cryo_rounds', player);
       expect(badge.getAttribute('data-mod-evo-hint')).toBe(expectedHint);
       expect(badge.getAttribute('data-tip')).toContain('+1 STACK FOR OVERCLOCK EVO');
+    });
+  });
+
+  describe('M128: Garage Livery Collection & Active Paint Telemetry', () => {
+    let callbacks: any;
+    let baseMetaSave: MetaSaveState;
+    let basePlayer: PlayerState;
+
+    beforeEach(() => {
+      document.body.innerHTML = `
+        <div id="garage-overlay">
+          <div class="overlay-card garage-card">
+            <header class="gx-header">
+              <div class="gx-banner"><h1 id="modal-title">GARAGE BAY</h1></div>
+              <div class="gx-scrap"><span class="gx-scrap-val" id="modal-scrap">0</span></div>
+            </header>
+            <div class="bay gx-bay">
+              <div class="slot-col" id="slots-left"></div>
+              <canvas id="bike-canvas" width="300" height="190"></canvas>
+              <div class="slot-col" id="slots-right"></div>
+            </div>
+            <div id="livery-bar"></div>
+            <div id="eq-totals"></div>
+            <div id="meta-upgrade-list"></div>
+            <div id="unlock-list"></div>
+            <div id="stash-list"></div>
+            <div class="gx-actions">
+              <button id="btn-resume">Resume</button>
+              <button id="btn-back">Back</button>
+              <button id="btn-new-run">New Run</button>
+              <button id="btn-reset-save">Reset</button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      callbacks = {
+        onEquipItem: vi.fn(),
+        onUnequipSlot: vi.fn(),
+        onSellItem: vi.fn(),
+        onUnlockWeapon: vi.fn(),
+        onEquipWeapon: vi.fn(),
+        onBuyUpgrade: vi.fn(),
+        onResumeRun: vi.fn(),
+        onNewRun: vi.fn(),
+        onResetSave: vi.fn(),
+        onPlayUiClick: vi.fn(),
+        onSelectLivery: vi.fn()
+      };
+
+      baseMetaSave = {
+        scrap: 200,
+        unlocked: {
+          machine_gun: true,
+          shotgun: false,
+          flamethrower: false,
+          railgun: false,
+          grenade_launcher: false,
+          arc_coil: false
+        },
+        ranks: { dmg: 0, fireRate: 0, speed: 0, maxHp: 0 },
+        equipped: {},
+        stash: [],
+        livery: 'crimson_kaneda'
+      };
+
+      basePlayer = {
+        x: 0,
+        y: 0,
+        vx: 0,
+        vy: 0,
+        radius: 17,
+        bikeAngle: 0,
+        aimAngle: 0,
+        baseSpeed: 260,
+        hp: 6,
+        maxHp: 6,
+        coins: 0,
+        invuln: 0,
+        weapon: 'pistol',
+        runWeapons: {},
+        fireTimer: 0,
+        dmgMult: 1,
+        fireRateMult: 1,
+        speedMult: 1,
+        projSpeedMult: 1,
+        blastMult: 1,
+        pierce: 0,
+        bounce: 0,
+        multiShot: 1,
+        vampChance: 0,
+        items: [],
+        itemStacks: {},
+        killCount: 0,
+        nos: 100,
+        nosMax: 100,
+        nosLock: false,
+        nosDelay: 0,
+        livery: 'crimson_kaneda'
+      };
+    });
+
+    describe('getLiveryCollectionSummary pure function', () => {
+      it('returns default crimson_kaneda when metaSave is undefined, null, or empty', () => {
+        const fromUndefined: LiveryCollectionSummary = getLiveryCollectionSummary();
+        const fromNull: LiveryCollectionSummary = getLiveryCollectionSummary(null);
+        const fromEmpty: LiveryCollectionSummary = getLiveryCollectionSummary({} as any);
+
+        [fromUndefined, fromNull, fromEmpty].forEach(summary => {
+          expect(summary.activeLiveryId).toBe('crimson_kaneda');
+          expect(summary.activeLiveryName).toBe('KANEDA RED');
+          expect(summary.primaryColor).toBe('#ff5c00');
+          expect(summary.secondaryColor).toBe('#b33000');
+          expect(summary.totalLiveries).toBe(BIKE_LIVERIES.length);
+          expect(summary.summaryLine).toBe(
+            `LIVERY: KANEDA RED (#ff5c00 / #b33000) // ${BIKE_LIVERIES.length} CUSTOM PAINTS AVAILABLE`
+          );
+        });
+      });
+
+      it('resolves crimson_kaneda correctly', () => {
+        const summary = getLiveryCollectionSummary({ ...baseMetaSave, livery: 'crimson_kaneda' });
+        expect(summary.activeLiveryId).toBe('crimson_kaneda');
+        expect(summary.activeLiveryName).toBe('KANEDA RED');
+        expect(summary.primaryColor).toBe('#ff5c00');
+        expect(summary.secondaryColor).toBe('#b33000');
+        expect(summary.totalLiveries).toBe(BIKE_LIVERIES.length);
+        expect(summary.summaryLine).toBe(
+          `LIVERY: KANEDA RED (#ff5c00 / #b33000) // ${BIKE_LIVERIES.length} CUSTOM PAINTS AVAILABLE`
+        );
+      });
+
+      it('resolves cyber_cyan (and canonical cyber_neon) correctly', () => {
+        const summaryAlias = getLiveryCollectionSummary({ ...baseMetaSave, livery: 'cyber_cyan' as any });
+        const summaryCanonical = getLiveryCollectionSummary({ ...baseMetaSave, livery: 'cyber_neon' });
+
+        expect(summaryAlias.activeLiveryId).toBe('cyber_neon');
+        expect(summaryAlias.activeLiveryName).toBe('CYBER NEON');
+        expect(summaryAlias.primaryColor).toBe('#00bbf9');
+        expect(summaryAlias.secondaryColor).toBe('#00509d');
+        expect(summaryAlias.summaryLine).toBe(
+          `LIVERY: CYBER NEON (#00bbf9 / #00509d) // ${BIKE_LIVERIES.length} CUSTOM PAINTS AVAILABLE`
+        );
+
+        expect(summaryCanonical).toEqual(summaryAlias);
+      });
+
+      it('resolves toxic_viper (and canonical toxic_hazard) correctly', () => {
+        const summaryAlias = getLiveryCollectionSummary({ ...baseMetaSave, livery: 'toxic_viper' as any });
+        const summaryCanonical = getLiveryCollectionSummary({ ...baseMetaSave, livery: 'toxic_hazard' });
+
+        expect(summaryAlias.activeLiveryId).toBe('toxic_hazard');
+        expect(summaryAlias.activeLiveryName).toBe('TOXIC HAZARD');
+        expect(summaryAlias.primaryColor).toBe('#38b000');
+        expect(summaryAlias.secondaryColor).toBe('#004b23');
+        expect(summaryAlias.summaryLine).toBe(
+          `LIVERY: TOXIC HAZARD (#38b000 / #004b23) // ${BIKE_LIVERIES.length} CUSTOM PAINTS AVAILABLE`
+        );
+
+        expect(summaryCanonical).toEqual(summaryAlias);
+      });
+
+      it('resolves valhalla_gold (and canonical golden_valhalla) correctly', () => {
+        const summaryAlias = getLiveryCollectionSummary({ ...baseMetaSave, livery: 'valhalla_gold' as any });
+        const summaryCanonical = getLiveryCollectionSummary({ ...baseMetaSave, livery: 'golden_valhalla' });
+
+        expect(summaryAlias.activeLiveryId).toBe('golden_valhalla');
+        expect(summaryAlias.activeLiveryName).toBe('VALHALLA GOLD');
+        expect(summaryAlias.primaryColor).toBe('#ffbe0b');
+        expect(summaryAlias.secondaryColor).toBe('#b5651d');
+        expect(summaryAlias.summaryLine).toBe(
+          `LIVERY: VALHALLA GOLD (#ffbe0b / #b5651d) // ${BIKE_LIVERIES.length} CUSTOM PAINTS AVAILABLE`
+        );
+
+        expect(summaryCanonical).toEqual(summaryAlias);
+      });
+
+      it('resolves midnight_stealth correctly', () => {
+        const summary = getLiveryCollectionSummary({ ...baseMetaSave, livery: 'midnight_stealth' });
+        expect(summary.activeLiveryId).toBe('midnight_stealth');
+        expect(summary.activeLiveryName).toBe('NIGHT STEALTH');
+        expect(summary.primaryColor).toBe('#7b2cbf');
+        expect(summary.secondaryColor).toBe('#240046');
+        expect(summary.summaryLine).toBe(
+          `LIVERY: NIGHT STEALTH (#7b2cbf / #240046) // ${BIKE_LIVERIES.length} CUSTOM PAINTS AVAILABLE`
+        );
+      });
+
+      it('gracefully falls back to default crimson_kaneda on unknown or invalid livery id', () => {
+        const summary = getLiveryCollectionSummary({ ...baseMetaSave, livery: 'non_existent_paint' as any });
+        expect(summary.activeLiveryId).toBe('crimson_kaneda');
+        expect(summary.activeLiveryName).toBe('KANEDA RED');
+      });
+    });
+
+    describe('GarageController method attachments', () => {
+      it('attaches getLiveryCollectionSummary statically and on instances', () => {
+        expect(GarageController.getLiveryCollectionSummary).toBe(getLiveryCollectionSummary);
+        const garage = new GarageController(callbacks);
+        expect(garage.getLiveryCollectionSummary).toBe(getLiveryCollectionSummary);
+        expect(garage.getLiveryCollectionSummary({ ...baseMetaSave, livery: 'cyber_neon' }).activeLiveryId).toBe('cyber_neon');
+      });
+    });
+
+    describe('DOM telemetry attribute integration', () => {
+      it('sets livery telemetry attributes on #garage-overlay and #bike-canvas when opening garage', () => {
+        const garage = new GarageController(callbacks);
+        const metaSave: MetaSaveState = {
+          ...baseMetaSave,
+          livery: 'golden_valhalla'
+        };
+
+        garage.open(false, 1, metaSave, basePlayer);
+
+        const overlay = document.getElementById('garage-overlay')!;
+        const canvas = document.getElementById('bike-canvas')!;
+
+        expect(overlay.getAttribute('data-active-livery-id')).toBe('golden_valhalla');
+        expect(overlay.getAttribute('data-active-livery-name')).toBe('VALHALLA GOLD');
+        expect(overlay.getAttribute('data-livery-summary')).toBe(
+          `LIVERY: VALHALLA GOLD (#ffbe0b / #b5651d) // ${BIKE_LIVERIES.length} CUSTOM PAINTS AVAILABLE`
+        );
+
+        expect(canvas.getAttribute('data-active-livery-id')).toBe('golden_valhalla');
+        expect(canvas.getAttribute('data-active-livery-name')).toBe('VALHALLA GOLD');
+        expect(canvas.getAttribute('data-livery-summary')).toBe(
+          `LIVERY: VALHALLA GOLD (#ffbe0b / #b5651d) // ${BIKE_LIVERIES.length} CUSTOM PAINTS AVAILABLE`
+        );
+      });
+
+      it('updates livery telemetry attributes on #garage-overlay and #bike-canvas via renderLiverySwatches', () => {
+        const garage = new GarageController(callbacks);
+        const metaSave: MetaSaveState = {
+          ...baseMetaSave,
+          livery: 'crimson_kaneda'
+        };
+
+        garage.renderLiverySwatches(metaSave, basePlayer);
+
+        const overlay = document.getElementById('garage-overlay')!;
+        const canvas = document.getElementById('bike-canvas')!;
+
+        expect(overlay.getAttribute('data-active-livery-id')).toBe('crimson_kaneda');
+        expect(canvas.getAttribute('data-active-livery-id')).toBe('crimson_kaneda');
+
+        // Switch to cyber_neon via renderLiverySwatches
+        metaSave.livery = 'cyber_neon';
+        garage.renderLiverySwatches(metaSave, basePlayer);
+
+        expect(overlay.getAttribute('data-active-livery-id')).toBe('cyber_neon');
+        expect(overlay.getAttribute('data-active-livery-name')).toBe('CYBER NEON');
+        expect(canvas.getAttribute('data-active-livery-id')).toBe('cyber_neon');
+        expect(canvas.getAttribute('data-active-livery-name')).toBe('CYBER NEON');
+      });
+
+      it('updates telemetry and triggers callbacks when clicking a livery swatch button', () => {
+        const garage = new GarageController(callbacks);
+        const metaSave: MetaSaveState = {
+          ...baseMetaSave,
+          livery: 'crimson_kaneda'
+        };
+
+        garage.open(false, 1, metaSave, basePlayer);
+
+        const overlay = document.getElementById('garage-overlay')!;
+        const canvas = document.getElementById('bike-canvas')!;
+        const toxicBtn = document.querySelector('#livery-bar button[data-livery-id="toxic_hazard"]') as HTMLButtonElement;
+
+        expect(toxicBtn).not.toBeNull();
+        toxicBtn.click();
+
+        expect(callbacks.onPlayUiClick).toHaveBeenCalled();
+        expect(callbacks.onSelectLivery).toHaveBeenCalledWith('toxic_hazard');
+        expect(metaSave.livery).toBe('toxic_hazard');
+
+        expect(overlay.getAttribute('data-active-livery-id')).toBe('toxic_hazard');
+        expect(overlay.getAttribute('data-active-livery-name')).toBe('TOXIC HAZARD');
+        expect(overlay.getAttribute('data-livery-summary')).toContain('TOXIC HAZARD');
+
+        expect(canvas.getAttribute('data-active-livery-id')).toBe('toxic_hazard');
+        expect(canvas.getAttribute('data-active-livery-name')).toBe('TOXIC HAZARD');
+      });
+
+      it('updates livery telemetry attributes during drawBikeLift', () => {
+        const garage = new GarageController(callbacks);
+        const metaSave: MetaSaveState = {
+          ...baseMetaSave,
+          livery: 'midnight_stealth'
+        };
+
+        garage.drawBikeLift(metaSave);
+
+        const overlay = document.getElementById('garage-overlay')!;
+        const canvas = document.getElementById('bike-canvas')!;
+
+        expect(overlay.getAttribute('data-active-livery-id')).toBe('midnight_stealth');
+        expect(overlay.getAttribute('data-active-livery-name')).toBe('NIGHT STEALTH');
+        expect(canvas.getAttribute('data-active-livery-id')).toBe('midnight_stealth');
+        expect(canvas.getAttribute('data-active-livery-name')).toBe('NIGHT STEALTH');
+      });
+
+      it('safely handles null bikeCanvas without throwing errors', () => {
+        // Remove bikeCanvas from DOM
+        const canvas = document.getElementById('bike-canvas');
+        canvas?.remove();
+
+        const garage = new GarageController(callbacks);
+        const metaSave: MetaSaveState = {
+          ...baseMetaSave,
+          livery: 'golden_valhalla'
+        };
+
+        expect(() => {
+          garage.open(false, 1, metaSave, basePlayer);
+          garage.renderLiverySwatches(metaSave, basePlayer);
+          garage.drawBikeLift(metaSave);
+        }).not.toThrow();
+
+        const overlay = document.getElementById('garage-overlay')!;
+        expect(overlay.getAttribute('data-active-livery-id')).toBe('golden_valhalla');
+      });
     });
   });
 });
